@@ -469,6 +469,24 @@ canvas.q3d { display: block; border-radius: 50%; background: radial-gradient(cir
 .santip .tf { margin: 8px 0 0; color: var(--muted); font-size: 11.5px; }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .santip code, :root:not([data-theme="light"]) .san:hover { background: #1d3550; color: #cfe3fa; } }
 :root[data-theme="dark"] .santip code, :root[data-theme="dark"] .san:hover { background: #1d3550; color: #cfe3fa; }
+
+/* phones: edge-to-edge board, thin eval strip on top, compact header */
+@media (max-width: 600px) {
+  body { margin: 0; }
+  .wrap { padding-block: 10px 28px; }
+  header { flex-wrap: nowrap; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
+  h1 { font-size: 21px; white-space: nowrap; }
+  .engine-pill { padding: 3px 8px; font-size: 11px; white-space: nowrap; }
+  .modebar { padding: 6px 8px; font-size: 13.5px; line-height: 1.35; }
+  .boardcol { gap: 6px; }
+  .boardrow { flex-direction: column; gap: 0; margin-inline: -16px; }
+  .evalbar { width: auto; height: 5px; border: 0; border-radius: 0; }
+  .evalbar .fill { top: 0; bottom: 0; right: auto; height: auto !important; width: var(--ev, 50%); transition: width .5s ease; }
+  .evalbar.flip .fill { left: auto; right: 0; }
+  .evalnum { display: none; }
+  .board { flex: none; width: 100%; border-radius: 0; box-shadow: none; }
+  .board[data-zone] { box-shadow: none; }
+}
 </style>
 
 <div class="wrap">

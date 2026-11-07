@@ -502,7 +502,7 @@
     pct = Math.max(3, Math.min(97, pct));
     var ow = orientWhite();
     bar.classList.toggle('flip', !ow);
-    $('evalfill').style.height = pct + '%';
+    $('evalfill').style.height = pct + '%'; bar.style.setProperty('--ev', pct + '%');
     var n = $('evalnum');
     n.textContent = Math.abs(ev) > MW ? 'M' : (ev >= 0 ? '+' : '−') + (Math.abs(ev) / 100).toFixed(1);
     n.style.color = ow ? 'var(--eval-b)' : 'var(--eval-w)';

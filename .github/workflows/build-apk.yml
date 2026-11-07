@@ -8,7 +8,7 @@ permissions:
   contents: write
 
 env:
-  KS_PASS: ${{ secrets.ANDROID_KEY_PASSWORD }}
+  KS_PASS: throwaway-test-only
   KS_PATH: ${{ github.workspace }}/release.jks
   VCODE: ${{ github.run_number }}
   VNAME: 1.0.${{ github.run_number }}
@@ -54,7 +54,7 @@ jobs:
           chmod +x gradlew
           echo "apply from: '../../android-signing.gradle'" >> app/build.gradle
           if [ -n "$KS_PASS" ]; then
-            echo "$KS_B64" | base64 -d > "$KS_PATH"
+            keytool -genkeypair -keystore "$KS_PATH" -alias chesscoach -keyalg RSA -keysize 2048 -validity 30 -storepass "$KS_PASS" -keypass "$KS_PASS" -dname CN=test
             ./gradlew assembleRelease bundleRelease --no-daemon
             cp app/build/outputs/apk/release/app-release.apk ../chess-coach-$VNAME.apk
             cp app/build/outputs/bundle/release/app-release.aab ../chess-coach-$VNAME.aab

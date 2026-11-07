@@ -7,6 +7,12 @@ on:
 permissions:
   contents: write
 
+env:
+  KS_PASS: ${{ secrets.ANDROID_KEY_PASSWORD }}
+  KS_PATH: ${{ github.workspace }}/release.jks
+  VCODE: ${{ github.run_number }}
+  VNAME: 1.0.${{ github.run_number }}
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -40,24 +46,36 @@ jobs:
       - name: Copy the web app into Android
         run: npx cap sync android
 
-      - name: Build the APK
+      - name: Build the APK (and Play Store bundle when signed)
+        env:
+          KS_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
         run: |
           cd android
           chmod +x gradlew
-          ./gradlew assembleDebug --no-daemon
+          echo "apply from: '../../android-signing.gradle'" >> app/build.gradle
+          if [ -n "$KS_PASS" ]; then
+            echo "$KS_B64" | base64 -d > "$KS_PATH"
+            ./gradlew assembleRelease bundleRelease --no-daemon
+            cp app/build/outputs/apk/release/app-release.apk ../chess-coach-$VNAME.apk
+            cp app/build/outputs/bundle/release/app-release.aab ../chess-coach-$VNAME.aab
+          else
+            echo "::warning::Signing secrets not set, building an unsigned debug APK (it will not update in place)"
+            ./gradlew assembleDebug --no-daemon
+            cp app/build/outputs/apk/debug/app-debug.apk ../chess-coach-$VNAME.apk
+          fi
 
       - uses: actions/upload-artifact@v4
         with:
-          name: chess-coach-apk
-          path: android/app/build/outputs/apk/debug/app-debug.apk
-
-      - name: Rename the APK
-        run: cp android/app/build/outputs/apk/debug/app-debug.apk chess-coach-${{ github.run_number }}.apk
+          name: chess-coach-${{ env.VNAME }}
+          path: chess-coach-${{ env.VNAME }}.*
 
       - name: Publish as a GitHub Release (easy phone download)
+        if: github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: build-${{ github.run_number }}
-          name: Chess Coach build ${{ github.run_number }}
-          body: Test build. On your phone, tap the .apk below to download and install it.
-          files: chess-coach-${{ github.run_number }}.apk
+          tag_name: v${{ env.VNAME }}
+          name: Chess Coach ${{ env.VNAME }}
+          body: |
+            On your phone, tap the .apk below to install or update.
+            The .aab file is for the Google Play Store.
+          files: chess-coach-${{ env.VNAME }}.*

@@ -1,0 +1,24 @@
+// Applied to android/app/build.gradle by the CI workflow.
+// Version number goes up with every build, so each new APK installs over the old one.
+android {
+    defaultConfig {
+        versionCode Integer.parseInt(System.getenv("VCODE") ?: "1")
+        versionName System.getenv("VNAME") ?: "1.0"
+    }
+    // The same release key every time (needed for updates and the Play Store).
+    if (System.getenv("KS_PASS")) {
+        signingConfigs {
+            chesscoach {
+                storeFile file(System.getenv("KS_PATH"))
+                storePassword System.getenv("KS_PASS")
+                keyAlias "chesscoach"
+                keyPassword System.getenv("KS_PASS")
+            }
+        }
+        buildTypes {
+            release {
+                signingConfig signingConfigs.chesscoach
+            }
+        }
+    }
+}

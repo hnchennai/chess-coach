@@ -19,3 +19,12 @@ The whole app works offline: Stockfish, the 3D board, puzzles and lessons are in
 - Stockfish (GPLv3): source at https://github.com/official-stockfish/Stockfish
 - 3D marble set: "A Beautiful Game" by the MaterialX Project (ASWF), glTF by Ed Mackey, CC BY 4.0
 - three.js (MIT), chess.js (BSD-2-Clause), Capacitor (MIT)
+
+## Signing and updates
+
+- The release key (alias `chesscoach`) is never stored in git. The workflow reads it from two repo secrets:
+  - `ANDROID_KEYSTORE_BASE64`: the key file, base64 encoded
+  - `ANDROID_KEY_PASSWORD`: its password
+- Keep a backup of the key file and its password. The Play Store listing needs the same key, and a lost key means users can't update.
+- Every push to `main` builds version `1.0.<run number>`, signs it, and publishes a GitHub Release (`v1.0.N`) with the `.apk` (phone) and `.aab` (Play Store).
+- Phone auto-updates: install Obtainium and add this repo (with a GitHub token, since the repo is private).

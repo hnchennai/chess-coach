@@ -487,6 +487,75 @@ canvas.q3d { display: block; border-radius: 50%; background: radial-gradient(cir
   .board { flex: none; width: 100%; border-radius: 0; box-shadow: none; }
   .board[data-zone] { box-shadow: none; }
 }
+
+/* ---------- S1: level check sheet, Settings level card, Rani's note ---------- */
+html.pl-open, html.pl-open body { overflow: hidden; }
+.placement { position: fixed; inset: 0; z-index: 60; background: var(--bg); overflow-y: auto; -webkit-overflow-scrolling: touch; padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom); }
+.placement[hidden] { display: none; }
+.pl-card { max-width: 480px; margin: 0 auto; padding: 16px; display: flex; flex-direction: column; gap: 12px; min-height: 100%; box-sizing: border-box; }
+.pl-top { display: flex; align-items: center; gap: 12px; min-height: 44px; }
+.pl-x { appearance: none; border: 0; background: transparent; color: var(--ink); width: 44px; height: 44px; margin-left: -10px; border-radius: 8px; display: grid; place-items: center; cursor: pointer; flex: none; }
+.pl-welcome .pl-top { justify-content: space-between; }
+.pl-welcome .pl-x { margin: 0 -10px 0 0; }
+.pl-x:focus-visible, .pl-opt:focus-visible, .pl-link:focus-visible, .pl-row:focus-visible, .segbtn:focus-visible, .linkbtn:focus-visible, .switchrow:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+.pl-prog { flex: 1; display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: var(--muted); font-weight: 500; }
+.pl-prog i { display: block; height: 6px; border-radius: 3px; background: var(--line); overflow: hidden; }
+.pl-prog b { display: block; height: 100%; background: var(--accent); border-radius: 3px; transition: width .22s ease-out; }
+.pl-hero { display: grid; place-items: center; margin-top: 12px; }
+.pl-hero.sm { margin-top: 4px; }
+.pl-h { font-family: var(--f-display); font-weight: 700; font-size: 28px; line-height: 1.15; margin: 0; text-align: center; }
+.pl-lede { margin: 0; text-align: center; color: var(--muted); font-size: 16px; }
+.pl-q { margin: 12px 0 0; font-weight: 600; font-size: 17px; text-align: center; }
+.pl-opts { display: flex; flex-direction: column; gap: 10px; }
+.pl-opt { appearance: none; text-align: left; border: 1px solid var(--line); background: var(--surface); color: var(--ink); border-radius: 12px; padding: 14px 16px; min-height: 64px; cursor: pointer; display: flex; flex-direction: column; gap: 2px; font: inherit; }
+.pl-opt:hover { border-color: var(--accent); }
+.pl-opt b { font-size: 17px; font-weight: 600; }
+.pl-opt small { font-size: 14px; color: var(--muted); }
+.pl-link { appearance: none; border: 0; background: transparent; color: var(--accent); font: inherit; font-weight: 600; font-size: 15px; padding: 10px 12px; min-height: 44px; cursor: pointer; align-self: center; border-radius: 8px; }
+.pl-bubble { display: grid; grid-template-columns: 46px minmax(0, 1fr); gap: 10px; align-items: center; }
+.pl-bubble .bub { position: relative; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 8px 12px; font-size: 16px; line-height: 1.4; min-height: 48px; }
+.pl-bubble .bub::before { content: ""; position: absolute; left: -7px; top: 50%; margin-top: -6px; border: 6px solid transparent; border-right-color: var(--line); border-left: 0; }
+.pl-bubble .bub b { display: block; }
+.pl-bubble .bub span { color: var(--muted); }
+.pl-board { width: 100%; }
+.pl-board .board { width: 100%; flex: none; }
+.pl-board .board[data-zone] { box-shadow: 0 1px 0 rgba(0,0,0,.08), 0 10px 30px -12px rgba(30, 20, 10, .45); }
+@media (max-width: 600px) { .pl-board .board[data-zone] { box-shadow: none; } }
+.pl-acts { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.pl-acts .btn { min-height: 44px; padding: 10px 18px; font-size: 15px; }
+.pl-acts .btn:disabled { opacity: .45; cursor: default; }
+.pl-score { margin: 0; text-align: center; font-size: 17px; font-weight: 600; color: var(--accent); }
+.pl-levels { display: flex; flex-direction: column; gap: 8px; margin-top: 4px; }
+.pl-row { appearance: none; font: inherit; color: var(--ink); text-align: left; display: flex; align-items: center; gap: 12px; border: 1px solid var(--line); background: var(--surface); border-radius: 12px; padding: 12px 14px; min-height: 56px; width: 100%; box-sizing: border-box; }
+button.pl-row { cursor: pointer; }
+.pl-row.on { border: 2px solid var(--accent); background: var(--accent-soft); padding: 11px 13px; }
+.pl-lv { flex: 1; display: flex; flex-direction: column; }
+.pl-lv b { font-size: 16px; }
+.pl-lv small { font-size: 13px; color: var(--muted); }
+.pl-you { flex: none; font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--accent-ink); background: var(--accent); border-radius: 999px; padding: 3px 10px; }
+.pl-note { margin: 0; text-align: center; color: var(--muted); font-size: 14px; }
+.pl-card .btn.big { flex: none; width: 100%; min-height: 48px; }
+.pl-card:focus { outline: none; }
+@media (prefers-reduced-motion: reduce) { .pl-prog b { transition: none; } }
+@media (max-width: 600px) { .pl-puzzle { padding-left: 0; padding-right: 0; } .pl-puzzle > :not(.pl-board) { margin-left: 16px; margin-right: 16px; } .pl-puzzle .pl-top { margin-left: 16px; } }
+.levelcard .seg { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; padding: 4px; border-radius: 10px; background: var(--bg); border: 1px solid var(--line); }
+.segbtn { appearance: none; border: 0; background: transparent; color: var(--ink); font: inherit; font-weight: 600; font-size: 14px; min-height: 44px; border-radius: 8px; cursor: pointer; padding: 0 4px; }
+.segbtn.on { background: var(--accent); color: var(--accent-ink); }
+.lvwho { margin: 8px 0 0; font-size: 14px; color: var(--muted); }
+.linkbtn { appearance: none; border: 0; background: transparent; color: var(--accent); font: inherit; font-weight: 600; font-size: 14px; padding: 10px 0; min-height: 44px; cursor: pointer; border-radius: 6px; }
+.switchrow { appearance: none; font: inherit; color: var(--ink); text-align: left; width: 100%; display: flex; align-items: center; gap: 12px; border: 0; border-top: 1px solid var(--line); background: transparent; padding: 12px 0 0; margin-top: 4px; cursor: pointer; min-height: 52px; }
+.switchrow > span { flex: 1; display: flex; flex-direction: column; }
+.switchrow b { font-size: 15px; font-weight: 600; }
+.switchrow small { font-size: 13px; color: var(--muted); }
+.sw { flex: none; width: 44px; height: 26px; border-radius: 13px; background: var(--line); position: relative; transition: background .2s ease-out; }
+.sw::after { content: ""; position: absolute; top: 3px; left: 3px; width: 20px; height: 20px; border-radius: 50%; background: var(--surface); box-shadow: 0 1px 2px rgba(0,0,0,.25); transition: transform .2s ease-out; }
+.switchrow[aria-checked="true"] .sw { background: var(--accent); }
+.switchrow[aria-checked="true"] .sw::after { transform: translateX(18px); }
+@media (prefers-reduced-motion: reduce) { .sw, .sw::after { transition: none; } }
+.raninote { position: fixed; z-index: 55; left: 50%; bottom: calc(16px + env(safe-area-inset-bottom)); transform: translateX(-50%); width: min(440px, calc(100vw - 32px)); box-sizing: border-box; display: grid; grid-template-columns: 46px minmax(0, 1fr) auto; gap: 10px; align-items: center; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; box-shadow: 0 10px 30px -12px rgba(0, 0, 0, .35); }
+.raninote[hidden] { display: none; }
+.raninote p { margin: 0; font-size: 15px; line-height: 1.4; }
+.raninote .btn { min-height: 44px; min-width: 56px; }
 </style>
 
 <div class="wrap">
@@ -555,6 +624,7 @@ canvas.q3d { display: block; border-radius: 50%; background: radial-gradient(cir
         <div class="card today" id="today"></div>
         <div class="card" id="stageCard"></div>
         <div class="card" id="roadCard"></div>
+        <div class="card levelcard" id="levelCard"></div>
         <div class="card" id="lookCard"></div>
         <div class="card" id="methodsCard"></div>
       </div>
@@ -646,6 +716,8 @@ canvas.q3d { display: block; border-radius: 50%; background: radial-gradient(cir
     </aside>
   </div>
 </div>
+<div class="placement" id="placement" hidden></div>
+<div class="raninote" id="raniNote" role="status" hidden></div>
 <script src="vendor/chess.js"></script>
 <script src="js/engine.js"></script>
 <script src="js/tactics.js"></script>
@@ -658,4 +730,6 @@ canvas.q3d { display: block; border-radius: 50%; background: radial-gradient(cir
 <script src="js/coach3d.js"></script>
 <script src="js/ramayana3d.js"></script>
 <script src="js/puzzles.js"></script>
+<script src="js/profile.js"></script>
+<script src="js/placement.js"></script>
 <script src="js/app.js"></script>

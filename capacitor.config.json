@@ -1,0 +1,6 @@
+{
+  "appId": "com.suresh.chesscoach",
+  "appName": "Chess Coach",
+  "webDir": "www",
+  "android": { "backgroundColor": "#f4f1ea" }
+}

@@ -605,6 +605,10 @@ header h1 { margin-right: auto; } /* the gear stays right when the engine pill i
 .verdict .mv.words { font-family: var(--f-body); font-size: 14px; }
 /* The partner's move in words on the Play panel (Beginners): a sentence, not an all-caps label */
 .eyebrow.words { text-transform: none; letter-spacing: 0; font-size: 15px; font-weight: 600; color: var(--ink); }
+/* D34: a Beginner's strip in play is never cut off (it may grow) */
+.coachstrip.full .bub span { display: block; -webkit-line-clamp: unset; overflow: visible; }
+/* U-7: Progress with the rating tile hidden: 3 tiles in one row */
+.stats.n3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 /* Rani's note with the level-up offer: two buttons under the text */
 .raninote.offer { grid-template-columns: 46px minmax(0, 1fr); }
 .raninote .rn-btns { grid-column: 2; display: flex; flex-wrap: wrap; gap: 8px; }

@@ -378,3 +378,22 @@ test('offerDue: complete and 7 days since max(levelOfferT, levelT)', () => {
   assert.equal(P.offerDue(P.migrate(Object.assign({}, base, { course: done('board') , levelT: 0 })), now, UNITS), false, 'not complete');
   assert.equal(P.offerDue(P.migrate({ v: 5, level: 'club', start: 'kq', course: done('kq', 'kr'), levelT: 0 }), now, UNITS), false, 'Club never');
 });
+
+// ---------- S2a fix round 2 (R2-8): a level finished in a session that ended before the offer could show ----------
+test('levelDoneAt: latest completion time of the counted units, 0 when the level is not complete', () => {
+  const at = (t) => ({ learn: t - 2, practice: t - 1, apply: t });
+  const p = P.migrate({ v: 5, level: 'beginner', start: 'board', course: { rules: at(9000), board: at(100), values: at(200), mate: at(300), opening: at(400), blunder: at(500) } });
+  assert.equal(P.levelDoneAt(p, UNITS), 500, 'rules (before start) does not count');
+  p.course.blunder = { learn: 600 };
+  assert.equal(P.levelDoneAt(p, UNITS), 0, 'not complete');
+  assert.equal(P.levelDoneAt(P.migrate({ v: 5, level: 'club', start: 'kq', course: { kq: at(5), kr: at(6) } }), UNITS), 0, 'Club never');
+});
+
+test('lessonOfferDue: the level was completed after the last offer answer and the last level change', () => {
+  const at = (t) => ({ learn: t, practice: t, apply: t });
+  const base = { v: 5, level: 'beginner', start: 'board', course: { board: at(100), values: at(200), mate: at(300), opening: at(400), blunder: at(1000) } };
+  assert.equal(P.lessonOfferDue(P.migrate(Object.assign({}, base, { levelT: 50, levelOfferT: 0 })), UNITS), true, 'finished, never answered');
+  assert.equal(P.lessonOfferDue(P.migrate(Object.assign({}, base, { levelT: 50, levelOfferT: 2000 })), UNITS), false, 'Not yet after finishing');
+  assert.equal(P.lessonOfferDue(P.migrate(Object.assign({}, base, { levelT: 3000 })), UNITS), false, 'level changed after finishing');
+  assert.equal(P.lessonOfferDue(P.migrate(Object.assign({}, base, { levelT: 50, course: { board: at(100) } })), UNITS), false, 'not complete');
+});

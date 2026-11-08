@@ -127,6 +127,23 @@
     }
     return n > 0;
   }
+  /* R2-8: when the level was completed: the latest part time among the counted units (markUnit stores Date.now()); 0 if not complete. */
+  function levelDoneAt(p, units, unitDone) {
+    if (!levelComplete(p, units, unitDone)) return 0;
+    var us = courseUnits(units) || [], cl = LEVELS[p.level].courseLevel, t = 0;
+    for (var i = startIndex(p, us); i < us.length; i++) {
+      if (us[i].level !== cl) continue;
+      var c = (p.course || {})[us[i].id] || {};
+      partsOf(us[i]).forEach(function (k) { t = Math.max(t, +c[k] || 0); });
+    }
+    return t;
+  }
+  /* The level was completed after the last offer answer and the last level change: offer at the next settled start,
+     even if the session that completed it ended before the offer could show. */
+  function lessonOfferDue(p, units, unitDone) {
+    var t = levelDoneAt(p, units, unitDone);
+    return t > 0 && t > Math.max(+p.levelOfferT || 0, +p.levelT || 0);
+  }
   var WEEK = 7 * 86400000;
   /* D21: at app start, offer again once 7 days have passed since "Not yet" or since the last level change. */
   function offerDue(p, now, units, unitDone) {
@@ -174,5 +191,5 @@
   }
 
   return { V: V, LEVELS: LEVELS, ORDER: ORDER, levelFromRating: levelFromRating, startUnit: startUnit, puzzleCount: puzzleCount, scoreLevel: scoreLevel,
-    migrate: migrate, needsCheck: needsCheck, setLevel: setLevel, nextUnit: nextUnit, unlockDone: unlockDone, levelComplete: levelComplete, offerDue: offerDue, merge: merge, blank: blank };
+    migrate: migrate, needsCheck: needsCheck, setLevel: setLevel, nextUnit: nextUnit, unlockDone: unlockDone, levelComplete: levelComplete, offerDue: offerDue, levelDoneAt: levelDoneAt, lessonOfferDue: lessonOfferDue, merge: merge, blank: blank };
 });

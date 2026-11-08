@@ -543,7 +543,7 @@ const cases = [
     assert.ok((await page.locator('#vText').innerText()).includes('Exactly the move I’d play.'));
     assert.ok(!ENG.test(await vis1()), 'play: ' + (await vis1()).match(ENG));
     await page.locator('#reviewBtn').click(); await page.locator('#navFirst').click();
-    assert.ok((await page.locator('#vText').innerText()).includes('Every move is explained, yours and Rani’s partner’s.'));
+    assert.equal((await page.locator('#vText').innerText()).trim(), 'Tap Next to step through. Every move is explained.', 'R2-2 review start line');
     await page.locator('#navNext').click();
     await page.waitForFunction(() => document.getElementById('vText').innerText.includes('I slightly preferred'));
     assert.ok(!ENG.test(await vis1()), 'review');
@@ -585,7 +585,8 @@ const cases = [
   }],
   ['D32: a Beginner’s move chips have no notation in title or aria-label; Show everything restores it', async (vp) => {
     const g = Object.assign({}, GAME_OPEN, { fb: { cls: 'good', sym: '✓', title: 'Good move', mv: 'You played Nf3', text: 'Solid. Better was ' + CHIP + '.' } });
-    const page = await seeded(vp, prof(), g, 'play');
+    // a themed set (character names on pieces), so the preview tag would repeat the piece (R2-3)
+    const page = await seeded(vp, prof(), g, 'play', { fn: () => localStorage.setItem('suresh-chess-coach.pieces', '"ramayana"') });
     await page.locator('#tab-play').click();
     const chip = page.locator('#vText .mvc');
     await page.waitForFunction(() => { const c = document.querySelector('#vText .mvc'); return c && c.dataset.dc; });
@@ -593,7 +594,7 @@ const cases = [
     assert.equal(await chip.getAttribute('aria-label'), 'White knight to f3');
     await chip.click();
     const tag = await page.locator('#pvTag').innerText();
-    assert.ok(!/Nf3/.test(tag) && /White knight to f3/.test(tag), 'preview label: ' + tag);
+    assert.ok(!/Nf3/.test(tag) && tag.startsWith('White knight to f3') && !/\(/.test(tag), 'R2-3 preview label without the repeat: ' + tag);
     assert.equal(await page.locator('.santip').count() === 0 || !(await page.locator('.santip').isVisible()), true, 'no notation tip');
     await page.locator('#settingsBtn').click(); await page.locator('#levelCard [data-act="showall"]').click(); await page.keyboard.press('Escape');
     assert.equal(await page.locator('#vText .mvc').getAttribute('title'), 'Nf3: White knight to f3. Tap to see it on the board.');
@@ -683,6 +684,129 @@ const cases = [
     await page.locator('#tab-coach').click();
     await page.waitForSelector('#raniNote:not([hidden])');
     assert.equal(await noteText(page), OFFER_B, 'shown when Home opens');
+    return page;
+  }],
+  // ---------------- Fix round 2 ----------------
+  ['R2-1: a Beginner’s beat milestone is Rani’s practice partner (OPP 1) at every stage', async (vp) => {
+    const lv12 = ['board', 'values', 'mate', 'opening', 'blunder', 'fork', 'pin', 'disc', 'patterns', 'check2'];
+    const win1 = { id: 'g1', d: NOW - DAY, r: 'W', user: 'b', level: 1, sans: ['f3', 'e5', 'g4', 'Qh4#'], ann: {} };
+    const page = await seeded(vp, prof({ start: 'board', levelT: NOW - 30 * DAY, levelOfferT: NOW - 3600000, course: done(...lv12), games: [win1] }));
+    assert.equal(await page.locator('#raniNote').isHidden(), true);
+    await page.locator('#roadCard [data-stage="2"]').click();
+    const mile = page.locator('#stageCard .mile', { hasText: 'Beat Rani’s practice partner' });
+    assert.equal(await mile.count(), 1);
+    assert.ok((await mile.getAttribute('class')).includes('done'), 'stage 2: the level 1 win counts');
+    assert.ok(!/Stage 2 of 6/i.test(await page.locator('#stageHero').innerText()), 'stage 2 is done');
+    await page.locator('#stageHero [data-go="next"]').click();
+    assert.notEqual(await st(page, 'level'), 3, 'never starts an Improver (OPP 3) game');
+    return page;
+  }],
+  ['R2-5: Show everything off re-decorates the strip chips without notation', async (vp) => {
+    const page = await seeded(vp, prof({ showAll: true }));
+    await page.locator('#tab-play').click();
+    await page.locator('#newBtn').click();
+    await page.waitForFunction(() => { const c = document.querySelector('#coachStrip .mvc'); return c && c.dataset.dc; });
+    assert.ok(/^e4: /.test(await page.locator('#coachStrip .mvc').first().getAttribute('title')), 'Show everything: notation');
+    await page.locator('#settingsBtn').click(); await page.locator('#levelCard [data-act="showall"]').click(); await page.keyboard.press('Escape');
+    const chips = await page.locator('#coachStrip .mvc').evaluateAll((els) => els.map((e) => [e.title, e.getAttribute('aria-label')]));
+    assert.ok(chips.length >= 1);
+    for (const [t, a] of chips) assert.ok(!/\b[a-h][1-8]:|\(\w*[a-h][1-8]\)/.test(t + ' ' + a), 'no SAN: ' + t + ' | ' + a);
+    return page;
+  }],
+  ['R2-6: an open Settings sheet follows a cloud pull (level and Show everything)', async (vp) => {
+    const local = prof();
+    const page = await seeded(vp, local, null, null, { fn: cloudMock, arg: { prof: Object.assign({}, local, { level: 'club', start: 'kq', placed: 'chosen', levelT: NOW + 60000, showAll: true, t: NOW + 60000 }), hold: true } });
+    await page.locator('#settingsBtn').click();
+    await page.locator('#levelCard [data-lvset="beginner"]').focus();
+    await page.evaluate(() => window.__release());
+    await page.waitForFunction(() => window.__coach.getProf().level === 'club');
+    assert.equal(await page.locator('#levelCard [data-lvset="club"]').getAttribute('aria-checked'), 'true', 'sheet shows Club');
+    assert.equal(await page.locator('#levelCard [data-act="showall"]').getAttribute('aria-checked'), 'true', 'switch shows On');
+    assert.equal(await page.evaluate(() => !!document.activeElement.closest('#levelCard')), true, 'focus stays in the sheet');
+    return page;
+  }],
+  ['R2-7: focus after a pull never lands on another game’s Review button', async (vp) => {
+    const gA = { id: 'gA', d: NOW - 2 * DAY, r: 'L', user: 'w', level: 3, acc: 60, counts: {}, tags: {}, sans: ['e4', 'e5'], ann: {} };
+    const gB = { id: 'gB', d: NOW - DAY, r: 'W', user: 'w', level: 3, acc: 80, counts: {}, tags: {}, sans: ['d4', 'd5'], ann: {} };
+    const local = prof({ level: 'club', start: 'kq', rating: 1300, games: [gA] });
+    const page = await seeded(vp, local, null, 'progress', { fn: cloudMock, arg: { prof: local, hold: false } });
+    await page.waitForFunction(() => window.__cloud.gets >= 2);
+    await page.locator('#tab-progress').click();
+    await page.locator('#history [data-review="0"]').focus();
+    const gets = await page.evaluate(() => window.__cloud.gets);
+    await page.evaluate((g) => { window.__cloud.prof = Object.assign({}, window.__cloud.prof, { games: [g].concat(window.__cloud.prof.games || []) }); document.dispatchEvent(new Event('visibilitychange')); }, gB);
+    await page.waitForFunction((n) => window.__cloud.gets >= n + 2 && window.__coach.getProf().games.length === 2, gets);
+    await page.waitForTimeout(100);
+    const a = await page.evaluate(() => { const e = document.activeElement; return e && e.dataset ? e.dataset.review : null; });
+    assert.notEqual(a, '0', 'not the newer game that took index 0');
+    if (a != null) assert.equal(a, '1', 'the same game (gA, now second)');
+    return page;
+  }],
+  ['R2-8: a level finished in an earlier session is offered at the next start', async (vp) => {
+    const t = Date.now() - 60000, at = { learn: t, practice: t, apply: t };
+    const page = await seeded(vp, prof({ start: 'board', levelT: NOW - DAY, levelOfferT: 0, course: { board: at, values: at, mate: at, opening: at, blunder: at } }));
+    await page.waitForSelector('#raniNote:not([hidden])');
+    assert.equal(await noteText(page), OFFER_B);
+    return page;
+  }],
+  ['U-1: the offer takes focus; Esc closes it without saving, focus back on the tab', async (vp) => {
+    const page = await seeded(vp, prof({ start: 'board', levelT: NOW - 9 * DAY, course: done('board', 'values', 'mate', 'opening', 'blunder') }));
+    await page.waitForSelector('#raniNote:not([hidden])');
+    await page.waitForFunction(() => document.activeElement && document.activeElement.dataset.act === 'offeryes');
+    assert.equal(await page.evaluate(() => document.activeElement.textContent), 'Yes, move me up');
+    if (vp.width === 412) await shot(page, vp, 'offer_focus');
+    await page.keyboard.press('Escape');
+    assert.equal(await page.locator('#raniNote').isHidden(), true, 'Esc closes the note');
+    const pr = await getProf(page);
+    assert.equal(pr.levelOfferT, 0, 'nothing written'); assert.equal(pr.level, 'beginner');
+    assert.equal(await page.evaluate(() => document.activeElement && document.activeElement.id), 'tab-coach', 'focus on the selected tab');
+    await page.reload(); await page.waitForFunction(() => window.__coach);
+    await page.waitForSelector('#raniNote:not([hidden])');
+    assert.equal(await noteText(page), OFFER_B, 'comes back at the next start');
+    return page;
+  }],
+  ['U-2: Beginner strip reads grade, feedback, then the partner’s move, nothing cut off', async (vp) => {
+    if (vp.width > 860) return newPage(vp);
+    const page = await seeded(vp, prof({ course: done('rules', 'special') }), GAME_CHECK, 'play');
+    await page.locator('#tab-play').click();
+    const b = (await page.locator('#coachStrip .bub b').innerText()).trim(), sp = (await page.locator('#coachStrip .bub span').innerText()).trim();
+    assert.equal(b, 'Blunder.', 'line 1 is the grade');
+    assert.equal(sp, 'This gives away material or position. Rani’s partner took your bishop. Check!', 'feedback, then the partner');
+    assert.ok(!/It’s check/.test(sp), 'check said once; the why stays in the coach card');
+    const fit = await page.locator('#coachStrip .bub span').evaluate((e) => e.scrollHeight <= e.clientHeight + 1);
+    assert.ok(fit, 'nothing clamped');
+    if (vp.width === 360) await shot(page, vp, 'strip_order');
+    return page;
+  }],
+  ['U-4: a level change that locks Train ends a live Train session and lands on Home', async (vp) => {
+    const page = await seeded(vp, prof({ level: 'club', start: 'kq', rating: 1300 }));
+    await page.evaluate(() => window.__coach.trainStart('rated'));
+    await page.waitForFunction(() => window.__coach.st.mode === 'puzzle');
+    await page.locator('#settingsBtn').click(); await page.locator('#levelCard [data-lvset="beginner"]').click(); await page.keyboard.press('Escape');
+    assert.equal(await page.evaluate(() => window.__coach.st.ses), null, 'session ended');
+    assert.equal(await st(page, 'mode'), 'play'); assert.equal(await st(page, 'tab'), 'coach');
+    assert.ok(!/Rated puzzles/.test(await page.locator('.app').innerText()), 'no stale Train session text');
+    return page;
+  }],
+  ['U-6: a Beginner’s win banner says "Great finish. Review it."', async (vp) => {
+    const page = await seeded(vp, prof(), { sans: ['f3', 'e5', 'g4', 'Qh4#'], user: 'b', level: 1, ann: {}, notes: {}, tags: {}, fb: null, opp: null, evalW: 0, t: NOW }, 'play');
+    await page.locator('#tab-play').click();
+    assert.equal((await page.locator('#bannerText').innerText()).trim(), 'Great finish. Review it.');
+    return page;
+  }],
+  ['U-7: a Beginner’s Progress tiles have no orphan', async (vp) => {
+    const page = await seeded(vp, prof({ course: done('rules', 'special', 'board') }));
+    await page.locator('#tab-progress').click();
+    const tops = await page.locator('#stats > div').evaluateAll((els) => els.map((e) => Math.round(e.getBoundingClientRect().top)));
+    assert.equal(tops.length, 3);
+    assert.equal(new Set(tops).size, 1, 'one row of 3: ' + tops);
+    return page;
+  }],
+  ['U-8: tab names are just the label; the live state is a description', async (vp) => {
+    const page = await seeded(vp, prof({ level: 'club', start: 'kq', rating: 1300 }));
+    for (const n of ['Home', 'Learn', 'Train', 'Play', 'Progress']) assert.equal(await page.getByRole('tab', { name: n, exact: true }).count(), 1, n);
+    const desc = await page.evaluate(() => { const t = document.getElementById('tab-play'), id = t.getAttribute('aria-describedby'); return id && document.getElementById(id) ? document.getElementById(id).textContent : null; });
+    assert.equal(desc, 'The board is here');
     return page;
   }]
 ];

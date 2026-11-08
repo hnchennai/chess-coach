@@ -54,10 +54,11 @@
     <aside class="side">
       <div class="tabs" role="tablist">
         <button class="tab" role="tab" id="tab-coach" aria-selected="true" data-tab="coach" type="button"><svg class="ti" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11 L12 4 L21 11"/><path d="M5 10 V20 H19 V10"/><path d="M10 20 V14 H14 V20"/></svg><span>Home</span></button>
-        <button class="tab z-learn" role="tab" id="tab-path" aria-selected="false" data-tab="path" type="button"><svg class="ti" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 5 C6 4 9 4 12 6 C15 4 18 4 21 5 V19 C18 18 15 18 12 20 C9 18 6 18 3 19 z"/><path d="M12 6 V20"/></svg><span>Learn</span><i class="live-dot" title="The board is here"></i></button>
-        <button class="tab z-train" role="tab" id="tab-train" aria-selected="false" data-tab="train" type="button"><svg class="ti" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.2"/></svg><span>Train</span><i class="live-dot" title="The board is here"></i></button>
-        <button class="tab z-play" role="tab" id="tab-play" aria-selected="false" data-tab="play" type="button"><svg class="ti" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 20 H15 M8 17 H16 M10 17 L10.5 11 M14 17 L13.5 11 M9 11 H15 M12 11 C9 9 9 5 12 4 C15 5 15 9 12 11"/></svg><span>Play</span><i class="live-dot" title="The board is here"></i></button>
+        <button class="tab z-learn" role="tab" id="tab-path" aria-selected="false" data-tab="path" type="button"><svg class="ti" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 5 C6 4 9 4 12 6 C15 4 18 4 21 5 V19 C18 18 15 18 12 20 C9 18 6 18 3 19 z"/><path d="M12 6 V20"/></svg><span>Learn</span><i class="live-dot" aria-hidden="true"></i></button>
+        <button class="tab z-train" role="tab" id="tab-train" aria-selected="false" data-tab="train" type="button"><svg class="ti" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.2"/></svg><span>Train</span><i class="live-dot" aria-hidden="true"></i></button>
+        <button class="tab z-play" role="tab" id="tab-play" aria-selected="false" data-tab="play" type="button"><svg class="ti" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 20 H15 M8 17 H16 M10 17 L10.5 11 M14 17 L13.5 11 M9 11 H15 M12 11 C9 9 9 5 12 4 C15 5 15 9 12 11"/></svg><span>Play</span><i class="live-dot" aria-hidden="true"></i></button>
         <button class="tab" role="tab" id="tab-progress" aria-selected="false" data-tab="progress" type="button"><svg class="ti" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20 V10 M10 20 V4 M16 20 V13 M22 20 H2"/></svg><span>Progress</span></button>
+        <span id="liveDesc" hidden>The board is here</span>
       </div>
 
       <!-- HOME -->
@@ -151,6 +152,7 @@
         <div class="card focus" id="focusCard"><p class="eyebrow">Your coach says</p><div id="focus"></div></div>
         <div class="card"><p class="eyebrow">Themes</p><div id="themeStats"></div></div>
         <div class="card"><p class="eyebrow">Recent games</p><div id="history"></div></div>
+        <!-- License credits stay for every level, Beginners too (constitution; D37 is the one exception to D23). -->
         <p class="credit">Analysis by Stockfish 19 (GPLv3, stockfishchess.org) via stockfish.js. Puzzles mined from engine games and verified by Stockfish.</p>
         <p class="credit">3D marble set and board: “A Beautiful Game” by the MaterialX Project (ASWF), glTF conversion by Ed Mackey, licensed <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener">CC BY 4.0</a>. Simplified and resized for this app. Three.js (MIT) draws the 3D view.</p>
       </div>

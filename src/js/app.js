@@ -50,7 +50,7 @@
     ['This is Stockfish’s top choice here.', 'This is the best move here.'],
     ['The engine wins this one.', 'Rani’s partner wins this one.'],
     ['Engine to move', 'Rani’s partner to move'],
-    ['yours and the engine’s.', 'yours and Rani’s partner’s.'],
+    ['Great finish. Review it, then try a stronger opponent.', 'Great finish. Review it.'],
     ['Stuck? Hint shows Stockfish’s idea.', 'Stuck? Hint shows my idea.'],
     [' moves against Stockfish.', ' moves against Rani’s partner.'],
     ['pieces left where the engine could take them', 'pieces left where Rani’s partner could take them'],
@@ -554,7 +554,7 @@
   function renderZones() {
     var z = zoneOf();
     $('board').setAttribute('data-zone', z); document.body.setAttribute('data-zone', z);
-    ['path', 'train', 'play'].forEach(function (t) { $('tab-' + t).classList.toggle('live', ZTAB[z] === t); });
+    ['path', 'train', 'play'].forEach(function (t) { var b = $('tab-' + t), on = ZTAB[z] === t; b.classList.toggle('live', on); if (on) b.setAttribute('aria-describedby', 'liveDesc'); else b.removeAttribute('aria-describedby'); });
     ['path', 'train', 'play'].forEach(function (t) {
       var el = $('znote-' + t); if (!el) return;
       var pz = t === 'path' ? 'learn' : t;
@@ -628,7 +628,7 @@
     if (st.mode === 'review') {
       var rv = st.rv, n = rv.notes[rv.ply - 1], mv = rv.sans[rv.ply - 1], lm = rv.ply ? lastMove(rv.g) : null, sw = pl && lm ? Words.say(lm, lm.color === rv.user) : '';
       think.hidden = true; $('newCard').hidden = true;
-      if (!rv.ply) { setVerdict({ cls: 'info', sym: '♙', title: 'Start of the game', eyebrow: 'Review', text: 'Tap Next to step through. Every move is explained, yours and the engine’s.' + (pl ? '' : ' Tap a move in the list to jump there, or ask the coach for a game summary.') }); setOpp(null); return; }
+      if (!rv.ply) { setVerdict({ cls: 'info', sym: '♙', title: 'Start of the game', eyebrow: 'Review', text: pl ? 'Tap Next to step through. Every move is explained.' : 'Tap Next to step through. Every move is explained, yours and the engine’s. Tap a move in the list to jump there, or ask the coach for a game summary.' }); setOpp(null); return; }
       var isUser = (rv.ply - 1) % 2 === (rv.user === 'w' ? 0 : 1);
       if (!n) { setVerdict({ cls: 'info', sym: '♙', title: 'Analyzing…', eyebrow: 'Review', mv: mv, words: sw }); setOpp(null); return; }
       if (isUser) { setVerdict({ cls: n.cls, sym: CLS[n.cls].sym, title: CLS[n.cls].title, eyebrow: 'Your move ' + Math.ceil(rv.ply / 2), mv: 'You played ' + mv, words: sw, text: n.text, tip: n.tip }); setOpp(null); }
@@ -1368,9 +1368,11 @@
       var f = st.fb || {}; t = f.title || ''; x = f.text || (pl ? f.words || (f.noSan ? f.mv : '') : f.mv) || '';
       mood = f.mood || (f.cls && f.cls !== 'info' ? Avatar.moodFor(f.cls) : /Hint/.test(t) ? 'think' : 'neutral');
       if (pl) {
-        /* D17: a Beginner's strip says the partner's last move in plain words, first so it stays in view. */
-        var pw = !st.busy ? partnerWords() : '', why = st.opp && st.opp.why.length ? st.opp.why[st.opp.why.length - 1].h : '';
-        if (pw) x = pw + (why ? ' ' + why : '') + (x ? ' ' + x : '');
+        /* D34: a Beginner's strip reads in order of play: your grade, your feedback, then Rani's partner's move.
+           The partner's "why" stays in the coach card, so check is never said twice. */
+        if (f.cls && CLS[f.cls]) t = CLS[f.cls].title + '.';
+        var pw = !st.busy ? partnerWords() : '';
+        if (pw) x = (x ? x + ' ' : '') + pw;
       } else if (st.opp && !st.busy && st.opp.why.length) x = (x ? x + ' ' : '') + 'Engine replied ' + st.opp.san + ': ' + st.opp.why[st.opp.why.length - 1].h;
     }
     else if (st.mode === 'review' && st.rv) {
@@ -1385,6 +1387,7 @@
     else if (st.ses && st.ses.msg) { t = (pl && st.ses.msg.titlePlain) || st.ses.msg.title || ''; x = st.ses.msg.text || (pl ? '' : st.ses.msg.mv) || ''; mood = msgMood(st.ses.msg); }
     if (st.busy) mood = 'think';
     t = speak(t); x = speak(x);
+    el.classList.toggle('full', pl && st.mode === 'play'); /* D34: nothing clamped */
     var key = mood + t + x + Coach3D.get();
     if (el.dataset.k === key) return; el.dataset.k = key;
     el.innerHTML = t || x ? Avatar.coach(mood, 46) + '<div class="bub"><b>' + esc(stripText(t)) + '</b><span>' + chipText(x) + '</span></div>' : '';
@@ -1426,19 +1429,24 @@
   function applyTabs() {
     var lock = tabsLocked();
     ['train', 'progress'].forEach(function (t) { $('tab-' + t).hidden = lock; });
+    /* U-4: a live Train session ends as if the player closed it (results so far are already saved), then Home */
+    if (lock && st.ses && zoneOf() === 'train') { exitMode(false); switchTab('coach'); }
     if (lock && !tabOpen(st.tab)) switchTab('coach');
   }
   /* A level, Show everything or merged profile change re-renders every visible screen at once (mid-game too). */
   function refreshUI() {
     applyLevel(); dropStaleOffers();
+    $('coachStrip').dataset.k = ''; decorateChips(true); /* chips and the strip cache follow the level (D32) */
     render();
+    var sh = $('settingsSheet'); if (sh && !sh.hidden) renderLevelCard(); /* an open sheet shows the merged level and switch (R2-6) */
     if (st.tab === 'coach') renderCoach(); else if (st.tab === 'path') renderPath(); else if (st.tab === 'train') renderTrain(); else if (st.tab === 'progress') renderProgress();
   }
   /* A re-render after a cloud pull keeps the player's place: focus goes back to the same control, and the scroll stays. */
   function focusKey(a) {
     if (!a || a === document.body || !window.CSS || !CSS.escape) return null;
     if (a.id) return '#' + CSS.escape(a.id);
-    var ks = Object.keys(a.dataset || {}).filter(function (k) { return k !== 'dc' && k !== 'k'; });
+    var ks = Object.keys(a.dataset || {}).filter(function (k) { return k !== 'dc' && k !== 'k' && k !== 'review'; }); /* data-review is an index: a merged game shifts it */
+    if (a.dataset && a.dataset.review != null && !a.dataset.gid) return null;
     return ks.length ? a.tagName.toLowerCase() + ks.map(function (k) { return '[data-' + k.replace(/[A-Z]/g, function (c) { return '-' + c.toLowerCase(); }) + '="' + CSS.escape(a.dataset[k]) + '"]'; }).join('') : null;
   }
   function keepFocus(fn) {
@@ -1475,9 +1483,9 @@
       saveProfile(); refreshUI();
       if (r.skippedFirst) showNote('You’re starting as a Beginner. You can take the check again in Settings.', 'level');
       afterLevel(); focusTab(); /* never leave focus on the page body */
-      startOfferCheck();
+      startOfferCheck(); focusOffer();
     },
-    cancel: function () { var a = document.activeElement; if (!a || a === document.body) focusTab(); startOfferCheck(); }
+    cancel: function () { var a = document.activeElement; if (!a || a === document.body) focusTab(); startOfferCheck(); focusOffer(); }
   };
   /* After the check: a Beginner goes straight into their next lesson; Improver and Club go to Home. */
   function afterLevel() {
@@ -1530,6 +1538,7 @@
     sh.hidden = true; document.documentElement.classList.remove('sheet-open');
     var back = setOpener && setOpener.isConnected && setOpener.offsetParent !== null ? setOpener : $('settingsBtn');
     if (!noFocus && back) back.focus(); setOpener = null;
+    if (!noFocus) focusOffer();
   }
   function trapTab(box, e) {
     var f = Array.prototype.filter.call(box.querySelectorAll('button:not([disabled]), [tabindex="0"], select, input'), function (x) { return x.offsetParent !== null; });
@@ -1570,7 +1579,21 @@
       (offer ? '<div class="rn-btns"><button class="btn sm primary" type="button" data-act="offeryes">Yes, move me up</button><button class="btn sm" type="button" data-act="offerno">Not yet</button></div>'
         : '<button class="btn sm" type="button" data-act="notedone">OK</button>');
     el.hidden = false;
+    if (offer) focusOffer();
   }
+  /* D35: a note that asks a question takes keyboard focus, unless Settings or the level check is open (then when it closes) */
+  function focusOffer() {
+    var sh = $('settingsSheet'), b = $('raniNote').querySelector('[data-act="offeryes"]');
+    if (!b || !noteCur || noteCur.kind !== 'offer' || (sh && !sh.hidden) || Placement.isOpen()) return;
+    try { b.focus({ preventScroll: true }); } catch (e) {}
+  }
+  /* D35: Esc closes Rani's note without saving anything (an offer comes back at the next app start); focus goes to the tab */
+  document.addEventListener('keydown', function (e) {
+    if (e.key !== 'Escape' || e.defaultPrevented || !noteCur) return;
+    var sh = $('settingsSheet'); if ((sh && !sh.hidden) || Placement.isOpen()) return;
+    e.preventDefault(); nextNote();
+    var a = document.activeElement; if (!noteCur && (!a || a === document.body)) focusTab();
+  });
   function nextNote() {
     var el = $('raniNote'), had = !!(el && el.contains(document.activeElement));
     noteCur = noteQ.shift() || null; drawNote();
@@ -1634,7 +1657,7 @@
   function releaseOffer() {
     if (!heldOffer.start && !heldOffer.lesson) return;
     if (Placement.isOpen() || inActivity()) return;
-    var ok = (heldOffer.lesson && heldOffer.lesson === prof.level && Profile.levelComplete(prof, UNITS, unitDone)) || (heldOffer.start && Profile.offerDue(prof, Date.now(), UNITS, unitDone));
+    var ok = (heldOffer.lesson && heldOffer.lesson === prof.level && Profile.levelComplete(prof, UNITS, unitDone)) || (heldOffer.start && (Profile.offerDue(prof, Date.now(), UNITS, unitDone) || Profile.lessonOfferDue(prof, UNITS, unitDone)));
     heldOffer = { start: false, lesson: null };
     if (ok) offerLevelUp();
   }
@@ -1642,6 +1665,8 @@
   /* ---------- Coach home: the roadmap ---------- */
   var RM = COURSE.ROADMAP;
   function bestWinLevel() { var m = 0; prof.games.forEach(function (g) { if (g.r === 'W' && g.level > m) m = g.level; }); return m; }
+  /* R2-1: a Beginner's opponent is always Rani's practice partner (OPP 1, D19), so that is the game to win at every stage */
+  function beatLevel(S) { return plain() ? Profile.LEVELS.beginner.opp : S.beat; }
   function stageMiles(S) {
     /* D20/D31: in the player's starting stage, lessons before their start point are skipped, not required */
     var from = RM.indexOf(S) === firstStage() ? startPos() : 0;
@@ -1649,7 +1674,7 @@
     var out = [
       { t: 'Finish the Level ' + S.level + ' course units', v: done + '/' + us.length, ok: done === us.length },
       { t: 'Puzzle rating ' + S.target + '+', v: Math.round(prof.rating) + '', ok: prof.rating >= S.target, rt: true },
-      { t: plain() ? 'Beat Rani’s practice partner' : 'Beat the ' + OPP[S.beat].name + ' engine (~' + OPP[S.beat].elo + ')', v: bestWinLevel() >= S.beat ? 'done' : 'not yet', ok: bestWinLevel() >= S.beat }
+      { t: plain() ? 'Beat Rani’s practice partner' : 'Beat the ' + OPP[S.beat].name + ' engine (~' + OPP[S.beat].elo + ')', v: bestWinLevel() >= beatLevel(S) ? 'done' : 'not yet', ok: bestWinLevel() >= beatLevel(S) }
     ].filter(function (m) { return !(m.rt && plain()); }); /* D30: a Beginner's stage has no rating goal */
     if (S.stage === 6) out.push({ t: 'Review 3 finished games with the coach', v: Math.min((prof.reviewed || []).length, 3) + '/3', ok: (prof.reviewed || []).length >= 3 });
     return out;
@@ -1665,7 +1690,7 @@
     if (us.length) { var u = us[0], k = nextPart(u); return { label: PART_NAME[k] + ': ' + u.title, sub: partDesc(u, k), go: function () { st.unitOpen = u.id; startPart(u.id, k); } }; }
     var nx = nextUnit();
     if (!plain() && prof.rating < S.target) return { label: 'Rated puzzles to reach ' + S.target, sub: 'Your rating is ' + Math.round(prof.rating) + '. Ten puzzles a day moves it fastest.', go: function () { trainStart('rated'); } };
-    if (bestWinLevel() < S.beat) return { label: plain() ? 'Beat Rani’s practice partner' : 'Beat the ' + OPP[S.beat].name + ' engine', sub: 'Play slowly, blunder-check every move, and review the game after.', go: function () { newGame(false, { level: S.beat }); } };
+    if (bestWinLevel() < beatLevel(S)) return { label: plain() ? 'Beat Rani’s practice partner' : 'Beat the ' + OPP[S.beat].name + ' engine', sub: 'Play slowly, blunder-check every move, and review the game after.', go: function () { newGame(false, { level: beatLevel(S) }); } };
     if (nx) { var k2 = nextPart(nx); return { label: PART_NAME[k2] + ': ' + nx.title, sub: partDesc(nx, k2), go: function () { st.unitOpen = nx.id; startPart(nx.id, k2); } }; }
     return { label: 'Keep sharp: rated puzzles', sub: 'You’ve finished the roadmap. Keep playing stronger opponents.', go: function () { trainStart('rated'); } };
   }
@@ -1715,6 +1740,7 @@
   /* ---------- Progress tab ---------- */
   function renderProgress() {
     var gs = prof.games, w = gs.filter(function (g) { return g.r === 'W'; }).length, l = gs.filter(function (g) { return g.r === 'L'; }).length, d = gs.length - w - l, pl = plain();
+    $('stats').classList.toggle('n3', pl); /* no rating tile: 3 tiles in one row, no orphan */
     $('stats').innerHTML = (pl ? '' : '<div><b>' + Math.round(prof.rating) + '</b><span>puzzle rating</span></div>') + '<div><b>' + UNITS.filter(unitDone).length + '/' + UNITS.length + '</b><span>units done</span></div>' +
       '<div><b>' + w + '–' + l + '–' + d + '</b><span>games W–L–D</span></div><div><b>' + streakDays() + '</b><span>day streak</span></div>';
     var top = topWeakness(), th = themeStats(), weakTheme = Object.keys(th).filter(function (k) { return th[k].n >= 3; }).sort(function (a, b) { return th[a].pct - th[b].pct; })[0];
@@ -1731,7 +1757,7 @@
     $('themeStats').innerHTML = keys.length ? keys.map(function (k) { return '<div class="thstat"><span>' + esc(THEMES[k] || k) + '</span><i><b style="width:' + th[k].pct + '%"></b></i><em>' + th[k].ok + '/' + th[k].n + '</em></div>'; }).join('') : '<p class="empty-note">Solve some puzzles and your strengths and weak spots show up here.</p>';
     $('history').innerHTML = gs.length ? '<div class="hist">' + gs.slice(0, 12).map(function (g, i) {
       var ds = new Date(g.d).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
-      return '<div class="hrow"><span class="res ' + g.r + '">' + { W: 'Won', L: 'Lost', D: 'Draw' }[g.r] + '</span><div>' + ds + ' · ' + (pl ? partnerName() : OPP[g.level] ? OPP[g.level].name : '') + ' · ' + (g.user === 'w' ? 'White' : 'Black') + '<small>' + Math.ceil(g.sans.length / 2) + ' moves' + (g.acc != null && !pl ? ' · accuracy ' + g.acc + '%' : '') + '</small></div><button class="btn sm" type="button" data-review="' + i + '">Review</button></div>';
+      return '<div class="hrow"><span class="res ' + g.r + '">' + { W: 'Won', L: 'Lost', D: 'Draw' }[g.r] + '</span><div>' + ds + ' · ' + (pl ? partnerName() : OPP[g.level] ? OPP[g.level].name : '') + ' · ' + (g.user === 'w' ? 'White' : 'Black') + '<small>' + Math.ceil(g.sans.length / 2) + ' moves' + (g.acc != null && !pl ? ' · accuracy ' + g.acc + '%' : '') + '</small></div><button class="btn sm" type="button" data-review="' + i + '" data-gid="' + esc(String(g.id)) + '">Review</button></div>';
     }).join('') + '</div>' : '<p class="empty-note">No finished games yet. Your games show up here with a full review.</p>';
   }
   function themeStats() {
@@ -1904,7 +1930,7 @@
     var d = b.dataset, g = null;
     if (d.fen) { g = new Chess(); if (!g.load(d.fen)) g = null; }
     var nm = Avatar.label(st.theme, d.c, d.p);
-    st.pv = { g: g, arrows: [{ from: d.from, to: d.to, color: '#3b82c4' }], hl: [d.to], sticky: sticky, src: b, label: (plain() ? d.lab || b.getAttribute('aria-label') : b.title.split(':')[0]) + (nm ? ' (' + nm + ')' : '') + (g ? ', from the position it was played in' : '') + (sticky ? ' \u00B7 tap the board to go back' : '') };
+    st.pv = { g: g, arrows: [{ from: d.from, to: d.to, color: '#3b82c4' }], hl: [d.to], sticky: sticky, src: b, label: (plain() ? d.lab || b.getAttribute('aria-label') : b.title.split(':')[0] + (nm ? ' (' + nm + ')' : '')) + (g ? ', from the position it was played in' : '') + (sticky ? ' \u00B7 tap the board to go back' : '') };
     render();
     if (sticky) pvTimer = setTimeout(endPreview, 7000);
   }

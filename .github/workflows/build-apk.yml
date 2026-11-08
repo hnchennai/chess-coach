@@ -43,6 +43,25 @@ jobs:
           sed -i 's/^networkTimeout=.*/networkTimeout=300000/' android/gradle/wrapper/gradle-wrapper.properties
           grep networkTimeout android/gradle/wrapper/gradle-wrapper.properties
 
+      # Gradle distributions live on GitHub releases. Unsigned downloads can fail (GitHub incident, 2026-11-08),
+      # so fetch it signed in with the build's own token, check Gradle's published SHA-256, and point the wrapper at the local file.
+      - name: Get Gradle (signed-in download, checksum checked)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          P=android/gradle/wrapper/gradle-wrapper.properties
+          ZIP=$(basename "$(sed -n 's/^distributionUrl=//p' $P | sed 's/\\:/:/g')")
+          VER=$(echo "$ZIP" | sed -E 's/^gradle-(.+)-(all|bin)\.zip$/\1/')
+          SUM=$(curl -fsSL --retry 5 "https://services.gradle.org/distributions/$ZIP.sha256")
+          for i in 1 2 3 4 5; do
+            gh release download "v$VER" -R gradle/gradle-distributions -p "$ZIP" -D "$RUNNER_TEMP" --clobber && break
+            sleep 20
+          done
+          echo "$SUM  $RUNNER_TEMP/$ZIP" | sha256sum -c -
+          sed -i "s#^distributionUrl=.*#distributionUrl=file://$RUNNER_TEMP/$ZIP#" $P
+          echo "distributionSha256Sum=$SUM" >> $P
+          cat $P
+
       - name: App icon and splash screen
         run: npx capacitor-assets generate --android --iconBackgroundColor '#cdb6ee' --splashBackgroundColor '#f4f1ea'
         continue-on-error: true

@@ -116,6 +116,24 @@
     return n >= 3;
   }
 
+  /* Level-up offer (D13, D20): Beginner or Improver, and every unit of their course level at or after the start point is fully done.
+     Club is never complete. A level with no units after the start point is not complete (nothing to offer on). */
+  function levelComplete(p, units, unitDone) {
+    if (!p || (p.level !== 'beginner' && p.level !== 'improver')) return false;
+    var us = courseUnits(units) || [], done = unitDone || defaultDone(p), cl = LEVELS[p.level].courseLevel, n = 0;
+    for (var i = startIndex(p, us); i < us.length; i++) {
+      if (us[i].level !== cl) continue;
+      n++; if (!done(us[i])) return false;
+    }
+    return n > 0;
+  }
+  var WEEK = 7 * 86400000;
+  /* D21: at app start, offer again once 7 days have passed since "Not yet" or since the last level change. */
+  function offerDue(p, now, units, unitDone) {
+    if (!levelComplete(p, units, unitDone)) return false;
+    return (+now || 0) - Math.max(+p.levelOfferT || 0, +p.levelT || 0) >= WEEK;
+  }
+
   /* Merge two copies (device + cloud). Unions never remove; see tech spec "merge()". Inputs are not changed. */
   function merge(local, cloud) {
     var a = migrate(local) || blank();
@@ -156,5 +174,5 @@
   }
 
   return { V: V, LEVELS: LEVELS, ORDER: ORDER, levelFromRating: levelFromRating, startUnit: startUnit, puzzleCount: puzzleCount, scoreLevel: scoreLevel,
-    migrate: migrate, needsCheck: needsCheck, setLevel: setLevel, nextUnit: nextUnit, unlockDone: unlockDone, merge: merge, blank: blank };
+    migrate: migrate, needsCheck: needsCheck, setLevel: setLevel, nextUnit: nextUnit, unlockDone: unlockDone, levelComplete: levelComplete, offerDue: offerDue, merge: merge, blank: blank };
 });

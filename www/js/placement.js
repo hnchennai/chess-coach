@@ -1,4 +1,4 @@
-/* ---------- Placement: the first-launch level check (Rani, up to 8 puzzles, skippable). Offline, no AI. ---------- */
+/* ---------- Placement: the first-launch level check (Rani, up to 7 puzzles, skippable). Offline, no AI. ---------- */
 (function (root, factory) {
   var P = factory(root);
   if (typeof module === 'object' && module.exports) module.exports = P; else root.Placement = P;
@@ -50,7 +50,7 @@
     host = h; opts = opts || {};
     el = document.getElementById('placement');
     if (!el || !Profile) return false;
-    S = { retake: !!opts.retake, step: 'welcome', path: null, kind: null, items: [], i: 0, main: [], club: null, skipped: false, clubSkipped: false, res: null, choosing: false, chosen: null, attempt: opts.attempt || 0, seed: opts.seed || 'x' };
+    S = { retake: !!opts.retake, step: 'welcome', built: null, path: null, kind: null, items: [], i: 0, main: [], club: null, skipped: false, clubSkipped: false, res: null, choosing: false, chosen: null, attempt: opts.attempt || 0, seed: opts.seed || 'x' };
     prevFocus = document.activeElement;
     el.hidden = false; document.documentElement.classList.add('pl-open');
     draw();
@@ -63,14 +63,18 @@
     el.hidden = true; el.innerHTML = ''; document.documentElement.classList.remove('pl-open'); S = null;
     if (prevFocus && prevFocus.focus && prevFocus.isConnected) try { prevFocus.focus(); } catch (e) {}
   }
-  function focusFirst() { var f = el.querySelector('.pl-card'); if (f) try { f.focus({ preventScroll: true }); } catch (e) {} }
+  /* On a retake, every Skip, X or Esc cancels and keeps the current level (D9). */
+  function cancel() { close(); if (host && host.cancel) host.cancel(); }
+  function focusCard() { var f = el.querySelector('.pl-card'); if (f) try { f.focus({ preventScroll: true }); } catch (e) {} }
+  function xBtn(action, label) { return '<button class="pl-x" type="button" data-pl="' + action + '" aria-label="' + label + '">' + X_ICON + '</button>'; }
 
   function draw() {
     if (!S) return;
-    var h = '';
+    if (S.step === 'puzzle' && S.built === 'puzzle') { updatePuzzle(); return; }
+    var h = '', before = S.built;
     if (S.step === 'welcome') {
       h = '<div class="pl-card pl-welcome" tabindex="-1" role="dialog" aria-modal="true" aria-labelledby="plTitle">' +
-        (S.retake ? '<div class="pl-top"><span></span><button class="pl-x" type="button" data-pl="cancel" aria-label="Close">' + X_ICON + '</button></div>' : '') +
+        (S.retake ? '<div class="pl-top"><span></span>' + xBtn('cancel', 'Close') + '</div>' : '') +
         '<div class="pl-hero">' + host.coach('happy', 112) + '</div>' +
         '<h2 id="plTitle" class="pl-h">Hi, I’m Rani</h2>' +
         '<p class="pl-lede">I’ll be your chess coach. Let’s find the right place for you to start.</p>' +
@@ -82,23 +86,24 @@
         '</div>' +
         '<button class="pl-link" type="button" data-pl="skip0">Skip, I’ll choose later</button></div>';
     } else if (S.step === 'puzzle') {
-      var p = S.items[S.i], n = S.items.length, pct = Math.round(100 * S.i / n), fb = S.fb;
-      h = '<div class="pl-card pl-puzzle" tabindex="-1" role="dialog" aria-modal="true" aria-label="Level check puzzle">' +
-        '<div class="pl-top"><button class="pl-x" type="button" data-pl="skip" aria-label="Close and skip the check">' + X_ICON + '</button>' +
-        '<div class="pl-prog"><span>' + (S.kind === 'club' ? 'Harder puzzle ' : '') + (S.i + 1) + ' of ' + n + '</span><i><b style="width:' + pct + '%"></b></i></div></div>' +
-        '<div class="pl-bubble">' + host.coach(fb ? (fb.ok ? 'proud' : 'happy') : 'think', 46) + '<div class="bub" aria-live="polite"><b>' + esc(fb ? fb.title : 'You play ' + side(p) + '.') + '</b><span>' + esc(fb ? fb.text : ask(p)) + '</span></div></div>' +
+      h = '<div class="pl-card pl-puzzle" tabindex="-1" role="dialog" aria-modal="true" aria-label="Level check" aria-describedby="plLive">' +
+        '<div class="pl-top">' + xBtn('skip', S.retake ? 'Close' : 'Close and skip the check') +
+        '<div class="pl-prog"><span class="pl-pt"></span><i><b class="pl-pb"></b></i></div></div>' +
+        '<div class="pl-bubble"><div class="pl-av"></div><div class="bub" id="plLive" aria-live="polite" aria-atomic="true"><b class="pl-b1"></b><span class="pl-b2"></span></div></div>' +
         '<div class="pl-board" id="plBoard"></div>' +
-        '<div class="pl-acts"><button class="btn" type="button" data-pl="unsure"' + (fb ? ' disabled' : '') + '>I’m not sure</button><button class="pl-link" type="button" data-pl="skip">Skip the check</button></div></div>';
+        '<div class="pl-acts"><button class="btn" type="button" data-pl="unsure">I’m not sure</button><button class="pl-link" type="button" data-pl="skip">Skip the check</button></div></div>';
     } else if (S.step === 'result') {
       var R = S.res, shown = S.chosen || R.level, total = S.main.length + (S.club ? S.club.length : 0), right = S.main.filter(Boolean).length + (S.club ? S.club.filter(Boolean).length : 0);
+      var score = S.skipped ? (S.main.length ? 'You stopped after ' + S.main.length + '.' : '') : total ? 'You solved ' + right + ' of ' + total + '.' + (right >= 3 ? ' Nice!' : '') : '';
       h = '<div class="pl-card pl-result" tabindex="-1" role="dialog" aria-modal="true" aria-labelledby="plTitle">' +
+        (S.retake ? '<div class="pl-top"><span></span>' + xBtn('cancel', 'Close') + '</div>' : '') +
         '<div class="pl-hero sm">' + host.coach(right >= 3 || !total ? 'proud' : 'happy', 84) + '</div>' +
-        (total ? '<p class="pl-score">You solved ' + right + ' of ' + total + '.' + (right >= 3 ? ' Nice!' : '') + '</p>' : '') +
+        (score ? '<p class="pl-score">' + score + '</p>' : '') +
         '<h2 id="plTitle" class="pl-h">You’re starting as ' + an(shown) + '</h2>' +
         '<div class="pl-levels" role="' + (S.choosing ? 'radiogroup' : 'list') + '" aria-label="Levels">' + Profile.ORDER.map(function (id) {
           var L = Profile.LEVELS[id], me = id === shown;
           var inner = '<span class="pl-lv"><b>' + esc(L.name) + '</b><small>' + esc(L.who) + '</small></span>' + (me ? '<span class="pl-you">You</span>' : '');
-          return S.choosing ? '<button class="pl-row' + (me ? ' on' : '') + '" type="button" role="radio" aria-checked="' + me + '" data-pl-level="' + id + '">' + inner + '</button>'
+          return S.choosing ? '<button class="pl-row' + (me ? ' on' : '') + '" type="button" role="radio" aria-checked="' + me + '" tabindex="' + (me ? 0 : -1) + '" data-pl-level="' + id + '">' + inner + '</button>'
             : '<div class="pl-row' + (me ? ' on' : '') + '" role="listitem">' + inner + '</div>';
         }).join('') + '</div>' +
         '<p class="pl-note">' + (S.skipped || S.clubSkipped ? 'You can take the check again in Settings.' : 'You can change this any time in Settings.') + '</p>' +
@@ -107,8 +112,20 @@
         (S.choosing ? '' : '<button class="pl-link" type="button" data-pl="choose">Choose a different level</button>') + '</div>';
     }
     el.innerHTML = h;
-    if (S.step === 'puzzle') host.mountBoard(document.getElementById('plBoard'));
-    focusFirst();
+    S.built = S.step;
+    if (S.step === 'puzzle') { S.avMood = null; host.mountBoard(document.getElementById('plBoard')); updatePuzzle(); }
+    if (before !== S.step) focusCard();
+  }
+  /* Puzzle step: the card, live region and board stay; only text and state change. */
+  function updatePuzzle() {
+    var p = S.items[S.i], n = S.items.length, fb = S.fb, q = function (c) { return el.querySelector(c); };
+    q('.pl-pt').textContent = (S.kind === 'club' ? 'Harder puzzle ' : '') + (S.i + 1) + ' of ' + n;
+    q('.pl-pb').style.width = Math.round(100 * S.i / n) + '%';
+    q('.pl-b1').textContent = fb ? fb.title : 'You play ' + side(p) + '.';
+    q('.pl-b2').textContent = fb ? fb.text : ask(p);
+    var mood = fb ? (fb.ok ? 'proud' : 'happy') : 'think';
+    if (S.avMood !== mood) { S.avMood = mood; q('.pl-av').innerHTML = host.coach(mood, 46); }
+    q('[data-pl="unsure"]').setAttribute('aria-disabled', fb ? 'true' : 'false');
   }
   function opt(id, title, sub) {
     return '<button class="pl-opt" type="button" data-pl-path="' + id + '"><b>' + esc(title) + '</b><small>' + esc(sub) + '</small></button>';
@@ -126,16 +143,22 @@
     host.showPuzzle(p, function (uci, mates) { if (S === my) answer(isCorrect(p, uci, mates)); });
   }
   function answer(ok) {
-    if (!S || S.fb) return;
+    if (!S || S.fb || S.step !== 'puzzle') return;
     (S.kind === 'club' ? S.club : S.main).push(!!ok);
     S.fb = ok ? { ok: true, title: 'Yes, well spotted!', text: '' } : { ok: false, title: 'Good try.', text: 'On to the next one.' };
     draw();
     var my = S;
-    setTimeout(function () { if (S === my) next(); }, ok ? 800 : 1000);
+    setTimeout(function () { if (S === my && S.step === 'puzzle') next(); }, ok ? 800 : 1000);
   }
+  function boardFocused() { var a = document.activeElement; return !!(a && a.closest && a.closest('#placement .board')); }
   function next() {
+    var keep = boardFocused();
     S.fb = null; S.i++;
-    if (S.i < S.items.length) { draw(); showPuzzle(); return; }
+    if (S.i < S.items.length) {
+      draw(); showPuzzle();
+      if (keep && !boardFocused()) { var sq = el.querySelector('.board .sq'); if (sq) sq.focus({ preventScroll: true }); }
+      return;
+    }
     finishRound();
   }
   function finishRound() {
@@ -143,11 +166,17 @@
     S.res = Profile.scoreLevel(S.path, { main: S.main, skipped: S.skipped, club: S.club, clubSkipped: S.clubSkipped }, { units: host.units() });
     S.step = 'result'; S.choosing = false; S.chosen = null; draw();
   }
+  function skipPuzzles() {
+    if (S.retake) return cancel();
+    if (S.kind === 'club') S.clubSkipped = true; else S.skipped = true;
+    finishRound();
+  }
   function done(placed) {
     var R = S.res, lv = S.chosen || R.level, chosen = S.chosen && S.chosen !== R.level;
     var out = { level: lv, start: chosen ? Profile.startUnit(lv, R.knowsMoves, host.units()) : R.start, placed: chosen ? 'chosen' : placed || 'check', path: S.path, right: R.right, total: R.total, retake: S.retake };
     close(); host.finish(out);
   }
+  function pickRow(id) { S.chosen = id; draw(); var on = el.querySelector('[data-pl-level="' + id + '"]'); if (on) on.focus(); }
 
   function onClick(e) {
     if (!S) return;
@@ -159,30 +188,40 @@
       startPuzzles(S.path);
       return;
     }
-    if (d.plLevel) { S.chosen = d.plLevel; draw(); var on = el.querySelector('[data-pl-level="' + d.plLevel + '"]'); if (on) on.focus(); return; }
+    if (d.plLevel) { pickRow(d.plLevel); return; }
     switch (d.pl) {
-      case 'cancel': close(); if (host.cancel) host.cancel(); return;
-      case 'skip0': S.path = 'skip'; S.res = Profile.scoreLevel('skip', [], { units: host.units() }); var r = S.res; close(); host.finish({ level: r.level, start: r.start, placed: 'check', path: 'skip', right: 0, total: 0, skippedFirst: true, retake: false }); return;
+      case 'cancel': cancel(); return;
+      case 'skip0':
+        if (S.retake) return cancel();
+        S.path = 'skip'; S.res = Profile.scoreLevel('skip', [], { units: host.units() }); var r = S.res; close(); host.finish({ level: r.level, start: r.start, placed: 'check', path: 'skip', right: 0, total: 0, skippedFirst: true, retake: false }); return;
       case 'unsure': answer(false); return;
-      case 'skip': if (S.kind === 'club') S.clubSkipped = true; else S.skipped = true; finishRound(); return;
+      case 'skip': skipPuzzles(); return;
       case 'club': startPuzzles('club'); return;
-      case 'choose': S.choosing = true; S.chosen = S.chosen || S.res.level; draw(); return;
+      case 'choose': S.choosing = true; S.chosen = S.chosen || S.res.level; draw(); var on = el.querySelector('[data-pl-level][aria-checked="true"]'); if (on) on.focus(); return;
       case 'start': done(); return;
     }
   }
   function onKey(e) {
     if (!isOpen() || !S) return;
     if (e.key === 'Escape') {
-      if (S.step === 'puzzle') { e.preventDefault(); if (S.kind === 'club') S.clubSkipped = true; else S.skipped = true; finishRound(); }
-      else if (S.step === 'welcome' && S.retake) { e.preventDefault(); close(); if (host.cancel) host.cancel(); }
+      if (S.step === 'puzzle') { e.preventDefault(); skipPuzzles(); }
+      else if (S.retake) { e.preventDefault(); cancel(); }
+      return;
+    }
+    var t = e.target, d = { ArrowLeft: -1, ArrowUp: -1, ArrowRight: 1, ArrowDown: 1 }[e.key];
+    if (d && t && t.dataset && t.dataset.plLevel) {
+      e.preventDefault();
+      var i = Profile.ORDER.indexOf(t.dataset.plLevel);
+      pickRow(Profile.ORDER[(i + d + Profile.ORDER.length) % Profile.ORDER.length]);
       return;
     }
     if (e.key === 'Tab') {
-      var f = Array.prototype.filter.call(el.querySelectorAll('button:not([disabled]), [tabindex="0"]'), function (x) { return x.offsetParent !== null; });
+      var box = el.querySelector('.pl-card'); if (!box) return;
+      var f = Array.prototype.filter.call(box.querySelectorAll('button:not([disabled]), [tabindex="0"]'), function (x) { return x.offsetParent !== null; });
       if (!f.length) return;
       var first = f[0], last = f[f.length - 1];
-      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
-      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+      if (e.shiftKey && (document.activeElement === first || !box.contains(document.activeElement))) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && (document.activeElement === last || !box.contains(document.activeElement))) { e.preventDefault(); first.focus(); }
     }
   }
   if (typeof document !== 'undefined') {

@@ -53,7 +53,7 @@ test('AC3: Know-the-moves scoring, every row', () => {
   }
 });
 
-test('AC3: Try Club? = 2 harder puzzles, 1+ correct = Club, skip there stays Improver', () => {
+test('AC3/D9: Try Club? = 2 harder puzzles, 1+ correct = Club (also before a Skip), Skip with 0 right stays Improver', () => {
   const all = arr(5, 5);
   assert.equal(P.puzzleCount('club'), 2);
   assert.equal(P.scoreLevel('knows', { main: all, club: [true, true] }, { units: UNITS }).level, 'club');
@@ -61,7 +61,8 @@ test('AC3: Try Club? = 2 harder puzzles, 1+ correct = Club, skip there stays Imp
   assert.equal(P.scoreLevel('knows', { main: all, club: [true, false] }, { units: UNITS }).start, 'kq');
   assert.equal(P.scoreLevel('knows', { main: all, club: [false, false] }, { units: UNITS }).level, 'improver');
   assert.equal(P.scoreLevel('knows', { main: all, club: [], clubSkipped: true }, { units: UNITS }).level, 'improver');
-  assert.equal(P.scoreLevel('knows', { main: all, club: [true], clubSkipped: true }, { units: UNITS }).level, 'improver');
+  assert.equal(P.scoreLevel('knows', { main: all, club: [true], clubSkipped: true }, { units: UNITS }).level, 'club', '1 right then Skip = Club (Suresh)');
+  assert.equal(P.scoreLevel('knows', { main: all, club: [false], clubSkipped: true }, { units: UNITS }).level, 'improver', '0 right then Skip = Improver');
 });
 
 test('AC3: Play-often scoring, every row', () => {
@@ -237,7 +238,56 @@ test('merge: a provisional local level beats a derived cloud level', () => {
   assert.equal(cloud.placed, 'derived');
   const m = P.merge(local, cloud);
   assert.equal(m.level, 'beginner');
-  assert.equal(m.unlockAll, true, 'unlockAll is OR');
+  assert.equal(m.unlockAll, false, 'a derived cloud copy does not unlock a local non-derived Beginner');
+});
+
+test('merge: unlockAll is OR between non-derived copies, and kept for a derived local level', () => {
+  const lvlUp = P.migrate({ v: 5, level: 'improver', placed: 'chosen', levelT: 50, unlockAll: true });
+  const other = P.migrate({ v: 5, level: 'beginner', placed: 'check', levelT: 10 });
+  assert.equal(P.merge(other, lvlUp).unlockAll, true);
+  assert.equal(P.merge(lvlUp, other).unlockAll, true);
+  const derived = P.migrate({ v: 4, rating: 900, games: [{ id: 'g', d: 1 }] });
+  assert.equal(P.merge(derived, P.migrate({ v: 4, rating: 700, rn: 2, puz: { m: { n: 1 } } })).unlockAll, true);
+});
+
+test('merge: an offline Settings pick (not provisional) beats an older cloud level', () => {
+  const local = P.setLevel(P.migrate({ v: 5, level: 'beginner', placed: 'check', levelT: 10 }), 'club', { now: 5000, placed: 'chosen', units: UNITS });
+  assert.equal(local.provisional, false);
+  const cloud = P.migrate({ v: 5, level: 'beginner', placed: 'check', levelT: 10, start: 'board' });
+  assert.equal(P.merge(local, cloud).level, 'club');
+});
+
+test('merge: game history keeps the newest 30 (AC12, confirmed)', () => {
+  const g = (i) => ({ id: 'g' + i, d: i });
+  const a = P.migrate({ v: 5, games: Array.from({ length: 30 }, (_, i) => g(i * 2)) });
+  const b = P.migrate({ v: 5, games: Array.from({ length: 30 }, (_, i) => g(i * 2 + 1)) });
+  const m = P.merge(a, b);
+  assert.equal(m.games.length, 30);
+  assert.deepEqual(m.games.map((x) => x.d), Array.from({ length: 30 }, (_, i) => 59 - i));
+});
+
+test('merge: skips corrupted entries instead of throwing', () => {
+  const local = P.migrate({ v: 5, level: 'club', rn: 5, rating: 1300, puz: { a: { n: 1, ok: 1 }, z: null }, course: { rules: 'oops', board: { learn: 1 } }, days: { d1: null, d2: { puz: 2 } }, games: [null, { id: 'g1', d: 1 }] });
+  const cloud = { v: 5, puz: { a: null, b: { n: 2, ok: 1 }, c: 'x' }, days: { d1: { puz: 1 }, d2: null, d3: 'x' }, course: { rules: { learn: 1 }, board: 'x', mate: null }, games: [{ id: 'g2', d: 2 }, 'junk'], reviewed: [null, 'r1'] };
+  const m = P.merge(local, cloud);
+  assert.deepEqual(m.puz.a, { n: 1, ok: 1 });
+  assert.deepEqual(m.puz.b, { n: 2, ok: 1 });
+  assert.deepEqual(m.course.rules, { learn: 1 });
+  assert.deepEqual(m.course.board, { learn: 1 });
+  assert.deepEqual(m.days.d1, { puz: 1 });
+  assert.deepEqual(m.days.d2, { puz: 2 });
+  assert.deepEqual(m.games.map((x) => x.id), ['g2', 'g1']);
+  for (const bad of ['x', 42, null, undefined, [], true]) assert.equal(P.merge(local, bad).level, 'club', JSON.stringify(bad));
+});
+
+test('merge: keeps unknown keys from either copy and the higher v', () => {
+  const a = P.migrate({ v: 5, localOnly: 1, t: 1 });
+  const b = { v: 6, cloudOnly: { x: 1 }, t: 2 };
+  const m = P.merge(a, b);
+  assert.equal(m.localOnly, 1);
+  assert.deepEqual(m.cloudOnly, { x: 1 });
+  assert.equal(m.v, 6);
+  assert.equal(P.migrate({ v: 7 }).v, 7, 'migrate never lowers v');
 });
 
 test('merge: no local level takes the cloud level', () => {

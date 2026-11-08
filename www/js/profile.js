@@ -53,7 +53,7 @@
       offerClub = right === COUNT.knows && main.length === COUNT.knows;
       if (offerClub && r.club) {
         var clubRight = r.club.filter(Boolean).length;
-        if (!r.clubSkipped && clubRight >= 1) level = 'club';
+        if (clubRight >= 1) level = 'club';
       }
     }
     return { level: level, start: startUnit(level, true, units), knowsMoves: true, offerClub: offerClub, right: right, total: main.length };
@@ -78,7 +78,7 @@
     if ((+p.v || 0) < V && !o.level && hasProgress(o)) {
       o.level = levelFromRating(o.rating); o.levelT = 0; o.placed = 'derived'; o.start = 'rules'; o.unlockAll = true; o.provisional = false;
     }
-    o.v = V;
+    o.v = Math.max(+p.v || 0, V);
     return o;
   }
 
@@ -119,15 +119,20 @@
   /* Merge two copies (device + cloud). Unions never remove; see tech spec "merge()". Inputs are not changed. */
   function merge(local, cloud) {
     var a = migrate(local) || blank();
-    if (!cloud) return a;
-    var b = migrate(cloud), o = clone(a);
-    var byId = {};
-    a.games.concat(b.games).forEach(function (g) { if (g && g.id != null && !byId[g.id]) byId[g.id] = g; });
+    var b = migrate(cloud);
+    if (!b) return a;
+    var o = clone(a), byId = {};
+    Object.keys(b).forEach(function (k) { if (!(k in o)) o[k] = clone(b[k]); });
+    a.games.concat(b.games).forEach(function (g) { if (isObj(g) && g.id != null && !byId[g.id]) byId[g.id] = g; });
     o.games = Object.keys(byId).map(function (k) { return byId[k]; }).sort(function (x, y) { return (y.d || 0) - (x.d || 0); }).slice(0, 30);
-    Object.keys(b.puz).forEach(function (id) { var x = o.puz[id], y = b.puz[id]; if (!x || (y.n || 0) > (x.n || 0)) o.puz[id] = clone(y); });
-    Object.keys(b.course).forEach(function (id) { var x = o.course[id] || (o.course[id] = {}), y = b.course[id] || {}; Object.keys(y).forEach(function (k) { if (!x[k]) x[k] = y[k]; }); });
-    Object.keys(b.days).forEach(function (k) { var x = o.days[k], y = b.days[k]; if (!x) o.days[k] = clone(y); else Object.keys(y).forEach(function (f) { x[f] = Math.max(x[f] || 0, y[f] || 0); }); });
-    b.reviewed.forEach(function (r) { if (o.reviewed.indexOf(r) === -1) o.reviewed.push(r); });
+    Object.keys(o.puz).forEach(function (id) { if (!isObj(o.puz[id])) delete o.puz[id]; });
+    Object.keys(b.puz).forEach(function (id) { var x = o.puz[id], y = b.puz[id]; if (isObj(y) && (!x || (+y.n || 0) > (+x.n || 0))) o.puz[id] = clone(y); });
+    Object.keys(o.course).forEach(function (id) { if (!isObj(o.course[id])) delete o.course[id]; });
+    Object.keys(b.course).forEach(function (id) { var y = b.course[id]; if (!isObj(y)) return; var x = o.course[id] || (o.course[id] = {}); Object.keys(y).forEach(function (k) { if (!x[k]) x[k] = y[k]; }); });
+    Object.keys(o.days).forEach(function (k) { if (!isObj(o.days[k])) delete o.days[k]; });
+    Object.keys(b.days).forEach(function (k) { var x = o.days[k], y = b.days[k]; if (!isObj(y)) return; if (!x) o.days[k] = clone(y); else Object.keys(y).forEach(function (f) { x[f] = Math.max(+x[f] || 0, +y[f] || 0); }); });
+    o.reviewed = o.reviewed.filter(function (r) { return r != null; });
+    b.reviewed.forEach(function (r) { if (r != null && o.reviewed.indexOf(r) === -1) o.reviewed.push(r); });
     var bNewer = (b.t || 0) > (a.t || 0);
     if (b.rn > a.rn || (b.rn === a.rn && bNewer)) { o.rating = b.rating; o.rn = b.rn; }
     if (bNewer) { o.showAll = b.showAll; if (b.theme) o.theme = b.theme; }
@@ -139,12 +144,14 @@
       else if (b.levelT > a.levelT) takeCloud = true;
     }
     if (takeCloud) { o.level = b.level; o.levelT = b.levelT; o.placed = b.placed; o.start = b.start; }
-    o.unlockAll = a.unlockAll || b.unlockAll;
+    /* Sync safety: a derived (v4) copy's unlockAll does not override a local non-derived level. */
+    var bUnlock = b.unlockAll && !(b.placed === 'derived' && a.level && a.placed !== 'derived');
+    o.unlockAll = !!(a.unlockAll || bUnlock);
     o.levelOfferT = Math.max(a.levelOfferT, b.levelOfferT);
     o.pgsDeclined = a.pgsDeclined;
     o.provisional = false;
     o.t = Math.max(a.t || 0, b.t || 0);
-    o.v = V;
+    o.v = Math.max(a.v, b.v, V);
     return o;
   }
 

@@ -1374,14 +1374,20 @@
       st.pl = null; st.plPrev = null; st.sel = null; render();
     },
     finish: function (r) {
-      prof = Profile.setLevel(prof, r.level, { start: r.start, placed: r.placed, provisional: !cloudLoaded, units: UNITS });
+      /* Sync safety: only the first-launch check on a device that never finished a cloud load is provisional. */
+      prof = Profile.setLevel(prof, r.level, { start: r.start, placed: r.placed, provisional: !r.retake && !lsGet(KSEEN), units: UNITS });
       saveProfile(); applyLevel();
       if (r.skippedFirst) showNote('You’re starting as a Beginner. You can take the check again in Settings.');
-      if (st.tab === 'coach') renderCoach(); if (st.tab === 'path') renderPath();
-      render();
+      afterLevel();
     },
     cancel: function () {}
   };
+  /* After the check: a Beginner goes straight into their next lesson; Improver and Club go to Home. */
+  function afterLevel() {
+    var u = prof.level === 'beginner' ? nextUnit() : null;
+    if (u) { if (st.mode === 'review') { st.rv = null; st.mode = 'play'; } st.unitOpen = u.id; startPart(u.id, nextPart(u) || 'learn'); render(); return; }
+    switchTab('coach'); render();
+  }
   function openPlacement(retake) {
     if (Placement.isOpen()) return;
     var n = (+lsGet(KCHECKS) || 0) + 1; lsSet(KCHECKS, n);
@@ -1398,19 +1404,54 @@
   }
   function chooseLevel(id) {
     if (!Profile.LEVELS[id] || id === prof.level) return;
-    prof = Profile.setLevel(prof, id, { placed: 'chosen', provisional: !cloudLoaded, units: UNITS });
-    saveProfile(); applyLevel(); renderLevelCard();
+    prof = Profile.setLevel(prof, id, { placed: 'chosen', provisional: false, units: UNITS });
+    saveProfile(); applyLevel(); renderLevelCard('[data-lvset="' + id + '"]');
     if (st.tab === 'path') renderPath();
   }
-  function renderLevelCard() {
+  function renderLevelCard(focusSel) {
     var el = $('levelCard'); if (!el) return;
+    var ae = document.activeElement, keep = focusSel || null;
+    if (!keep && ae && el.contains(ae)) keep = ae.dataset.lvset ? '[data-lvset="' + ae.dataset.lvset + '"]' : ae.dataset.act ? '[data-act="' + ae.dataset.act + '"]' : null;
     var cur = prof.level, L = Profile.LEVELS[cur];
-    el.innerHTML = '<p class="eyebrow" id="lvLabel">Your level</p><div class="seg" role="radiogroup" aria-labelledby="lvLabel">' + Profile.ORDER.map(function (id) {
-      var on = id === cur; return '<button class="segbtn' + (on ? ' on' : '') + '" type="button" role="radio" aria-checked="' + on + '" data-lvset="' + id + '">' + esc(Profile.LEVELS[id].name) + '</button>';
+    el.innerHTML = '<p class="eyebrow" id="lvLabel">Your level</p><div class="seg" role="radiogroup" aria-labelledby="lvLabel">' + Profile.ORDER.map(function (id, i) {
+      var on = id === cur, tab = on || (!cur && i === 0);
+      return '<button class="segbtn' + (on ? ' on' : '') + '" type="button" role="radio" aria-checked="' + on + '" tabindex="' + (tab ? 0 : -1) + '" data-lvset="' + id + '">' + esc(Profile.LEVELS[id].name) + '</button>';
     }).join('') + '</div><p class="lvwho">' + (L ? esc(L.who) : 'Pick a level, or take the quick check.') + '</p>' +
       '<button class="linkbtn" type="button" data-act="recheck">Take the quick check again</button>' +
-      '<button class="switchrow" type="button" role="switch" aria-checked="' + !!prof.showAll + '" data-act="showall"><span><b>Show everything</b><small>See all tabs, scores and notation now</small></span><i class="sw" aria-hidden="true"></i></button>';
+      '<button class="switchrow" type="button" role="switch" aria-checked="' + !!prof.showAll + '" data-act="showall"><span><b>Show everything</b><small>See all tabs, scores and move lists now</small></span><i class="sw" aria-hidden="true"></i></button>';
+    if (keep) { var f = el.querySelector(keep); if (f) f.focus(); }
   }
+  /* ---------- Settings sheet (gear in the header) ---------- */
+  var setOpener = null;
+  function openSettings() {
+    var sh = $('settingsSheet'); if (!sh || !sh.hidden) return;
+    setOpener = document.activeElement; renderLevelCard();
+    sh.hidden = false; document.documentElement.classList.add('sheet-open');
+    var pn = sh.querySelector('.sheet-panel'); if (pn) pn.focus({ preventScroll: true });
+  }
+  function closeSettings(noFocus) {
+    var sh = $('settingsSheet'); if (!sh || sh.hidden) return;
+    sh.hidden = true; document.documentElement.classList.remove('sheet-open');
+    var back = setOpener && setOpener.isConnected && setOpener.offsetParent !== null ? setOpener : $('settingsBtn');
+    if (!noFocus && back) back.focus(); setOpener = null;
+  }
+  function trapTab(box, e) {
+    var f = Array.prototype.filter.call(box.querySelectorAll('button:not([disabled]), [tabindex="0"], select, input'), function (x) { return x.offsetParent !== null; });
+    if (!f.length) return;
+    var first = f[0], last = f[f.length - 1];
+    if (e.shiftKey && (document.activeElement === first || !box.contains(document.activeElement))) { e.preventDefault(); last.focus(); }
+    else if (!e.shiftKey && (document.activeElement === last || !box.contains(document.activeElement))) { e.preventDefault(); first.focus(); }
+  }
+  document.addEventListener('keydown', function (e) {
+    var sh = $('settingsSheet'); if (!sh || sh.hidden) return;
+    if (e.key === 'Escape') { e.preventDefault(); closeSettings(); return; }
+    if (e.key === 'Tab') { trapTab(sh.querySelector('.sheet-panel'), e); return; }
+    var t = e.target; if (!t || !t.dataset || !t.dataset.lvset) return;
+    var d = { ArrowLeft: -1, ArrowUp: -1, ArrowRight: 1, ArrowDown: 1 }[e.key]; if (!d) return;
+    e.preventDefault();
+    var i = Profile.ORDER.indexOf(t.dataset.lvset), n = Profile.ORDER[(i + d + Profile.ORDER.length) % Profile.ORDER.length];
+    chooseLevel(n); var f = $('levelCard').querySelector('[data-lvset="' + n + '"]'); if (f) f.focus();
+  });
   function showNote(text) {
     var el = $('raniNote'); if (!el) return;
     el.innerHTML = '<div class="rn-av">' + Avatar.coach('happy', 46) + '</div><p>' + esc(text) + '</p><button class="btn sm" type="button" data-act="notedone">OK</button>';
@@ -1450,7 +1491,7 @@
     $('stageHero').innerHTML = '<div class="herorow">' + Avatar.coach(done ? 'happy' : 'neutral', 64) + '<div><p class="eyebrow">' + esc(Avatar.coachName()) + ' \u00B7 Stage ' + S.stage + ' of 6</p><h3>' + esc(S.name) + '</h3></div></div><p>' + esc(S.why) + '</p>' +
       '<div class="mbar"><i style="width:' + Math.round(100 * done / miles.length) + '%"></i></div><div class="meta"><span>' + done + ' of ' + miles.length + ' milestones</span><span>Rating band ' + esc(S.band) + '</span></div>' +
       '<button class="btn" type="button" data-go="next">Next step: ' + esc(_next.label) + ' ›</button><p style="margin-top:8px;font-size:13px;opacity:.85">' + esc(_next.sub) + '</p>';
-    renderToday(); renderLevelCard(); renderLook();
+    renderToday(); renderLook();
     var V = RM[(st.stageView || S.stage) - 1], vm = stageMiles(V), cur = V.stage === S.stage;
     var us = UNITS.filter(function (u) { return u.level === V.level; });
     $('stageCard').innerHTML = '<p class="eyebrow">' + (cur ? 'Your stage in detail' : 'Stage ' + V.stage + ' preview') + '</p><h3 style="margin:2px 0 4px;font-family:var(--f-display);font-size:22px">' + V.stage + '. ' + esc(V.name) + '</h3><p class="goal" style="margin:0;color:var(--muted)">' + esc(V.band) + ' · ' + (stageDone(V) ? 'complete' : cur ? 'in progress' : V.stage < S.stage ? 'complete' : 'coming up') + '</p>' +
@@ -1521,7 +1562,8 @@
   }
 
   /* ---------- persistence ---------- */
-  var cloud = { game: null, prof: null, gt: null, pt: null }, cloudLoaded = false;
+  /* Sync safety: no push until this session's first pull has finished (merged, or cloud confirmed empty). */
+  var cloud = { game: null, prof: null, gt: null, pt: null, ready: false, busy: null, tries: 0, retry: null }, KSEEN = 'suresh-chess-coach.cloudSeen', RETRY = [2000, 5000, 15000];
   function snapshot() { return { sans: G.history(), user: st.user, level: st.level, ann: st.ann, notes: st.notes, tags: st.tags, fb: st.fb, opp: st.opp, evalW: st.evalW, flipped: st.flipped, recorded: st.recorded, goal: st.goal, t: st.t || 0 }; }
   function save() { st.t = Date.now(); var s = snapshot(); lsSet(STORE, s); push('game', s); }
   function saveProfile() {
@@ -1531,7 +1573,7 @@
   }
   function syncNote(text, ok) { var el = $('sync'); el.textContent = text; el.classList.toggle('ok', !!ok); }
   function push(which, data) {
-    var ref = cloud[which]; if (!ref) return;
+    var ref = cloud[which]; if (!ref || !cloud.ready) return;
     var tk = which === 'game' ? 'gt' : 'pt';
     clearTimeout(cloud[tk]);
     cloud[tk] = setTimeout(function () {
@@ -1572,14 +1614,23 @@
   }
   function pullCloud() {
     if (!cloud.game) return Promise.resolve();
-    return Promise.all([cloud.game.get(), cloud.prof.get()]).then(function (r) {
-      var c = r[0].exists ? r[0].data() : null, localT = st.t || 0;
+    if (cloud.busy) return cloud.busy;
+    clearTimeout(cloud.retry); cloud.retry = null;
+    cloud.busy = Promise.all([cloud.game.get(), cloud.prof.get()]).then(function (r) {
+      var c = r[0].exists ? r[0].data() : null, localT = st.t || 0, pushGame = false;
       if (c && c.sans && (c.t || 0) > localT && !st.busy && !drag && st.mode === 'play') { if (applySaved(c)) { lsSet(STORE, c); st.think = null; resumeGame(); } }
-      else if ((!c || localT > (c.t || 0)) && G.history().length) push('game', snapshot());
-      mergeProfile(r[1].exists ? r[1].data() : null); prof.provisional = false; cloudLoaded = true; lsSet(PSTORE, prof); push('prof', prof);
+      else if ((!c || localT > (c.t || 0)) && G.history().length) pushGame = true;
+      mergeProfile(r[1].exists ? r[1].data() : null); prof.provisional = false; lsSet(PSTORE, prof);
+      cloud.ready = true; cloud.tries = 0; lsSet(KSEEN, true);
+      if (pushGame) push('game', snapshot());
+      push('prof', prof);
       if (st.tab === 'path') renderPath(); if (st.tab === 'coach') renderCoach(); if (st.tab === 'progress') renderProgress(); if (st.tab === 'train') renderTrain();
       syncNote('Synced to your Claude account. Open it on any device to continue.', true);
-    }).catch(function () { syncNote('Couldn’t reach your account. Saved on this device.', false); });
+    }).catch(function () {
+      syncNote('Couldn’t reach your account. Saved on this device.', false);
+      if (!cloud.ready && cloud.tries < RETRY.length) { var ms = RETRY[cloud.tries++]; cloud.retry = setTimeout(pullCloud, ms); }
+    }).then(function () { cloud.busy = null; });
+    return cloud.busy;
   }
   function initCloud() {
     if (!window.claude || !window.claude.use) { syncNote('Saved on this device only.', false); return; }
@@ -1593,6 +1644,7 @@
       });
     }).catch(function () { syncNote('Saved on this device only.', false); });
     document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'visible') pullCloud(); });
+    window.addEventListener('online', function () { pullCloud(); });
   }
 
   /* ---------- input ---------- */
@@ -1720,6 +1772,7 @@
   });
   document.querySelector('.tabs').addEventListener('click', function (e) { var b = e.target.closest('.tab'); if (b) switchTab(b.dataset.tab); });
   document.addEventListener('click', function (e) {
+    if (e.target && e.target.id === 'settingsSheet') { closeSettings(); return; }
     var t = e.target.closest('button'); if (!t || t.closest('.tabs')) return;
     var d = t.dataset;
     if (d.unit) { if (st.mode !== 'play' && st.mode !== 'review') { clearSession(); st.mode = 'play'; resetHints(); } st.unitOpen = d.unit; switchTab('path'); render(); return; }
@@ -1745,8 +1798,10 @@
     if (d.go === 'next') { goNext(); return; }
     if (d.set) { setTheme(d.set); return; }
     if (d.lvset) { chooseLevel(d.lvset); return; }
-    if (d.act === 'recheck') { openPlacement(true); return; }
-    if (d.act === 'showall') { prof.showAll = !prof.showAll; saveProfile(); applyLevel(); renderLevelCard(); return; }
+    if (d.act === 'recheck') { closeSettings(); openPlacement(true); return; }
+    if (d.act === 'showall') { prof.showAll = !prof.showAll; saveProfile(); applyLevel(); renderLevelCard('[data-act="showall"]'); return; }
+    if (d.act === 'settings') { openSettings(); return; }
+    if (d.act === 'settingsclose') { closeSettings(); return; }
     if (d.act === 'notedone') { hideNote(); return; }
   });
 

@@ -1,12 +1,12 @@
 // E2E for slice S1 (level check, profile v5, Settings level controls).
 // Run: node tests/e2e/s1.spec.js   (serves www/ itself; needs Playwright with Chromium)
 const { chromium } = require('playwright');
-const { spawn } = require('child_process');
+const http = require('http');
 const assert = require('assert/strict');
 const path = require('path');
 const fs = require('fs');
 
-const WWW = process.env.S1_WWW || path.join(__dirname, '../../www');
+const WWW = path.resolve(process.env.S1_WWW || path.join(__dirname, '../../www'));
 const PORT = 8000 + Math.floor(Math.random() * 900);
 const URL = 'http://127.0.0.1:' + PORT + '/index.html';
 const SHOTS = process.env.S1_SHOTS || '';
@@ -452,9 +452,22 @@ const cases = [
   }]
 ];
 
+// A small static server for www/ (Python's http.server sometimes reset connections when Chromium loads all scripts at once).
+const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.wasm': 'application/wasm', '.json': 'application/json', '.css': 'text/css', '.png': 'image/png', '.jpg': 'image/jpeg', '.svg': 'image/svg+xml' };
+function serve() {
+  const srv = http.createServer((req, res) => {
+    const f = path.join(WWW, path.normalize(decodeURIComponent(req.url.split('?')[0])));
+    if (!f.startsWith(WWW + path.sep)) { res.writeHead(403); res.end(); return; }
+    fs.readFile(f, (err, data) => {
+      if (err) { res.writeHead(404); res.end(); return; }
+      res.writeHead(200, { 'Content-Type': TYPES[path.extname(f)] || 'application/octet-stream' }); res.end(data);
+    });
+  });
+  return new Promise((r) => srv.listen(PORT, '127.0.0.1', () => r(srv)));
+}
+
 (async () => {
-  const srv = spawn('python3', ['-m', 'http.server', String(PORT), '--bind', '127.0.0.1'], { cwd: WWW, stdio: 'ignore' });
-  await new Promise((r) => setTimeout(r, 700));
+  const srv = await serve();
   browser = await chromium.launch();
   try {
     for (const vp of VIEWPORTS) for (const [name, fn] of cases) {
@@ -470,7 +483,7 @@ const cases = [
         failures++; results.push('FAIL ' + label + '\n     ' + String(e && e.message || e).split('\n').slice(0, 6).join('\n     '));
       } finally { if (page) await page.context().close(); }
     }
-  } finally { await browser.close(); srv.kill(); }
+  } finally { await browser.close(); srv.close(); }
   console.log(results.join('\n'));
   console.log('\n' + (results.length - failures) + ' passed, ' + failures + ' failed');
   process.exit(failures ? 1 : 0);

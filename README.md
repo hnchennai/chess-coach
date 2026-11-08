@@ -28,3 +28,9 @@ The whole app works offline: Stockfish, the 3D board, puzzles and lessons are in
 - Keep a backup of the key file and its password. The Play Store listing needs the same key, and a lost key means users can't update.
 - Every push to `main` builds version `1.0.<run number>`, signs it, and publishes a GitHub Release (`v1.0.N`) with the `.apk` (phone) and `.aab` (Play Store).
 - Phone auto-updates: install Obtainium and add this repo (with a GitHub token, since the repo is private).
+
+## Developing
+
+- Edit files in `src/`, then run `sh scripts/build.sh` to rebuild `www/`.
+- Tests: `node --test tests/*.test.js`, and the browser checks in `tests/e2e/`.
+- Handoff notes for the next session: `.crew/HANDOFF.md`.

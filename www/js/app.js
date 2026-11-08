@@ -37,7 +37,7 @@
     busy: false, evalW: 0, fb: null, opp: null, think: null, over: false, bannerOff: false,
     recorded: false, t: 0, goal: null, rv: null, pz: null, ses: null, ls: null, dr: null, bk: null, sq: null, qz: null, unitOpen: null, confirmNew: false
   };
-  var prof = { v: 4, games: [], puz: {}, rating: 800, rn: 0, course: {}, days: {}, t: 0 };
+  var prof = Profile.blank();
   var $ = function (id) { return document.getElementById(id); };
   var gridEl = $('grid'), sqEls = {};
 
@@ -370,14 +370,14 @@
     if (st.pv && st.pv.g) return st.pv.g;
     switch (st.mode) {
       case 'puzzle': return st.pz.g; case 'review': return st.rv.g; case 'lesson': return st.ls.g;
-      case 'drill': return st.dr.g; case 'book': return st.bk.g; case 'squares': return EMPTY; case 'quiz': return st.qz.g; case 'reach': return st.rc.g;
+      case 'drill': return st.dr.g; case 'book': return st.bk.g; case 'squares': return EMPTY; case 'quiz': return st.qz.g; case 'reach': return st.rc.g; case 'placement': return st.pl.g;
       default: return G;
     }
   }
   function viewUser() {
     switch (st.mode) {
       case 'puzzle': return st.pz.side; case 'review': return st.rv.user; case 'lesson': return st.ls.side;
-      case 'drill': return st.dr.side; case 'book': return st.bk.side; case 'squares': return st.sq.side; case 'quiz': return st.qz.side; case 'reach': return 'w';
+      case 'drill': return st.dr.side; case 'book': return st.bk.side; case 'squares': return st.sq.side; case 'quiz': return st.qz.side; case 'reach': return 'w'; case 'placement': return st.pl.side;
       default: return st.user;
     }
   }
@@ -390,6 +390,7 @@
       case 'puzzle': return !st.pz.done && !st.pz.wait && g.turn() === st.pz.side;
       case 'drill': return !st.dr.done && g.turn() === st.dr.side;
       case 'book': return !st.bk.done && !st.bk.wait && g.turn() === st.bk.side;
+      case 'placement': return !st.pl.done && g.turn() === st.pl.side;
       default: return false;
     }
   }
@@ -439,7 +440,7 @@
     renderArrows(); renderEval(); renderCaps(g); renderMode(); renderPlayPanel(); renderMoves(); renderBanner(); renderSession();
     var u = viewUser();
     $('oppLevel').textContent = st.mode === 'play' ? OPP[st.level].name + ' · ' + (st.level === 8 ? 'max' : '~' + OPP[st.level].elo) : st.mode === 'review' && OPP[st.rv.level] ? OPP[st.rv.level].name : '';
-    $('oppName').textContent = { play: 'Engine', review: 'Engine', puzzle: 'Puzzle', lesson: 'Lesson', drill: 'Stockfish', book: 'Opening book', squares: 'Board drill', quiz: 'Safe or blunder?', reach: 'Piece drill' }[st.mode];
+    $('oppName').textContent = { play: 'Engine', review: 'Engine', puzzle: 'Puzzle', lesson: 'Lesson', drill: 'Stockfish', book: 'Opening book', squares: 'Board drill', quiz: 'Safe or blunder?', reach: 'Piece drill', placement: 'Level check' }[st.mode] || '';
     $('youSwatch').style.background = u === 'w' ? '#FBF8F1' : '#1E1915';
     $('oppSwatch').style.background = u === 'w' ? '#1E1915' : '#FBF8F1';
     $('thinking').hidden = !st.busy;
@@ -661,6 +662,7 @@
     if (st.mode === 'puzzle') return puzzleMove(from, to);
     if (st.mode === 'drill') return drillMove(from, to);
     if (st.mode === 'book') return bookMove(from, to);
+    if (st.mode === 'placement') return placementMove(from, to);
     var fenBefore = G.fen(), mv = G.move({ from: from, to: to, promotion: 'q' });
     if (!mv) return;
     st.sel = null; resetHints(); st.busy = true; st.bannerOff = false; st.opp = null; st.think = null; st.confirmNew = false;
@@ -1215,7 +1217,7 @@
   function unitParts(u) { var p = ['learn']; if (u.practice) p.push('practice'); if (u.apply) p.push('apply'); return p; }
   function unitDone(u) { var c = prof.course[u.id] || {}; return unitParts(u).every(function (k) { return c[k]; }); }
   function unitStarted(u) { var c = prof.course[u.id] || {}; return unitParts(u).some(function (k) { return c[k]; }); }
-  function nextUnit() { for (var i = 0; i < UNITS.length; i++) if (!unitDone(UNITS[i])) return UNITS[i]; return null; }
+  function nextUnit() { return Profile.nextUnit(prof, UNITS, unitDone); }
   function nextPart(u) { var c = prof.course[u.id] || {}; return unitParts(u).filter(function (k) { return !c[k]; })[0]; }
   var PART_NAME = { learn: 'Learn', practice: 'Practice', apply: 'Apply' };
   function partDesc(u, k) {
@@ -1341,6 +1343,122 @@
     }).join('') + '<p class="setnote">Every piece keeps a chess symbol in its corner, so you always know what it is. Hover over a piece (or long-press on a phone) to see its character.</p>';
   }
 
+
+  /* ---------- level: check, Settings controls, Rani's note ---------- */
+  var KINSTALL = 'suresh-chess-coach.install', KCHECKS = 'suresh-chess-coach.checks', boardHome = null;
+  function installId() { var id = lsGet(KINSTALL); if (!id) { id = Date.now().toString(36) + Math.random().toString(36).slice(2, 8); lsSet(KINSTALL, id); } return id; }
+  function applyLevel() {
+    var de = document.documentElement;
+    if (prof.level) de.dataset.level = prof.level; else delete de.dataset.level;
+    if (prof.showAll) de.dataset.showall = '1'; else delete de.dataset.showall;
+  }
+  var PL_HOST = {
+    coach: function (mood, size) { return Avatar.coach(mood, size); },
+    bank: function () { return window.PUZZLE_BANK || []; },
+    units: function () { return UNITS; },
+    mountBoard: function (slot) {
+      var b = $('board') || boardHome && boardHome.el; if (!b || !slot) return;
+      if (!boardHome) boardHome = { el: b, parent: b.parentNode, next: b.nextSibling };
+      slot.appendChild(b); render();
+    },
+    showPuzzle: function (p, cb) {
+      if (st.mode !== 'placement') st.plPrev = { mode: st.mode, flipped: st.flipped, arrows: st.arrows, hls: st.hls, flash: st.flash };
+      st.mode = 'placement'; st.flipped = false; st.sel = null; st.flash = null; resetHints();
+      var g = new Chess(p.fen);
+      st.pl = { p: p, g: g, side: g.turn(), done: false, cb: cb };
+      render();
+    },
+    endBoard: function () {
+      if (boardHome) { boardHome.parent.insertBefore(boardHome.el, boardHome.next && boardHome.next.parentNode === boardHome.parent ? boardHome.next : null); boardHome = null; }
+      if (st.mode === 'placement') { var pv = st.plPrev || { mode: 'play' }; st.mode = pv.mode; st.flipped = !!pv.flipped; st.arrows = pv.arrows || []; st.hls = pv.hls || []; st.flash = pv.flash || null; }
+      st.pl = null; st.plPrev = null; st.sel = null; render();
+    },
+    finish: function (r) {
+      /* Sync safety: only the first-launch check on a device that never finished a cloud load is provisional. */
+      prof = Profile.setLevel(prof, r.level, { start: r.start, placed: r.placed, provisional: !r.retake && !lsGet(KSEEN), units: UNITS });
+      saveProfile(); applyLevel();
+      if (r.skippedFirst) showNote('You’re starting as a Beginner. You can take the check again in Settings.');
+      afterLevel();
+    },
+    cancel: function () {}
+  };
+  /* After the check: a Beginner goes straight into their next lesson; Improver and Club go to Home. */
+  function afterLevel() {
+    var u = prof.level === 'beginner' ? nextUnit() : null;
+    if (u) { if (st.mode === 'review') { st.rv = null; st.mode = 'play'; } st.unitOpen = u.id; startPart(u.id, nextPart(u) || 'learn'); render(); return; }
+    switchTab('coach'); render();
+  }
+  function openPlacement(retake) {
+    if (Placement.isOpen()) return;
+    var n = (+lsGet(KCHECKS) || 0) + 1; lsSet(KCHECKS, n);
+    if (st.mode === 'placement') PL_HOST.endBoard();
+    Placement.open(PL_HOST, { retake: !!retake, seed: installId(), attempt: n });
+  }
+  function placementMove(from, to) {
+    var P = st.pl, mv = P.g.move({ from: from, to: to, promotion: 'q' });
+    if (!mv) return;
+    var mate = P.g.in_checkmate();
+    P.done = true; st.sel = null; st.flash = Placement.isCorrect(P.p, keyOf(mv), mate) ? { sq: mv.to, ok: true } : null;
+    render();
+    P.cb(keyOf(mv), mate);
+  }
+  function chooseLevel(id) {
+    if (!Profile.LEVELS[id] || id === prof.level) return;
+    prof = Profile.setLevel(prof, id, { placed: 'chosen', provisional: false, units: UNITS });
+    saveProfile(); applyLevel(); renderLevelCard('[data-lvset="' + id + '"]');
+    if (st.tab === 'path') renderPath();
+  }
+  function renderLevelCard(focusSel) {
+    var el = $('levelCard'); if (!el) return;
+    var ae = document.activeElement, keep = focusSel || null;
+    if (!keep && ae && el.contains(ae)) keep = ae.dataset.lvset ? '[data-lvset="' + ae.dataset.lvset + '"]' : ae.dataset.act ? '[data-act="' + ae.dataset.act + '"]' : null;
+    var cur = prof.level, L = Profile.LEVELS[cur];
+    el.innerHTML = '<p class="eyebrow" id="lvLabel">Your level</p><div class="seg" role="radiogroup" aria-labelledby="lvLabel">' + Profile.ORDER.map(function (id, i) {
+      var on = id === cur, tab = on || (!cur && i === 0);
+      return '<button class="segbtn' + (on ? ' on' : '') + '" type="button" role="radio" aria-checked="' + on + '" tabindex="' + (tab ? 0 : -1) + '" data-lvset="' + id + '">' + esc(Profile.LEVELS[id].name) + '</button>';
+    }).join('') + '</div><p class="lvwho">' + (L ? esc(L.who) : 'Pick a level, or take the quick check.') + '</p>' +
+      '<button class="linkbtn" type="button" data-act="recheck">Take the quick check again</button>' +
+      '<button class="switchrow" type="button" role="switch" aria-checked="' + !!prof.showAll + '" data-act="showall"><span><b>Show everything</b><small>See all tabs, scores and move lists now</small></span><i class="sw" aria-hidden="true"></i></button>';
+    if (keep) { var f = el.querySelector(keep); if (f) f.focus(); }
+  }
+  /* ---------- Settings sheet (gear in the header) ---------- */
+  var setOpener = null;
+  function openSettings() {
+    var sh = $('settingsSheet'); if (!sh || !sh.hidden) return;
+    setOpener = document.activeElement; renderLevelCard();
+    sh.hidden = false; document.documentElement.classList.add('sheet-open');
+    var pn = sh.querySelector('.sheet-panel'); if (pn) pn.focus({ preventScroll: true });
+  }
+  function closeSettings(noFocus) {
+    var sh = $('settingsSheet'); if (!sh || sh.hidden) return;
+    sh.hidden = true; document.documentElement.classList.remove('sheet-open');
+    var back = setOpener && setOpener.isConnected && setOpener.offsetParent !== null ? setOpener : $('settingsBtn');
+    if (!noFocus && back) back.focus(); setOpener = null;
+  }
+  function trapTab(box, e) {
+    var f = Array.prototype.filter.call(box.querySelectorAll('button:not([disabled]), [tabindex="0"], select, input'), function (x) { return x.offsetParent !== null; });
+    if (!f.length) return;
+    var first = f[0], last = f[f.length - 1];
+    if (e.shiftKey && (document.activeElement === first || !box.contains(document.activeElement))) { e.preventDefault(); last.focus(); }
+    else if (!e.shiftKey && (document.activeElement === last || !box.contains(document.activeElement))) { e.preventDefault(); first.focus(); }
+  }
+  document.addEventListener('keydown', function (e) {
+    var sh = $('settingsSheet'); if (!sh || sh.hidden) return;
+    if (e.key === 'Escape') { e.preventDefault(); closeSettings(); return; }
+    if (e.key === 'Tab') { trapTab(sh.querySelector('.sheet-panel'), e); return; }
+    var t = e.target; if (!t || !t.dataset || !t.dataset.lvset) return;
+    var d = { ArrowLeft: -1, ArrowUp: -1, ArrowRight: 1, ArrowDown: 1 }[e.key]; if (!d) return;
+    e.preventDefault();
+    var i = Profile.ORDER.indexOf(t.dataset.lvset), n = Profile.ORDER[(i + d + Profile.ORDER.length) % Profile.ORDER.length];
+    chooseLevel(n); var f = $('levelCard').querySelector('[data-lvset="' + n + '"]'); if (f) f.focus();
+  });
+  function showNote(text) {
+    var el = $('raniNote'); if (!el) return;
+    el.innerHTML = '<div class="rn-av">' + Avatar.coach('happy', 46) + '</div><p>' + esc(text) + '</p><button class="btn sm" type="button" data-act="notedone">OK</button>';
+    el.hidden = false;
+  }
+  function hideNote() { var el = $('raniNote'); if (el) { el.hidden = true; el.innerHTML = ''; } }
+
   /* ---------- Coach home: the roadmap ---------- */
   var RM = COURSE.ROADMAP;
   function bestWinLevel() { var m = 0; prof.games.forEach(function (g) { if (g.r === 'W' && g.level > m) m = g.level; }); return m; }
@@ -1444,7 +1562,8 @@
   }
 
   /* ---------- persistence ---------- */
-  var cloud = { game: null, prof: null, gt: null, pt: null };
+  /* Sync safety: no push until this session's first pull has finished (merged, or cloud confirmed empty). */
+  var cloud = { game: null, prof: null, gt: null, pt: null, ready: false, busy: null, tries: 0, retry: null }, KSEEN = 'suresh-chess-coach.cloudSeen', RETRY = [2000, 5000, 15000, 60000];
   function snapshot() { return { sans: G.history(), user: st.user, level: st.level, ann: st.ann, notes: st.notes, tags: st.tags, fb: st.fb, opp: st.opp, evalW: st.evalW, flipped: st.flipped, recorded: st.recorded, goal: st.goal, t: st.t || 0 }; }
   function save() { st.t = Date.now(); var s = snapshot(); lsSet(STORE, s); push('game', s); }
   function saveProfile() {
@@ -1454,7 +1573,7 @@
   }
   function syncNote(text, ok) { var el = $('sync'); el.textContent = text; el.classList.toggle('ok', !!ok); }
   function push(which, data) {
-    var ref = cloud[which]; if (!ref) return;
+    var ref = cloud[which]; if (!ref || !cloud.ready) return;
     var tk = which === 'game' ? 'gt' : 'pt';
     clearTimeout(cloud[tk]);
     cloud[tk] = setTimeout(function () {
@@ -1462,7 +1581,6 @@
         .catch(function (e) { syncNote(e && e.code === 'quota_exceeded' ? 'Your saved data is full. This device still has it.' : 'Couldn’t sync just now. Saved on this device.', false); });
     }, 700);
   }
-  function migrate(p) { if (!p) return null; return { theme: p.theme || null, v: 4, games: p.games || [], puz: p.puz || {}, rating: p.rating || 800, rn: p.rn || 0, course: p.course || {}, days: p.days || {}, reviewed: p.reviewed || [], t: p.t || 0 }; }
   function applySaved(saved) {
     if (!saved || !saved.sans) return false;
     var g2 = new Chess(); if (!saved.sans.every(function (m) { return !!g2.move(m); })) return false;
@@ -1482,29 +1600,41 @@
     else if (G.turn() === st.user && !st.think) analyseForUser().then(render);
     render();
   }
-  function mergeProfile(c) {
-    if (!c) return false;
-    c = migrate(c);
-    var byId = {}; prof.games.concat(c.games).forEach(function (g) { byId[g.id] = g; });
-    prof.games = Object.keys(byId).map(function (k) { return byId[k]; }).sort(function (a, b) { return b.d - a.d; }).slice(0, 30);
-    var newer = (c.t || 0) > (prof.t || 0);
-    Object.keys(c.puz).forEach(function (id) { var a = prof.puz[id], b = c.puz[id]; if (!a || (b.n || 0) > (a.n || 0)) prof.puz[id] = b; });
-    Object.keys(c.course).forEach(function (id) { var a = prof.course[id] || (prof.course[id] = {}); Object.keys(c.course[id]).forEach(function (k) { if (!a[k]) a[k] = c.course[id][k]; }); });
-    Object.keys(c.days).forEach(function (k) { var a = prof.days[k], b = c.days[k]; if (!a) prof.days[k] = b; else Object.keys(b).forEach(function (f) { a[f] = Math.max(a[f] || 0, b[f] || 0); }); });
-    if (newer) { prof.rating = c.rating; prof.rn = c.rn; if (c.theme && Avatar.SETS[c.theme] && c.theme !== st.theme) { st.theme = c.theme; lsSet('suresh-chess-coach.pieces', c.theme); } }
-    (c.reviewed || []).forEach(function (r) { prof.reviewed = prof.reviewed || []; if (prof.reviewed.indexOf(r) === -1) prof.reviewed.push(r); });
-    return true;
+  function afterMerge(before) {
+    if (prof.theme && prof.theme !== before.theme && Avatar.SETS[prof.theme] && prof.theme !== st.theme) { st.theme = prof.theme; lsSet('suresh-chess-coach.pieces', prof.theme); }
+    if (prof.level && (prof.level !== before.level || prof.levelT !== before.levelT || prof.placed !== before.placed)) {
+      if (Placement.isOpen() && !before.level) Placement.close();
+      if (!before.level || before.provisional) showNote('Welcome back, I restored your level.');
+      applyLevel();
+    }
   }
   function pullCloud() {
     if (!cloud.game) return Promise.resolve();
-    return Promise.all([cloud.game.get(), cloud.prof.get()]).then(function (r) {
-      var c = r[0].exists ? r[0].data() : null, localT = st.t || 0;
-      if (c && c.sans && (c.t || 0) > localT && !st.busy && !drag && st.mode === 'play') { if (applySaved(c)) { lsSet(STORE, c); st.think = null; resumeGame(); } }
-      else if ((!c || localT > (c.t || 0)) && G.history().length) push('game', snapshot());
-      mergeProfile(r[1].exists ? r[1].data() : null); lsSet(PSTORE, prof); push('prof', prof);
-      if (st.tab === 'path') renderPath(); if (st.tab === 'coach') renderCoach(); if (st.tab === 'progress') renderProgress(); if (st.tab === 'train') renderTrain();
+    if (cloud.busy) return cloud.busy;
+    clearTimeout(cloud.retry); cloud.retry = null;
+    cloud.busy = Promise.all([cloud.game.get(), cloud.prof.get()]).then(function (r) {
+      var c = null, pc = null, localT = st.t || 0, pushGame = false;
+      try { c = r[0].exists ? r[0].data() : null; } catch (e) { c = null; }
+      pc = r[1].exists ? r[1].data() : null; /* a profile that exists but can't be read must retry, never count as empty */
+      /* a bad cloud game or a render error must never block the profile merge or later syncs */
+      try {
+        if (c && Array.isArray(c.sans) && (c.t || 0) > localT && !st.busy && !drag && st.mode === 'play') { if (applySaved(c)) { lsSet(STORE, c); st.think = null; resumeGame(); } }
+        else if ((!c || !Array.isArray(c.sans) || localT > (c.t || 0)) && G.history().length) pushGame = true;
+      } catch (e) { pushGame = G.history().length > 0; }
+      var before = prof;
+      if (pc) prof = Profile.merge(prof, pc); /* if this throws, nothing is pushed and the pull retries */
+      try { afterMerge(before); } catch (e) {}
+      prof.provisional = false; lsSet(PSTORE, prof);
+      cloud.ready = true; cloud.tries = 0; lsSet(KSEEN, true);
+      if (pushGame) push('game', snapshot());
+      push('prof', prof);
+      try { if (st.tab === 'path') renderPath(); if (st.tab === 'coach') renderCoach(); if (st.tab === 'progress') renderProgress(); if (st.tab === 'train') renderTrain(); } catch (e) {}
       syncNote('Synced to your Claude account. Open it on any device to continue.', true);
-    }).catch(function () { syncNote('Couldn’t reach your account. Saved on this device.', false); });
+    }).catch(function () {
+      syncNote('Couldn’t reach your account. Saved on this device.', false);
+      if (!cloud.ready) { var ms = RETRY[Math.min(cloud.tries++, RETRY.length - 1)]; cloud.retry = setTimeout(pullCloud, ms); }
+    }).then(function () { cloud.busy = null; });
+    return cloud.busy;
   }
   function initCloud() {
     if (!window.claude || !window.claude.use) { syncNote('Saved on this device only.', false); return; }
@@ -1517,7 +1647,8 @@
         return pullCloud();
       });
     }).catch(function () { syncNote('Saved on this device only.', false); });
-    document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'visible') pullCloud(); });
+    document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'visible') { cloud.tries = 0; pullCloud(); } });
+    window.addEventListener('online', function () { cloud.tries = 0; pullCloud(); });
   }
 
   /* ---------- input ---------- */
@@ -1566,6 +1697,7 @@
   });
   document.addEventListener('keydown', function (e) {
     if (/input|select|textarea/i.test(e.target.tagName || '')) return;
+    var ss = $('settingsSheet'); if ((ss && !ss.hidden) || Placement.isOpen()) return; /* arrow keys in a sheet must not move the lesson or review behind it */
     if (st.mode === 'review') { if (e.key === 'ArrowLeft') { gotoPly(st.rv.ply - 1); e.preventDefault(); } if (e.key === 'ArrowRight') { gotoPly(st.rv.ply + 1); e.preventDefault(); } }
     if (st.mode === 'lesson') { if (e.key === 'ArrowLeft') lessonNav(-1); if (e.key === 'ArrowRight') lessonNav(1); }
   });
@@ -1645,6 +1777,7 @@
   });
   document.querySelector('.tabs').addEventListener('click', function (e) { var b = e.target.closest('.tab'); if (b) switchTab(b.dataset.tab); });
   document.addEventListener('click', function (e) {
+    if (e.target && e.target.id === 'settingsSheet') { closeSettings(); return; }
     var t = e.target.closest('button'); if (!t || t.closest('.tabs')) return;
     var d = t.dataset;
     if (d.unit) { if (st.mode !== 'play' && st.mode !== 'review') { clearSession(); st.mode = 'play'; resetHints(); } st.unitOpen = d.unit; switchTab('path'); render(); return; }
@@ -1669,6 +1802,12 @@
     if (d.stage) { st.stageView = +d.stage; renderCoach(); var sc = $('stageCard'); if (sc && sc.scrollIntoView) sc.scrollIntoView({ behavior: 'smooth', block: 'start' }); return; }
     if (d.go === 'next') { goNext(); return; }
     if (d.set) { setTheme(d.set); return; }
+    if (d.lvset) { chooseLevel(d.lvset); return; }
+    if (d.act === 'recheck') { closeSettings(); openPlacement(true); return; }
+    if (d.act === 'showall') { prof.showAll = !prof.showAll; saveProfile(); applyLevel(); renderLevelCard('[data-act="showall"]'); return; }
+    if (d.act === 'settings') { openSettings(); return; }
+    if (d.act === 'settingsclose') { closeSettings(); return; }
+    if (d.act === 'notedone') { hideNote(); return; }
   });
 
   /* ---------- boot ---------- */
@@ -1676,12 +1815,15 @@
   function enginePill(s) {
     var el = $('enginePill');
     el.classList.toggle('ok', s === 'ready');
-    el.querySelector('span').textContent = s === 'ready' ? 'Stockfish 19 ready' : s === 'failed' ? 'Basic engine (Stockfish unavailable here)' : 'Loading Stockfish…';
+    var txt = s === 'ready' ? 'Stockfish 19 ready' : s === 'failed' ? 'Basic engine' : 'Loading Stockfish…';
+    el.querySelector('span').textContent = txt; el.title = s === 'failed' ? 'Basic engine (Stockfish could not load here)' : txt;
   }
   function start(data) {
     fillLevels();
     var th = lsGet('suresh-chess-coach.pieces'); if (th && Avatar.SETS[th]) st.theme = th;
-    var p = migrate(lsGet(PSTORE)); if (p) prof = p;
+    var raw = lsGet(PSTORE), p = Profile.migrate(raw); if (p) prof = p;
+    if (raw && (+raw.v || 0) < Profile.V && prof.placed === 'derived') { lsSet(PSTORE, prof); showNote('You’re set as ' + Profile.LEVELS[prof.level].name + '. Change it any time in Settings.'); }
+    applyLevel();
     Brain.onState(function (s) { enginePill(s); if (s === 'ready' && st.mode === 'play' && G.turn() === st.user && !G.game_over() && !st.busy) analyseForUser().then(render); });
     Brain.init('sf/stockfish.js'); enginePill(Brain.state());
     buildGrid();
@@ -1690,9 +1832,10 @@
     var tab = lsGet('suresh-chess-coach.tab'); switchTab(tab && $('panel-' + tab) && tab !== 'path' ? tab : 'coach');
     render(); resumeGame();
     if (lsGet(K3D) === true) set3d(true, true);
+    if (Profile.needsCheck(prof)) openPlacement(false);
     initCloud();
   }
   if (window.claude && window.claude.hot && window.claude.hot.snapshot) { try { window.claude.hot.snapshot(snapshot); } catch (e) {} }
   window.claude && window.claude.hot && window.claude.hot.ready ? window.claude.hot.ready(start) : start((window.claude && window.claude.hot && window.claude.hot.data) || {});
-  window.__coach = { st: st, getProf: function () { return prof; }, PZ: PZ, startPart: startPart, trainStart: trainStart };
+  window.__coach = { st: st, getProf: function () { return prof; }, PZ: PZ, startPart: startPart, trainStart: trainStart, openPlacement: openPlacement, nextUnit: nextUnit };
 })();

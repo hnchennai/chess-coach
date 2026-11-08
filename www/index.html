@@ -487,12 +487,117 @@ canvas.q3d { display: block; border-radius: 50%; background: radial-gradient(cir
   .board { flex: none; width: 100%; border-radius: 0; box-shadow: none; }
   .board[data-zone] { box-shadow: none; }
 }
+
+/* ---------- S1: level check sheet, Settings level card, Rani's note ---------- */
+html.pl-open, html.pl-open body { overflow: hidden; }
+.placement { position: fixed; inset: 0; z-index: 60; background: var(--bg); overflow-y: auto; -webkit-overflow-scrolling: touch; padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom); }
+.placement[hidden] { display: none; }
+.pl-card { max-width: 480px; margin: 0 auto; padding: 16px; display: flex; flex-direction: column; gap: 12px; min-height: 100%; box-sizing: border-box; }
+.pl-top { display: flex; align-items: center; gap: 12px; min-height: 44px; }
+.pl-x { appearance: none; border: 0; background: transparent; color: var(--ink); width: 44px; height: 44px; margin-left: -10px; border-radius: 8px; display: grid; place-items: center; cursor: pointer; flex: none; }
+.pl-welcome .pl-top { justify-content: space-between; }
+.pl-welcome .pl-x { margin: 0 -10px 0 0; }
+.pl-x:focus-visible, .pl-opt:focus-visible, .pl-link:focus-visible, .pl-row:focus-visible, .segbtn:focus-visible, .linkbtn:focus-visible, .switchrow:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+.pl-prog { flex: 1; display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: var(--muted); font-weight: 500; }
+.pl-prog i { display: block; height: 6px; border-radius: 3px; background: var(--line); overflow: hidden; }
+.pl-prog b { display: block; height: 100%; background: var(--accent); border-radius: 3px; transition: width .22s ease-out; }
+.pl-hero { display: grid; place-items: center; margin-top: 12px; }
+.pl-hero.sm { margin-top: 4px; }
+.pl-h { font-family: var(--f-display); font-weight: 700; font-size: 28px; line-height: 1.15; margin: 0; text-align: center; }
+.pl-lede { margin: 0; text-align: center; color: var(--muted); font-size: 16px; }
+.pl-q { margin: 12px 0 0; font-weight: 600; font-size: 17px; text-align: center; }
+.pl-opts { display: flex; flex-direction: column; gap: 10px; }
+.pl-opt { appearance: none; text-align: left; border: 1px solid var(--line); background: var(--surface); color: var(--ink); border-radius: 12px; padding: 14px 16px; min-height: 64px; cursor: pointer; display: flex; flex-direction: column; gap: 2px; font: inherit; }
+.pl-opt:hover { border-color: var(--accent); }
+.pl-opt b { font-size: 17px; font-weight: 600; }
+.pl-opt small { font-size: 14px; color: var(--muted); }
+.pl-link { appearance: none; border: 0; background: transparent; color: var(--accent); font: inherit; font-weight: 600; font-size: 15px; padding: 10px 12px; min-height: 44px; cursor: pointer; align-self: center; border-radius: 8px; }
+.pl-bubble { display: grid; grid-template-columns: 46px minmax(0, 1fr); gap: 10px; align-items: center; }
+.pl-bubble .bub { position: relative; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 8px 12px; font-size: 16px; line-height: 1.4; min-height: 48px; }
+.pl-bubble .bub::before { content: ""; position: absolute; left: -7px; top: 50%; margin-top: -6px; border: 6px solid transparent; border-right-color: var(--line); border-left: 0; }
+.pl-bubble .bub b { display: block; }
+.pl-bubble .bub span { color: var(--muted); }
+.pl-board { width: 100%; }
+.pl-board .board { width: 100%; flex: none; }
+.pl-board .board[data-zone] { box-shadow: 0 1px 0 rgba(0,0,0,.08), 0 10px 30px -12px rgba(30, 20, 10, .45); }
+@media (max-width: 600px) { .pl-board .board[data-zone] { box-shadow: none; } }
+.pl-acts { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.pl-acts .btn { min-height: 44px; padding: 10px 18px; font-size: 15px; }
+.pl-acts .btn:disabled { opacity: .45; cursor: default; }
+.pl-acts .btn[aria-disabled="true"] { opacity: .45; cursor: default; }
+.pl-score { margin: 0; text-align: center; font-size: 17px; font-weight: 600; color: var(--accent); }
+.pl-levels { display: flex; flex-direction: column; gap: 8px; margin-top: 4px; }
+.pl-row { appearance: none; font: inherit; color: var(--ink); text-align: left; display: flex; align-items: center; gap: 12px; border: 1px solid var(--line); background: var(--surface); border-radius: 12px; padding: 12px 14px; min-height: 56px; width: 100%; box-sizing: border-box; }
+button.pl-row { cursor: pointer; }
+.pl-row.on { border: 2px solid var(--accent); background: var(--accent-soft); padding: 11px 13px; }
+.pl-lv { flex: 1; display: flex; flex-direction: column; }
+.pl-lv b { font-size: 16px; }
+.pl-lv small { font-size: 13px; color: var(--muted); }
+.pl-you { flex: none; font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--accent-ink); background: var(--accent); border-radius: 999px; padding: 3px 10px; }
+.pl-note { margin: 0; text-align: center; color: var(--muted); font-size: 14px; }
+.pl-card .btn.big { flex: none; width: 100%; min-height: 48px; }
+.pl-card:focus { outline: none; }
+@media (prefers-reduced-motion: reduce) { .pl-prog b { transition: none; } }
+@media (max-width: 600px) { .pl-puzzle { padding-left: 0; padding-right: 0; } .pl-puzzle > :not(.pl-board) { margin-left: 16px; margin-right: 16px; } .pl-puzzle .pl-top { margin-left: 16px; } }
+.levelcard .seg { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; padding: 4px; border-radius: 10px; background: var(--bg); border: 1px solid var(--line); }
+.segbtn { appearance: none; border: 0; background: transparent; color: var(--ink); font: inherit; font-weight: 600; font-size: 14px; min-height: 44px; border-radius: 8px; cursor: pointer; padding: 0 4px; }
+.segbtn.on { background: var(--accent); color: var(--accent-ink); }
+.lvwho { margin: 8px 0 0; font-size: 14px; color: var(--muted); }
+.linkbtn { appearance: none; border: 0; background: transparent; color: var(--accent); font: inherit; font-weight: 600; font-size: 14px; padding: 10px 0; min-height: 44px; cursor: pointer; border-radius: 6px; }
+.switchrow { appearance: none; font: inherit; color: var(--ink); text-align: left; width: 100%; display: flex; align-items: center; gap: 12px; border: 0; border-top: 1px solid var(--line); background: transparent; padding: 12px 0 0; margin-top: 4px; cursor: pointer; min-height: 52px; }
+.switchrow > span { flex: 1; display: flex; flex-direction: column; }
+.switchrow b { font-size: 15px; font-weight: 600; }
+.switchrow small { font-size: 13px; color: var(--muted); }
+.sw { flex: none; width: 44px; height: 26px; border-radius: 13px; background: var(--line); position: relative; transition: background .2s ease-out; }
+.sw::after { content: ""; position: absolute; top: 3px; left: 3px; width: 20px; height: 20px; border-radius: 50%; background: var(--surface); box-shadow: 0 1px 2px rgba(0,0,0,.25); transition: transform .2s ease-out; }
+.switchrow[aria-checked="true"] .sw { background: var(--accent); }
+.switchrow[aria-checked="true"] .sw::after { transform: translateX(18px); }
+@media (prefers-reduced-motion: reduce) { .sw, .sw::after { transition: none; } }
+.raninote { position: fixed; z-index: 55; left: 50%; bottom: calc(16px + env(safe-area-inset-bottom)); transform: translateX(-50%); width: min(440px, calc(100vw - 32px)); box-sizing: border-box; display: grid; grid-template-columns: 46px minmax(0, 1fr) auto; gap: 10px; align-items: center; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; box-shadow: 0 10px 30px -12px rgba(0, 0, 0, .35); }
+.raninote[hidden] { display: none; }
+.raninote p { margin: 0; font-size: 15px; line-height: 1.4; }
+.raninote .btn { min-height: 44px; min-width: 56px; }
+
+/* ---------- Settings sheet + gear (S1 fix round) ---------- */
+.iconbtn { appearance: none; border: 1px solid var(--line); background: var(--surface); color: var(--ink); width: 44px; height: 44px; border-radius: 10px; display: grid; place-items: center; cursor: pointer; flex: none; padding: 0; }
+.iconbtn:hover { border-color: var(--accent); }
+.iconbtn:focus-visible, .sheet-panel .pl-x:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+header .engine-pill { margin-left: auto; min-width: 0; max-width: 60vw; }
+header .engine-pill span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+html.sheet-open, html.sheet-open body { overflow: hidden; }
+.sheet { position: fixed; inset: 0; z-index: 58; background: rgba(10, 16, 13, .45); display: flex; align-items: flex-end; justify-content: center; }
+.sheet[hidden] { display: none; }
+.sheet-panel { width: 100%; max-width: 480px; max-height: 90dvh; overflow-y: auto; box-sizing: border-box; background: var(--bg); border-radius: 16px 16px 0 0; padding: 8px 16px calc(16px + env(safe-area-inset-bottom)); box-shadow: 0 -10px 30px -12px rgba(0, 0, 0, .35); animation: sheetUp .22s ease-out; }
+.sheet-panel:focus { outline: none; }
+.sheet-top { display: flex; align-items: center; justify-content: space-between; min-height: 52px; }
+.sheet-top h2 { margin: 0; font-family: var(--f-display); font-size: 24px; }
+.sheet-top .pl-x { margin: 0 -10px 0 0; }
+@keyframes sheetUp { from { transform: translateY(24px); opacity: 0; } to { transform: none; opacity: 1; } }
+@media (min-width: 861px) { .sheet { align-items: center; } .sheet-panel { border-radius: 16px; } }
+@media (prefers-reduced-motion: reduce) { .sheet-panel { animation: none; } }
+.pl-live { position: relative; }
+/* Landscape phones: board left, Rani and buttons right, board capped to the screen height */
+@media (orientation: landscape) and (max-height: 600px) {
+  .pl-card.pl-puzzle { max-width: none; display: grid; grid-template-columns: min(calc(100dvh - 32px), 60vw) minmax(0, 1fr); grid-template-areas: "board top" "board bubble" "board acts" "board ."; grid-template-rows: auto auto auto 1fr; column-gap: 16px; row-gap: 12px; padding: 16px; min-height: 0; }
+  .pl-puzzle > :not(.pl-board) { margin-left: 0 !important; margin-right: 0 !important; }
+  .pl-puzzle .pl-top { grid-area: top; margin-left: 0; }
+  .pl-puzzle .pl-bubble { grid-area: bubble; }
+  .pl-puzzle .pl-board { grid-area: board; }
+  .pl-puzzle .pl-acts { grid-area: acts; }
+  .pl-board .board[data-zone] { box-shadow: none; border-radius: 6px; }
+}
+/* Narrow phones: keep the gear on screen; the engine pill shrinks to its status dot (text stays for screen readers) */
+@media (max-width: 400px) {
+  header .engine-pill { padding: 0; width: 24px; height: 24px; justify-content: center; flex: none; }
+  header .engine-pill span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+}
 </style>
 
 <div class="wrap">
   <header>
     <h1>Suresh's Chess Coach</h1>
     <p class="engine-pill" id="enginePill"><i></i><span>Loading Stockfish…</span></p>
+    <button class="iconbtn" id="settingsBtn" type="button" data-act="settings" aria-label="Settings" title="Settings"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></button>
   </header>
 
   <div class="app">
@@ -646,6 +751,14 @@ canvas.q3d { display: block; border-radius: 50%; background: radial-gradient(cir
     </aside>
   </div>
 </div>
+<div class="placement" id="placement" hidden></div>
+<div class="sheet" id="settingsSheet" hidden>
+  <div class="sheet-panel" role="dialog" aria-modal="true" aria-labelledby="settingsTitle" tabindex="-1">
+    <div class="sheet-top"><h2 id="settingsTitle">Settings</h2><button class="pl-x" type="button" data-act="settingsclose" aria-label="Close settings"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6 L18 18 M18 6 L6 18"/></svg></button></div>
+    <div class="card levelcard" id="levelCard"></div>
+  </div>
+</div>
+<div class="raninote" id="raniNote" role="status" hidden></div>
 <script src="vendor/chess.js"></script>
 <script src="js/engine.js"></script>
 <script src="js/tactics.js"></script>
@@ -658,4 +771,6 @@ canvas.q3d { display: block; border-radius: 50%; background: radial-gradient(cir
 <script src="js/coach3d.js"></script>
 <script src="js/ramayana3d.js"></script>
 <script src="js/puzzles.js"></script>
+<script src="js/profile.js"></script>
+<script src="js/placement.js"></script>
 <script src="js/app.js"></script>

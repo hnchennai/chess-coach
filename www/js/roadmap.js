@@ -78,7 +78,7 @@
   C.ROADMAP = [
     { stage: 1, level: 1, name: 'Rules and foundations', band: '0 to 800', target: 900, beat: 1,
       why: 'Theory first: how pieces move, special rules, notation and what pieces are worth. Then the first two skills that decide beginner games: spotting checkmate and not giving pieces away.',
-      method: ['Learn one idea, then do 5 to 10 tiny exercises on it right away (the Steps Method way).', 'Name squares and piece moves until it’s automatic. It frees your brain for thinking.', 'Play the Beginner engine with the coach on. Read every explanation.'],
+      method: ['Learn one idea, then do 5 to 10 tiny exercises on it right away (the Steps Method way).', 'Name squares and piece moves until it’s automatic. It frees your brain for thinking.', 'Play Rani’s practice partner with the coach on. Read every explanation.'],
       routine: ['10 min: one lesson step', '10 min: easy puzzles', '3 times a week: one game vs Beginner'],
       resources: [['Lichess Learn (free)', 'https://lichess.org/learn'], ['Steps Method, Step 1 workbook (Brunia and van Wijgerden)', 'https://newinchess.com/the-complete-step-by-step-method-and-all-additional-workbooks'], ['Bobby Fischer Teaches Chess (book)', '']] },
     { stage: 2, level: 2, name: 'Tactics', band: '800 to 1200', target: 1200, beat: 3,

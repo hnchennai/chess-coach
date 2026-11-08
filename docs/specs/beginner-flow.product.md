@@ -129,6 +129,7 @@ Status: approved by Suresh (2026-11-08).
 | D30 | Beginners' stage progress drops the puzzle-rating goal: a Beginner stage is done when its lessons are done and they beat Rani's partner. Next step after the lessons: "Beat Rani's practice partner" | Confirmed by Suresh |
 | D31 | Home never suggests lessons before the player's start point, for every level. Skipped lessons stay open in Learn | Confirmed by Suresh |
 | D32 | Beginners see no notation tip on move chips, and the chip's hover title drops the notation ("White knight to f3. Tap to see it on the board."). Tapping still shows the move on the board. Show everything brings the tip back | Confirmed by Suresh |
+| D33 | Course text, level 1 only (all levels read it): "the Beginner engine" / "the Casual engine" become "Rani's practice partner" and "(??)" goes, in the Opening principles last step and task, The blunder check task, and the stage 1 method on Home. Later-level course text (checkpoints, endgame drills, "(about 1000)") gets its own course-text pass later | Confirmed by Suresh |
 
 ### What each level sees after S2a
 | | Beginner | Improver | Club |

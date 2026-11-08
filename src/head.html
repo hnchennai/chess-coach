@@ -658,6 +658,28 @@ header h1 { margin-right: auto; } /* the gear stays right when the engine pill i
 .bhome .btn.big { flex: none; width: 100%; min-height: 52px; font-size: 17px; }
 .bhome .bh-alt { background: transparent; border-color: var(--muted); font-weight: 500; }
 .bhome .bh-alt:hover:not(:disabled) { border-color: var(--ink); }
+/* D51: short screens (height 500px or less, a phone held sideways): no board on Beginner Home either; Rani, the card and both
+   buttons in one centred column, compact enough that Continue is on the first screen (915x412, 844x390). */
+@media (max-height: 500px) {
+  html[data-bhome] .boardcol { display: none; }
+  html[data-bhome] .app { grid-template-columns: minmax(0, 1fr); }
+  html[data-bhome] .side { gap: 8px; }
+  .bhome { width: 100%; max-width: 480px; margin: 0 auto; gap: 8px; }
+  .bh-hero { display: grid; grid-template-columns: auto minmax(0, 1fr); grid-template-areas: "av bub" "chip bub"; column-gap: 12px; row-gap: 4px; align-items: center; padding-top: 0; }
+  .bh-av { grid-area: av; width: 56px; height: 56px; justify-self: center; }
+  .bh-av canvas, .bh-av svg { width: 56px !important; height: 56px !important; }
+  .bh-bub { grid-area: bub; max-width: none; padding: 8px 12px; text-align: left; }
+  .bh-bub::before { top: 50%; left: -7px; margin: -6px 0 0; border-top: 0; border-bottom: 1px solid var(--line); }
+  .bh-head { font-size: 16px; }
+  .bh-line { margin-top: 2px; font-size: 14px; }
+  .bh-streak { grid-area: chip; position: static; justify-self: center; gap: 4px; padding: 4px 8px; font-size: 12px; }
+  .bh-card { gap: 8px; padding: 10px 12px; }
+  .bh-ic { width: 40px; height: 40px; border-radius: 10px; font-size: 26px; }
+  .bh-kick { font-size: 12px; }
+  .bh-title { font-size: 16px; }
+  .bh-bar { height: 6px; }
+  .bhome .btn.big { min-height: 48px; font-size: 16px; }
+}
 /* Settings: Coach and pieces (D41) */
 .lookset { margin-top: 12px; }
 .settitle { margin: 0 0 10px; font-size: 17px; font-weight: 600; }

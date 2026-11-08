@@ -200,3 +200,36 @@ test('All copy: no em dashes, curly apostrophes only, no jargon (L8)', () => {
   assert.ok(!/stockfish|engine|rated|rating|accuracy|eval|~\s?\d|\d+%/i.test(t), 'no jargon: ' + (t.match(/stockfish|engine|rated|rating|accuracy|eval|~\s?\d|\d+%/i) || [])[0]);
   assert.ok(!/(^|[^\w])([KQRBN][a-h]?[1-8]?x?[a-h][1-8]|[a-h]x[a-h][1-8]|O-O)/.test(t), 'no notation');
 });
+
+test('F5: every Foundations lesson in the real course has its signed pair (no silent title-only fallback)', () => {
+  const ids = Array.from(UNITS.filter((u) => u.level === 1), (u) => u.id);
+  assert.ok(ids.length >= 7, 'Foundations lessons found: ' + ids);
+  for (const id of ids) {
+    assert.ok(Array.isArray(H.PAIRS[id]) && H.PAIRS[id].length === 2 && H.PAIRS[id].every((s) => typeof s === 'string' && s.length > 5), id + ' has a headline and a line');
+  }
+});
+
+test('D49: the ask-first note copy, exactly', () => {
+  assert.deepEqual(H.ASK, { text: 'You have a game going. Finish it first?', back: 'Back to my game', go: 'Start the lesson game' });
+  assert.ok(!/—|'/.test(Object.values(H.ASK).join(' ')), 'no em dash, curly apostrophes only');
+});
+
+test('D49: Continue asks first only for a lesson game with an unfinished game going', () => {
+  const opening = state('rules', Object.assign(done(...FOUND.slice(0, 5)), { opening: { learn: 1 } }));
+  const blunder = state('rules', Object.assign(done(...FOUND.slice(0, 6)), { blunder: { learn: 1, practice: 1 } }));
+  for (const s of [opening, blunder]) {
+    assert.equal(s.part, 'apply', s.unit.id + ': game task next');
+    assert.equal(H.askFirst(s, true), true, s.unit.id + ': asks with a game going');
+    assert.equal(H.askFirst(s, false), false, s.unit.id + ': no game going, no question');
+    const l = H.lines(s, 'rani', true);
+    assert.equal(l.go, 'ask'); assert.equal(l.button, 'Continue', 'the card itself does not change');
+    assert.equal(H.lines(s, 'rani', false).go, 'part');
+  }
+  const practice = state('rules', Object.assign(done(...FOUND.slice(0, 6)), { blunder: { learn: 1 } }));
+  assert.equal(practice.part, 'practice');
+  assert.equal(H.askFirst(practice, true), false, 'a practice part never asks');
+  assert.equal(H.lines(practice, 'rani', true).go, 'part');
+  assert.equal(H.askFirst(state('rules', {}), true), false, 'a Learn part never asks');
+  assert.equal(H.askFirst(state('rules', done(...FOUND)), true), false, 'the Beat card has Back to my game itself');
+  assert.equal(H.askFirst(state('rules', done(...FOUND), true), true), false, 'Keep practising never asks');
+});

@@ -17,6 +17,8 @@
   /* Decorative piece on the Continue card (aria-hidden in the app). */
   var ICON = { rules: 'n', special: 'r', board: 'p', values: 'q', mate: 'k', opening: 'b', blunder: 'n' };
   var FOUNDATIONS = 1;
+  /* D49: Rani's question before a lesson game would drop an unfinished game (signed copy). */
+  var ASK = { text: 'You have a game going. Finish it first?', back: 'Back to my game', go: 'Start the lesson game' };
 
   function startIndex(units, start) { for (var i = 0; i < units.length; i++) if (units[i].id === start) return i; return 0; }
   /* D45: Foundations lessons (course level 1) at or after the start point, in course order. An unknown start counts from the first unit. */
@@ -34,6 +36,11 @@
       if (!unitDone(u)) return { kind: 'lesson', unit: u, n: i + 1, m: m, done: done, part: nextPart(u), started: !!unitStarted(u) };
     }
     return { kind: hasWin ? 'practice' : 'beat', m: m, done: done };
+  }
+
+  /* D49: on Beginner Home, Continue asks first when its next part is a lesson game and a game is unfinished. */
+  function askFirst(s, ongoing) {
+    return !!(ongoing && s && s.kind === 'lesson' && s.part === 'apply' && s.unit && s.unit.apply && s.unit.apply.type === 'game');
   }
 
   /* coach: 'rani' | 'gaja' (D48: Gaja says "Rani’s practice partner" where Rani says "my practice partner").
@@ -55,7 +62,7 @@
     else say = PAIRS[u.id] || [u.title, '']; /* every Foundations lesson has a pair today; a future one shows its title */
     return { head: say[0], line: say[1], kicker: 'Lesson ' + s.n + ' of ' + s.m, title: u.title,
       bar: { done: s.done, m: s.m, text: s.done + ' of ' + s.m + ' lessons done' },
-      button: s.started ? 'Continue' : 'Start lesson', go: 'part', second: two.second, alt: two.alt, icon: ICON[u.id] || 'p', zone: 'learn' };
+      button: s.started ? 'Continue' : 'Start lesson', go: askFirst(s, ongoing) ? 'ask' : 'part', second: two.second, alt: two.alt, icon: ICON[u.id] || 'p', zone: 'learn' };
   }
 
   /* D43: the streak chip shows from 1 day. */
@@ -65,5 +72,5 @@
     return { text: t, label: 'Streak: ' + t };
   }
 
-  return { foundations: foundations, state: state, lines: lines, streak: streak, PAIRS: PAIRS };
+  return { foundations: foundations, state: state, lines: lines, streak: streak, askFirst: askFirst, PAIRS: PAIRS, ASK: ASK };
 });

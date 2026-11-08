@@ -1600,18 +1600,19 @@
   function drawNote() {
     var el = $('raniNote'), n = noteCur; if (!el) return;
     if (!n) { el.hidden = true; el.innerHTML = ''; el.className = 'raninote'; return; }
-    var offer = n.kind === 'offer';
-    el.className = 'raninote' + (offer ? ' offer' : '');
-    el.innerHTML = '<div class="rn-av">' + Avatar.coach(offer ? 'proud' : 'happy', 46) + '</div><p>' + esc(n.text) + '</p>' +
+    var offer = n.kind === 'offer', ask = n.kind === 'ask';
+    el.className = 'raninote' + (offer || ask ? ' offer' : '');
+    el.innerHTML = '<div class="rn-av">' + Avatar.coach(offer ? 'proud' : ask ? 'think' : 'happy', 46) + '</div><p>' + esc(n.text) + '</p>' +
       (offer ? '<div class="rn-btns"><button class="btn sm primary" type="button" data-act="offeryes">Yes, move me up</button><button class="btn sm" type="button" data-act="offerno">Not yet</button></div>'
+        : ask ? '<div class="rn-btns"><button class="btn sm primary" type="button" data-act="askback">' + esc(Home.ASK.back) + '</button><button class="btn sm" type="button" data-act="askgo">' + esc(Home.ASK.go) + '</button></div>'
         : '<button class="btn sm" type="button" data-act="notedone">OK</button>');
     el.hidden = false;
-    if (offer) focusOffer();
+    if (offer || ask) focusOffer();
   }
   /* D35: a note that asks a question takes keyboard focus, unless Settings or the level check is open (then when it closes) */
   function focusOffer() {
-    var sh = $('settingsSheet'), b = $('raniNote').querySelector('[data-act="offeryes"]');
-    if (!b || !noteCur || noteCur.kind !== 'offer' || (sh && !sh.hidden) || Placement.isOpen()) return;
+    var sh = $('settingsSheet'), b = $('raniNote').querySelector('[data-act="offeryes"], [data-act="askback"]');
+    if (!b || !noteCur || (noteCur.kind !== 'offer' && noteCur.kind !== 'ask') || (sh && !sh.hidden) || Placement.isOpen()) return;
     try { b.focus({ preventScroll: true }); } catch (e) {}
   }
   /* D35: Esc closes Rani's note without saving anything (an offer comes back at the next app start); focus goes to the tab */
@@ -1627,6 +1628,15 @@
     if (had) { var b = noteCur && el.querySelector('button'); if (b) b.focus(); else focusTab(); }
   }
   function hideNote() { nextNote(); }
+  /* D49: Beginner Home's Continue on a lesson game while a game is going: Rani asks first (one question at a time, key 'ask').
+     Esc closes it (keydown above) and keeps the old game; nothing is saved. Learn's Start buttons do not ask. */
+  function askFirst(u) { if (UNIT[u]) queueNote({ kind: 'ask', key: 'ask', text: Home.ASK.text, u: u }); }
+  function answerAsk(go) {
+    var n = noteCur; if (!n || n.kind !== 'ask') return;
+    noteCur = null;
+    if (go) { st.unitOpen = n.u; startPart(n.u, 'apply'); } else exitMode(true);
+    nextNote();
+  }
 
   /* ---------- Level-up offer (D13, D20, D21): Rani asks; nothing changes without a tap ---------- */
   var NEXT_LEVEL = { beginner: 'improver', improver: 'club' }, offerChecked = false;
@@ -1736,7 +1746,10 @@
   function renderBHome() {
     var el = $('bhome'); if (!el || !plain()) return;
     var s = homeState(), coach = Coach3D.get(), L = Home.lines(s, coach, gameOn()), sk = Home.streak(streakDays());
-    var act = { part: s.unit ? 'data-part="' + s.part + '" data-u="' + s.unit.id + '"' : '', game: 'data-act="recgame"', back: 'data-act="close"', puzzles: 'data-train="rated"' };
+    /* D50: "Back to my game" is exitMode(true), as today's Home button: an open lesson or puzzle set ends (the lesson starts
+       again at step 1; puzzle results so far are already saved). D49: a lesson game with a game going asks first. */
+    var u = s.unit ? s.unit.id : '';
+    var act = { part: u ? 'data-part="' + s.part + '" data-u="' + u + '"' : '', ask: 'data-act="bhask" data-u="' + u + '"', game: 'data-act="recgame"', back: 'data-act="close"', puzzles: 'data-train="rated"' };
     var html = '<div class="bh-hero"><div class="bh-av">' + Avatar.coach(s.kind === 'lesson' ? 'happy' : 'proud', 112) + '</div>' +
       '<div class="bh-bub"><h2 class="bh-head">' + esc(L.head) + '</h2>' + (L.line ? '<p class="bh-line">' + esc(L.line) + '</p>' : '') + '</div>' +
       (sk ? '<p class="bh-streak" role="img" aria-label="' + esc(sk.label) + '"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3c2 4 5 5 5 10a5 5 0 0 1-10 0c0-3 2-4 2-7 2 1 3 2 3 4"/></svg>' + esc(sk.text) + '</p>' : '') + '</div>' +
@@ -2093,6 +2106,9 @@
     if (d.act === 'notedone') { hideNote(); return; }
     if (d.act === 'offeryes') { answerOffer(true); return; }
     if (d.act === 'offerno') { answerOffer(false); return; }
+    if (d.act === 'bhask') { askFirst(d.u); return; }
+    if (d.act === 'askback') { answerAsk(false); return; }
+    if (d.act === 'askgo') { answerAsk(true); return; }
   });
 
   /* ---------- boot ---------- */

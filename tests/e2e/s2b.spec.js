@@ -1,6 +1,6 @@
 // E2E for slice S2b (Beginner Home, prototype A: Rani, one Continue card, a second button; board hidden on phones).
 // Run: S2B_VP=412 node tests/e2e/s2b.spec.js   (serves www/ itself; needs Playwright with Chromium). One viewport per process.
-// S2B_VP: 360 | 412 | 1280. S2B_SHOTS=<dir> saves screenshots. S2B_ONLY=<regex> runs matching cases.
+// S2B_VP: 360 | 412 | 1280 | 915 (a phone held sideways, 915x412). S2B_SHOTS=<dir> saves screenshots. S2B_ONLY=<regex> runs matching cases.
 const { chromium } = require('playwright');
 const http = require('http');
 const fs = require('fs');
@@ -12,10 +12,11 @@ const PORT = 8000 + Math.floor(Math.random() * 900);
 const URL = 'http://127.0.0.1:' + PORT + '/index.html';
 const SHOTS = process.env.S2B_SHOTS || '';
 const PKEY = 'suresh-chess-coach.profile.v1', GKEY = 'suresh-chess-coach.v1', TKEY = 'suresh-chess-coach.tab', CKEY = 'suresh-chess-coach.coach';
-const VIEWPORTS = [{ width: 360, height: 800 }, { width: 412, height: 915 }, { width: 1280, height: 900 }].filter((v) => !process.env.S2B_VP || String(v.width) === process.env.S2B_VP);
+const VIEWPORTS = [{ width: 360, height: 800 }, { width: 412, height: 915 }, { width: 1280, height: 900 }, { width: 915, height: 412 }].filter((v) => !process.env.S2B_VP || String(v.width) === process.env.S2B_VP);
 const ONLY = process.env.S2B_ONLY ? new RegExp(process.env.S2B_ONLY) : null;
 const NOW = Date.now(), DAY = 86400000;
 const PARTNER = 'Rani’s practice partner';
+const ASK = 'You have a game going. Finish it first?';
 const OFFER_B = 'Ready for Improver? You finished every Foundations lesson. Next come forks, pins and other tactics.';
 const BEFORE = require('./s2b-home-before.json'); // Improver and Club Home text from the build before S2b (AC11, AC12)
 const HOME_CARDS = ['#stageHero', '#today', '#stageCard', '#roadCard', '#lookCard', '#methodsCard'];
@@ -79,11 +80,25 @@ const getProf = (page) => page.evaluate(() => window.__coach.getProf());
 const st = (page, k) => page.evaluate((key) => window.__coach.st[key], k);
 const vis = (page, sel) => page.locator(sel).first().isVisible();
 const phone = (vp) => vp.width <= 600;
-const oneCol = (vp) => vp.width <= 860;
+// Beginner Home has no board: one-column layouts (D38, up to 860px wide) and short screens (D51, height 500px or less).
+const oneCol = (vp) => vp.width <= 860 || vp.height <= 500;
 const shot = async (page, vp, name) => { if (SHOTS) { await page.waitForTimeout(150); await page.screenshot({ path: path.join(SHOTS, vp.width + '_' + name + '.png') }); } };
 const noteText = async (page) => (await page.locator('#raniNote p').innerText()).trim();
 async function closeNote(page) { if (await vis(page, '#raniNote')) await page.locator('#raniNote [data-act="notedone"]').click(); }
 async function tabsShown(page) { return page.evaluate(() => ['coach', 'path', 'play', 'train', 'progress'].filter((t) => { const b = document.getElementById('tab-' + t); return b && b.offsetParent !== null; })); }
+// Plays a puzzle's solution on the board (the player's moves; the app plays the replies).
+async function solvePuzzle(page) {
+  for (let i = 0; i < 12; i++) {
+    await page.waitForFunction(() => { const z = window.__coach.st.pz; return z && (z.done || (!z.wait && !window.__coach.st.busy)); }, null, { timeout: 20000 });
+    const z = await page.evaluate(() => { const p = window.__coach.st.pz; return { done: p.done, step: p.step, mv: p.p.sol[p.step] }; });
+    if (z.done) return;
+    assert.ok(/^[a-h][1-8][a-h][1-8]/.test(z.mv), 'a player move in the solution: ' + z.mv);
+    await page.locator('#board .sq[data-sq="' + z.mv.slice(0, 2) + '"]').click();
+    await page.locator('#board .sq[data-sq="' + z.mv.slice(2, 4) + '"]').click();
+    await page.waitForFunction((s) => { const p = window.__coach.st.pz; return p.done || p.step !== s; }, z.step, { timeout: 20000 });
+  }
+  throw new Error('puzzle not solved');
+}
 async function finishLesson(page) {
   await page.waitForFunction(() => window.__coach.st.mode === 'lesson');
   for (let i = 0; i < 12 && (await st(page, 'mode')) === 'lesson'; i++) await page.locator('#navNext').click();
@@ -552,6 +567,151 @@ const cases = [
     if (phone(vp)) await fitsFirstScreen(page, vp, 'Gaja');
     await layoutRules(page, vp, 'Gaja');
     await shot(page, vp, 'beginner_home_gaja');
+    return page;
+  }],
+  ['S2b-13 / D49: with a game going, Continue on a lesson game asks first; Back to my game, Start the lesson game, Esc keeps the game', async (vp) => {
+    const p = prof({ course: Object.assign(done('rules', 'special', 'board', 'values', 'mate'), { opening: { learn: NOW - DAY } }) });
+    let page = await seeded(vp, p, { game: GAME_OPEN });
+    let b = await block(page);
+    assert.equal(b.head, 'Now try it in a real game.'); assert.equal(b.button, 'Continue'); assert.equal(b.second, 'Back to my game');
+    const hist = await page.evaluate(() => window.__coach.hist()), keep = await page.evaluate(([g, k]) => [localStorage.getItem(g), localStorage.getItem(k)], [GKEY, PKEY]);
+    const ask = async () => {
+      await page.locator('#bhome .bh-go').click();
+      await page.waitForSelector('#raniNote:not([hidden])');
+      assert.equal(await noteText(page), ASK);
+      assert.equal(await st(page, 'goal'), null, 'no lesson game started yet');
+      assert.deepEqual(await page.evaluate(() => window.__coach.hist()), hist, 'the old game is still there');
+    };
+    await ask();
+    assert.equal((await page.locator('#raniNote [data-act="askback"]').innerText()).trim(), 'Back to my game');
+    assert.equal((await page.locator('#raniNote [data-act="askgo"]').innerText()).trim(), 'Start the lesson game');
+    await page.waitForFunction(() => document.activeElement && document.activeElement.dataset.act === 'askback');
+    if (phone(vp)) {
+      const n = await page.locator('#raniNote').boundingBox(), t = await page.locator('.tabs').boundingBox();
+      assert.ok(n.y + n.height <= t.y + 0.5, 'the question sits above the nav');
+    }
+    await shot(page, vp, 'beginner_home_ask_first');
+    // Esc: the question closes, the old game stays, nothing is saved.
+    await page.keyboard.press('Escape');
+    assert.equal(await page.locator('#raniNote').isHidden(), true, 'Esc closes the question');
+    assert.equal(await st(page, 'tab'), 'coach'); assert.equal(await st(page, 'mode'), 'play');
+    assert.deepEqual(await page.evaluate(() => window.__coach.hist()), hist);
+    assert.deepEqual(await page.evaluate(([g, k]) => [localStorage.getItem(g), localStorage.getItem(k)], [GKEY, PKEY]), keep, 'nothing saved');
+    // Back to my game: the old game on Play.
+    await ask();
+    await page.locator('#raniNote [data-act="askback"]').click();
+    assert.equal(await page.locator('#raniNote').isHidden(), true);
+    assert.equal(await st(page, 'tab'), 'play'); assert.deepEqual(await page.evaluate(() => window.__coach.hist()), hist, 'the old game opens');
+    assert.equal(await st(page, 'goal'), null);
+    // Start the lesson game: as Continue does with no game going.
+    await page.locator('#tab-coach').click();
+    await ask();
+    await page.locator('#raniNote [data-act="askgo"]').click();
+    assert.equal(await page.locator('#raniNote').isHidden(), true);
+    assert.equal(await st(page, 'tab'), 'play');
+    assert.equal(await page.evaluate(() => window.__coach.st.goal && window.__coach.st.goal.unit), 'opening', 'the lesson game starts');
+    assert.ok((await page.evaluate(() => window.__coach.hist())).length <= 1, 'a new game (the partner may already have moved)');
+    assert.equal(await st(page, 'unitOpen'), 'opening');
+    await page.context().close();
+    // No game going: Continue starts the lesson game at once.
+    page = await seeded(vp, p);
+    await page.locator('#bhome .bh-go').click();
+    assert.equal(await page.evaluate(() => window.__coach.st.goal && window.__coach.st.goal.unit), 'opening');
+    assert.equal(await page.locator('#raniNote').isHidden(), true, 'no question without a game going');
+    await page.context().close();
+    // Learn's Start button does not change (D49).
+    page = await seeded(vp, p, { game: GAME_OPEN });
+    await page.locator('#tab-path').click();
+    await page.locator('#levels [data-unit="opening"]').click();
+    await page.locator('#unitView [data-part="apply"]').click();
+    assert.equal(await page.evaluate(() => window.__coach.st.goal && window.__coach.st.goal.unit), 'opening', 'Learn starts the game task directly');
+    assert.equal(await page.locator('#raniNote').isHidden(), true);
+    return page;
+  }],
+  ['S2b-4b / D50: Back to my game ends an open puzzle set; the puzzles already answered are kept', async (vp) => {
+    const page = await seeded(vp, prof({ course: done('rules', 'special', 'board') }), { game: GAME_OPEN });
+    const hist = await page.evaluate(() => window.__coach.hist());
+    await page.evaluate(() => window.__coach.trainStart('rated'));
+    await page.waitForFunction(() => window.__coach.st.mode === 'puzzle');
+    const id = await page.evaluate(() => window.__coach.st.ses.items[0].id);
+    await solvePuzzle(page);
+    assert.equal((await getProf(page)).puz[id].n, 1, 'the answer is recorded');
+    await page.locator('#tab-coach').click();
+    assert.equal((await block(page)).second, 'Back to my game');
+    await page.locator('#bhome .bh-alt').click();
+    assert.equal(await st(page, 'tab'), 'play'); assert.equal(await st(page, 'mode'), 'play');
+    assert.equal(await st(page, 'ses'), null, 'the puzzle set ended');
+    assert.deepEqual(await page.evaluate(() => window.__coach.hist()), hist, 'the old game is on the board');
+    assert.equal((await getProf(page)).puz[id].n, 1, 'answered puzzle kept');
+    assert.equal(await page.evaluate(([k, i]) => JSON.parse(localStorage.getItem(k)).puz[i].n, [PKEY, id]), 1, 'and saved');
+    return page;
+  }],
+  ['S2b-14 / D51: a sideways phone (915x412, 844x390) has no board on Beginner Home, one centred column, Continue on the first screen; tablets and desktop as D38', async (vp) => {
+    if (vp.width !== 915) return newPage(vp); // its viewports are set here; runs once, in the sideways process
+    let page;
+    const seeds = [['midlesson', prof({ course: Object.assign(done('rules', 'special', 'board'), { values: { learn: NOW - DAY } }), days: played(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11) })],
+      ['practice', prof({ levelOfferT: NOW - DAY, course: done(...FOUND), games: [WIN1], days: played(0, 1) })],
+      ['new', prof()]];
+    for (const v of [{ width: 915, height: 412 }, { width: 844, height: 390 }]) for (const [k, p] of seeds) {
+      page = await seeded(v, p);
+      await beginnerHome(page, v, k + ' ' + v.width + 'x' + v.height);
+      const r = await page.evaluate(() => {
+        const b = (s) => { const e = document.querySelector(s); const x = e.getBoundingClientRect(); return { top: x.top, bottom: x.bottom, left: x.left, right: x.right, width: x.width }; };
+        return { go: b('#bhome .bh-go'), card: b('#bhome .bh-card'), hero: b('#bhome .bh-hero'), block: b('#bhome'), w: document.documentElement.clientWidth, h: window.innerHeight, y: window.scrollY };
+      });
+      const why = k + ' at ' + v.width + 'x' + v.height;
+      assert.equal(r.y, 0);
+      assert.ok(r.go.top >= 0 && r.go.bottom <= r.h + 0.5, why + ': Continue fully on the first screen (' + Math.round(r.go.bottom) + ' of ' + r.h + ')');
+      assert.ok(r.block.width <= 500, why + ': one column, about 480px: ' + r.block.width);
+      assert.ok(Math.abs(r.block.left - (r.w - r.block.right)) <= 2, why + ': centred: ' + JSON.stringify(r.block));
+      assert.ok(r.hero.bottom <= r.card.top && r.card.bottom <= r.h + 60, why + ': Rani above the card');
+      if (k === 'midlesson') await shot(page, v, 'beginner_home_sideways');
+      if (v.width === 915 && k === 'new') {
+        await page.locator('#tab-play').click();
+        assert.equal(await vis(page, '.boardcol'), true, 'Play keeps the board sideways');
+        await page.locator('#tab-path').click();
+        assert.equal(await vis(page, '.boardcol'), true, 'Learn keeps the board sideways');
+        await page.locator('#tab-coach').click();
+        assert.equal(await vis(page, '.boardcol'), false);
+      }
+      await page.context().close();
+    }
+    // Tablets and desktop keep D38: no board up to 860px wide, the board on wider screens; the full-size Rani.
+    for (const v of [{ width: 768, height: 1024 }, { width: 1024, height: 768 }, { width: 1280, height: 900 }]) {
+      page = await seeded(v, prof());
+      assert.equal(await vis(page, '.boardcol'), v.width > 860, v.width + 'x' + v.height + ': board ' + (v.width > 860 ? 'shown' : 'hidden') + ' (D38)');
+      const av = await page.locator('#bhome .bh-av').boundingBox();
+      assert.ok(av.width >= 96 && av.width <= 120, v.width + 'x' + v.height + ': full-size avatar ' + av.width);
+      if (v.width !== 1280) await page.context().close();
+    }
+    return page;
+  }],
+  ['F6: under reduced motion Rani is drawn once per mood and size, then stays still', async (vp) => {
+    const page = await seeded(vp, prof({ course: done('rules') }), { ctx: { reducedMotion: 'reduce' } });
+    await page.waitForFunction(() => window.Coach3D.isReady(), null, { timeout: 20000 });
+    await page.waitForTimeout(800);
+    const painted = await page.evaluate(() => { const c = document.querySelector('#bhome canvas.q3d'), d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; let n = 0; for (let i = 3; i < d.length; i += 4) if (d[i]) n++; return n; });
+    assert.ok(painted > 200, 'Rani is drawn on Beginner Home: ' + painted);
+    await page.evaluate(() => { window.__draws = 0; const o = CanvasRenderingContext2D.prototype.drawImage; CanvasRenderingContext2D.prototype.drawImage = function () { if (this.canvas && this.canvas.classList.contains('q3d')) window.__draws++; return o.apply(this, arguments); }; });
+    await page.waitForTimeout(1500);
+    assert.equal(await page.evaluate(() => window.__draws), 0, 'no redraws while nothing changes');
+    await page.locator('#tab-play').click(); // the Play coach (another size) was drawn once at start, while hidden
+    await page.waitForTimeout(1500);
+    const playPx = await page.evaluate(() => { const c = document.querySelector('#coachAv canvas.q3d'), d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; let k = 0; for (let i = 3; i < d.length; i += 4) if (d[i]) k++; return k; });
+    assert.ok(playPx > 200, 'the Play coach is drawn: ' + playPx);
+    const n = await page.evaluate(() => window.__draws);
+    assert.equal(n, 0, 'showing an already drawn Rani does not redraw her');
+    await page.locator('#tab-coach').click();
+    await page.locator('#settingsBtn').click();
+    await page.locator('#lookSet [data-coach="gaja"]').click();
+    await page.locator('#lookSet [data-coach="rani"]').click(); // a new canvas: drawn once
+    await page.keyboard.press('Escape');
+    await page.waitForFunction((m) => window.__draws > m, n, { timeout: 3000 }); // a new canvas (new mood or size) is drawn
+    const m2 = await page.evaluate(() => window.__draws);
+    await page.waitForTimeout(1200);
+    assert.equal(await page.evaluate(() => window.__draws), m2, 'then still again');
+    const painted2 = await page.evaluate(() => { const c = document.querySelector('#bhome canvas.q3d'), d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; let k = 0; for (let i = 3; i < d.length; i += 4) if (d[i]) k++; return k; });
+    assert.ok(painted2 > 200, 'Rani drawn again after a change');
     return page;
   }]
 ];

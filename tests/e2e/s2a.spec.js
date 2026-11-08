@@ -496,26 +496,28 @@ const cases = [
     assert.equal(await page.locator('#levels [data-unit="rules"]').count(), 1, 'earlier lessons stay open in Learn');
     return page;
   }],
-  ['S1-2 / S1-3 / D30: a Beginner stage ignores the rating goal; Next step "Beat Rani’s practice partner"; Today "10 puzzles"', async (vp) => {
+  // S2b: D30's "Beat Rani’s practice partner" next step now lives in Beginner Home's Continue card (D47); the stage hero,
+  // milestones and Today card are not on Beginner Home any more (D10, D40), so the rating-goal rule is checked through the card.
+  ['S1-2 / S1-3 / D30: a Beginner stage ignores the rating goal; next step "Beat Rani’s practice partner" (S2b: on the Continue card)', async (vp) => {
     let page = await seeded(vp, prof({ start: 'board', levelT: NOW - DAY, levelOfferT: NOW - DAY, rating: 600, course: done('board', 'values', 'mate', 'opening', 'blunder') }));
-    const hero = await page.locator('#stageHero').innerText();
-    assert.ok(hero.includes('Next step: Beat Rani’s practice partner'), hero);
-    assert.ok(hero.includes('Play slowly, blunder-check every move, and review the game after.'));
-    assert.ok(/1 of 2 milestones/i.test(hero), 'rating goal not counted: ' + hero.split('\n').filter((l) => /milestone/i.test(l)).join(' | '));
-    const miles = await page.locator('#stageCard .miles').innerText();
-    assert.ok(miles.includes('Beat Rani’s practice partner') && !/rating|engine/i.test(miles), miles);
-    const t2 = await page.locator('#today .step3.z-train').innerText();
-    assert.ok(t2.includes('10 puzzles') && t2.includes('0 of 10 today.') && !/rated|rating/i.test(t2), t2);
+    assert.equal(await vis(page, '#stageHero'), false, 'S2b: no stage hero on Beginner Home');
+    assert.equal((await page.locator('#bhome .bh-kick').textContent()).trim(), 'Next step');
+    assert.equal((await page.locator('#bhome .bh-title').textContent()).trim(), 'Beat Rani’s practice partner', 'lessons done, rating 600: the next step is the partner, not rated puzzles');
+    assert.equal((await page.locator('#bhome .bh-go').textContent()).trim(), 'Play now');
+    assert.ok(!/rating|rated|engine/i.test(await page.locator('#bhome').innerText()));
     assert.ok(!/Ten puzzles a day/.test(await page.locator('.app').innerText()));
     await page.context().close();
-    // Lessons done and a win against the partner: stage 1 is done even with a low rating.
+    // Lessons done and a win against the partner: stage 1 is done even with a low rating (S2b: Keep practising, D39).
     page = await seeded(vp, prof({ start: 'board', levelT: NOW - DAY, levelOfferT: NOW - DAY, rating: 600, course: done('board', 'values', 'mate', 'opening', 'blunder'), games: [{ id: 'g1', d: NOW - DAY, r: 'W', user: 'w', level: 1, sans: ['f3', 'e5', 'g4', 'Qh4#'], ann: {} }] }));
-    assert.ok(/Stage 2 of 6/i.test(await page.locator('#stageHero').innerText()), 'stage 1 done without the rating goal');
+    assert.equal((await page.locator('#bhome .bh-kick').textContent()).trim(), 'Practice', 'stage 1 done without the rating goal');
     return page;
   }],
-  ['D25: a locked Beginner’s Today card says "Learn it, then play it"', async (vp) => {
+  // S2b: D25's Today heading no longer shows on Beginner Home, because the Today card is gone (spec, S2b layout).
+  ['D25 (superseded by S2b): a locked Beginner’s Home has no Today card; Rani’s Continue card instead', async (vp) => {
     const page = await seeded(vp, prof());
-    assert.equal((await page.locator('#today h3').textContent()).trim(), 'Learn it, then play it');
+    assert.equal(await vis(page, '#today'), false, 'no Today card on Beginner Home');
+    assert.equal(await vis(page, '#bhome'), true);
+    assert.equal((await page.locator('#bhome .bh-go').textContent()).trim(), 'Start lesson');
     return page;
   }],
   ['D26: no accuracy % for a Beginner in review or Progress; Improver keeps it', async (vp) => {
@@ -687,18 +689,24 @@ const cases = [
     return page;
   }],
   // ---------------- Fix round 2 ----------------
-  ['R2-1: a Beginner’s beat milestone is Rani’s practice partner (OPP 1) at every stage', async (vp) => {
+  // S2b: the roadmap and stage hero are not on Beginner Home any more; the guard moves to the Continue card and second button.
+  ['R2-1: a Beginner’s Home never starts an Improver (OPP 3) game; the partner is OPP 1 (S2b: Continue card)', async (vp) => {
     const lv12 = ['board', 'values', 'mate', 'opening', 'blunder', 'fork', 'pin', 'disc', 'patterns', 'check2'];
     const win1 = { id: 'g1', d: NOW - DAY, r: 'W', user: 'b', level: 1, sans: ['f3', 'e5', 'g4', 'Qh4#'], ann: {} };
-    const page = await seeded(vp, prof({ start: 'board', levelT: NOW - 30 * DAY, levelOfferT: NOW - 3600000, course: done(...lv12), games: [win1] }));
+    let page = await seeded(vp, prof({ start: 'board', levelT: NOW - 30 * DAY, levelOfferT: NOW - 3600000, course: done(...lv12), games: [win1] }));
     assert.equal(await page.locator('#raniNote').isHidden(), true);
-    await page.locator('#roadCard [data-stage="2"]').click();
-    const mile = page.locator('#stageCard .mile', { hasText: 'Beat Rani’s practice partner' });
-    assert.equal(await mile.count(), 1);
-    assert.ok((await mile.getAttribute('class')).includes('done'), 'stage 2: the level 1 win counts');
-    assert.ok(!/Stage 2 of 6/i.test(await page.locator('#stageHero').innerText()), 'stage 2 is done');
-    await page.locator('#stageHero [data-go="next"]').click();
+    assert.equal((await page.locator('#bhome .bh-kick').textContent()).trim(), 'Practice', 'the level 1 win counts');
+    await page.locator('#bhome .bh-go').click();
+    await page.waitForFunction(() => window.__coach.st.mode === 'puzzle');
     assert.notEqual(await st(page, 'level'), 3, 'never starts an Improver (OPP 3) game');
+    await page.locator('#tab-coach').click();
+    await page.locator('#bhome .bh-alt').click();
+    assert.equal(await st(page, 'level'), 1, 'Just play a game: Rani’s practice partner');
+    await page.context().close();
+    page = await seeded(vp, prof({ start: 'board', levelT: NOW - 30 * DAY, levelOfferT: NOW - 3600000, course: done(...lv12) }));
+    assert.equal((await page.locator('#bhome .bh-title').textContent()).trim(), 'Beat Rani’s practice partner');
+    await page.locator('#bhome .bh-go').click();
+    assert.equal(await st(page, 'level'), 1, 'Play now: Rani’s practice partner (OPP 1)');
     return page;
   }],
   ['R2-5: Show everything off re-decorates the strip chips without notation', async (vp) => {

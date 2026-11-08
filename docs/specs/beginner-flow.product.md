@@ -36,6 +36,9 @@ Size: L. Status: draft v3, owner decisions in; waiting for Suresh's yes on scena
 | D11 | Suresh already has a Play Console account | Confirmed by Suresh |
 | D12 | Hints stay unlimited for every level (today's behaviour) | Confirmed by Suresh |
 | D13 | Moving up: Rani offers it, nothing changes without a tap. Beginner gets the offer when all level 1 lessons are done; Improver when all level 2 lessons are done. "Not yet" asks again after 7 days | Confirmed by Suresh (offer); timing delegated to Claude |
+| D14 | Slice 1 wording signed off: "Settings", "See all tabs, scores and move lists now", "You stopped after N.", "Yes, well spotted!", "Good try. On to the next one.", "5 tiny puzzles, about a minute", "6 puzzles, easy to tricky", "Skip, I'll choose later" | Confirmed by Suresh |
+| D15 | A retake that ends as Beginner opens the next lesson, like first launch | Confirmed by Suresh |
+| D16 | Web: the check may show for a moment before a slow Claude-account load restores the level; accepted until slice 3 | Confirmed by Suresh |
 
 ## Flow
 1. First launch (no saved progress on the phone):

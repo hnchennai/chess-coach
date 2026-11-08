@@ -5,6 +5,9 @@ var Coach3D = (function () {
   var choice = 'rani'; try { choice = localStorage.getItem(KEY) || 'rani'; } catch (e) {}
   var T = null, R = null, scene, cam, Q = {}, ready = false, failed = false, raf = 0, lastT = 0, st = typeof WeakMap !== 'undefined' ? new WeakMap() : null;
   var DPR = Math.min(window.devicePixelRatio || 1, 2);
+  /* S2b (DESIGN.md 8): under prefers-reduced-motion Rani holds one still pose (no bob, turn, spin or blink) */
+  var RM = window.matchMedia ? window.matchMedia('(prefers-reduced-motion: reduce)') : null;
+  function still() { return !!(RM && RM.matches); }
   var MOODS = { neutral: 1, happy: 1, proud: 1, think: 1, worried: 1, shocked: 1 };
 
   function name() { return choice === 'gaja' ? 'Coach Gaja' : 'Queen Rani'; }
@@ -140,7 +143,7 @@ var Coach3D = (function () {
     for (var i = 0; i < list.length; i++) {
       var c = list[i]; if (!force && !visible(c)) continue; any = true;
       var s = st ? st.get(c) : c.__q; if (!s) { s = { born: t }; if (st) st.set(c, s); else c.__q = s; }
-      pose(c.dataset.mood, t + i * 0.37, t - s.born);
+      if (still()) pose(c.dataset.mood, 1, 9); else pose(c.dataset.mood, t + i * 0.37, t - s.born);
       R.render(scene, cam);
       var x = c.getContext('2d'); x.clearRect(0, 0, c.width, c.height); x.drawImage(R.domElement, 0, 0, c.width, c.height);
     }
@@ -148,7 +151,7 @@ var Coach3D = (function () {
   }
   function loop(now) {
     raf = 0; if (!ready || choice !== 'rani') return;
-    if (!document.hidden && now - lastT > 33) { lastT = now; drawAll(now, false); }
+    if (!document.hidden && now - lastT > (still() ? 400 : 33)) { lastT = now; drawAll(now, false); }
     raf = requestAnimationFrame(loop);
   }
   function start() { if (!raf && ready && choice === 'rani') raf = requestAnimationFrame(loop); }

@@ -498,6 +498,9 @@ const cases = [
   }],
   // S2b: D30's "Beat Rani’s practice partner" next step now lives in Beginner Home's Continue card (D47); the stage hero,
   // milestones and Today card are not on Beginner Home any more (D10, D40), so the rating-goal rule is checked through the card.
+  // Not repeated under Show everything on purpose: there the full Home is an Improver's at her stage (D40, D8, D22), so the
+  // rating goal counts ("1 of 3 milestones", "Rated puzzles to reach 900"), the milestones name the engine and Today says
+  // "10 rated puzzles". R2-1's stage 2 milestone becomes "Beat the Improver engine (~1000)". Same in fix round 1 (F4).
   ['S1-2 / S1-3 / D30: a Beginner stage ignores the rating goal; next step "Beat Rani’s practice partner" (S2b: on the Continue card)', async (vp) => {
     let page = await seeded(vp, prof({ start: 'board', levelT: NOW - DAY, levelOfferT: NOW - DAY, rating: 600, course: done('board', 'values', 'mate', 'opening', 'blunder') }));
     assert.equal(await vis(page, '#stageHero'), false, 'S2b: no stage hero on Beginner Home');

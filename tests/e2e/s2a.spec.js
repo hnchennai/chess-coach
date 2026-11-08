@@ -808,6 +808,29 @@ const cases = [
     const desc = await page.evaluate(() => { const t = document.getElementById('tab-play'), id = t.getAttribute('aria-describedby'); return id && document.getElementById(id) ? document.getElementById(id).textContent : null; });
     assert.equal(desc, 'The board is here');
     return page;
+  }],
+  // ---------------- Fix round 3 ----------------
+  ['N-1: at 360x640 a long Beginner strip is scrolled above the nav after the partner moves', async (vp) => {
+    if (vp.width !== 360) return newPage(vp);
+    const long = Object.assign({}, GAME_CHECK, { fb: Object.assign({}, GAME_CHECK.fb, { text: 'This gives away material or position. Your bishop on d2 had no defender, so the queen took it for free. Before every move, look at the square your piece stands on and ask what can take it.' }) });
+    const page = await seeded({ width: 360, height: 640 }, prof({ course: done('rules', 'special') }), long, 'play');
+    await page.waitForFunction(() => { const s = document.querySelector('#coachStrip .bub'), n = document.querySelector('.tabs'); return s && n && s.getBoundingClientRect().bottom <= n.getBoundingClientRect().top; }, null, { timeout: 3000 }).catch(() => {});
+    const r = await page.evaluate(() => ({ strip: document.querySelector('#coachStrip').getBoundingClientRect().bottom, nav: document.querySelector('.tabs').getBoundingClientRect().top, board: document.getElementById('board').getBoundingClientRect().top }));
+    assert.ok(r.strip <= r.nav, 'strip bottom above the nav top: ' + JSON.stringify(r));
+    assert.ok(r.board >= 0, 'board top still on screen');
+    assert.ok((await page.locator('#coachStrip').innerText()).includes('Rani’s partner took your bishop. Check!'));
+    return page;
+  }],
+  ['N-2: Progress tile labels stay on one line without overflow (360, 412)', async (vp) => {
+    if (!phone(vp)) return newPage(vp);
+    for (const p of [prof({ course: done('rules', 'special', 'board') }), prof({ level: 'club', start: 'kq', rating: 1300 })]) {
+      const page = await seeded(vp, p);
+      await page.locator('#tab-progress').click();
+      const tiles = await page.locator('#stats > div').evaluateAll((els) => els.map((d) => { const s = d.querySelector('span'), b = d.getBoundingClientRect(), r = s.getBoundingClientRect(); return { t: s.textContent, lines: s.getClientRects().length, over: r.right > b.right - 1 || r.left < b.left }; }));
+      for (const t of tiles) { assert.equal(t.lines, 1, p.level + ': one line: ' + t.t); assert.equal(t.over, false, p.level + ': no overflow: ' + t.t); }
+      if (p.level === 'club') return page;
+      await page.context().close();
+    }
   }]
 ];
 

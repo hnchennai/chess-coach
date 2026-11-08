@@ -397,3 +397,12 @@ test('lessonOfferDue: the level was completed after the last offer answer and th
   assert.equal(P.lessonOfferDue(P.migrate(Object.assign({}, base, { levelT: 3000 })), UNITS), false, 'level changed after finishing');
   assert.equal(P.lessonOfferDue(P.migrate(Object.assign({}, base, { levelT: 50, course: { board: at(100) } })), UNITS), false, 'not complete');
 });
+
+// ---------- S2a fix round 3 (N-3): a clock running ahead cannot bring the offer back after "Not yet" ----------
+test('lessonOfferDue caps a future finish time at now', () => {
+  const now = 1000 * DAY, fut = now + DAY, at = (t) => ({ learn: t, practice: t, apply: t });
+  const p = P.migrate({ v: 5, level: 'beginner', start: 'board', levelT: now - 9 * DAY, levelOfferT: now, course: { board: at(100), values: at(200), mate: at(300), opening: at(400), blunder: at(fut) } });
+  assert.equal(P.lessonOfferDue(p, UNITS, null, now), false, 'finished "tomorrow", Not yet now: no offer');
+  p.levelOfferT = now - DAY;
+  assert.equal(P.lessonOfferDue(p, UNITS, null, now), true, 'still offered when the answer is older than now');
+});

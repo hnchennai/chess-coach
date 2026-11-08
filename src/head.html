@@ -609,6 +609,9 @@ header h1 { margin-right: auto; } /* the gear stays right when the engine pill i
 .coachstrip.full .bub span { display: block; -webkit-line-clamp: unset; overflow: visible; }
 /* U-7: Progress with the rating tile hidden: 3 tiles in one row */
 .stats.n3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+/* N-2: tile labels stay on one line; a step smaller and a little less padding on narrow phones so they fit */
+.stats span { white-space: nowrap; }
+@media (max-width: 420px) { .stats div { padding: 8px; } .stats span { font-size: 11px; } }
 /* Rani's note with the level-up offer: two buttons under the text */
 .raninote.offer { grid-template-columns: 46px minmax(0, 1fr); }
 .raninote .rn-btns { grid-column: 2; display: flex; flex-wrap: wrap; gap: 8px; }

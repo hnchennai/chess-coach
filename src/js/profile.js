@@ -140,8 +140,9 @@
   }
   /* The level was completed after the last offer answer and the last level change: offer at the next settled start,
      even if the session that completed it ended before the offer could show. */
-  function lessonOfferDue(p, units, unitDone) {
-    var t = levelDoneAt(p, units, unitDone);
+  function lessonOfferDue(p, units, unitDone, now) {
+    /* N-3: a finish time from a clock running ahead counts as now, so "Not yet" (stored as now) still wins */
+    var t = Math.min(levelDoneAt(p, units, unitDone), now != null ? +now : Date.now());
     return t > 0 && t > Math.max(+p.levelOfferT || 0, +p.levelT || 0);
   }
   var WEEK = 7 * 86400000;

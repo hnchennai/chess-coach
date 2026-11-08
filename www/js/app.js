@@ -1363,7 +1363,7 @@
     return parts.map(function (x, i) { return i % 2 ? x : esc(String(x).replace(/<[^>]+>/g, '').replace(/\s+/g, ' ')); }).join('').trim();
   }
   function renderStrip() {
-    var el = $('coachStrip'), t = '', x = '', mood = 'neutral', pl = plain();
+    var el = $('coachStrip'), t = '', x = '', mood = 'neutral', pl = plain(), pw = '';
     if (st.mode === 'play') {
       var f = st.fb || {}; t = f.title || ''; x = f.text || (pl ? f.words || (f.noSan ? f.mv : '') : f.mv) || '';
       mood = f.mood || (f.cls && f.cls !== 'info' ? Avatar.moodFor(f.cls) : /Hint/.test(t) ? 'think' : 'neutral');
@@ -1371,7 +1371,7 @@
         /* D34: a Beginner's strip reads in order of play: your grade, your feedback, then Rani's partner's move.
            The partner's "why" stays in the coach card, so check is never said twice. */
         if (f.cls && CLS[f.cls]) t = CLS[f.cls].title + '.';
-        var pw = !st.busy ? partnerWords() : '';
+        pw = !st.busy ? partnerWords() : '';
         if (pw) x = (x ? x + ' ' : '') + pw;
       } else if (st.opp && !st.busy && st.opp.why.length) x = (x ? x + ' ' : '') + 'Engine replied ' + st.opp.san + ': ' + st.opp.why[st.opp.why.length - 1].h;
     }
@@ -1391,6 +1391,19 @@
     var key = mood + t + x + Coach3D.get();
     if (el.dataset.k === key) return; el.dataset.k = key;
     el.innerHTML = t || x ? Avatar.coach(mood, 46) + '<div class="bub"><b>' + esc(stripText(t)) + '</b><span>' + chipText(x) + '</span></div>' : '';
+    if (pl && pw) revealStrip(el);
+  }
+  /* N-1: on phones, once the partner's move shows in a Beginner's strip, keep the strip above the fixed nav. Only when the
+     board's top stays on screen (or is already off it), never during a drag or while focus is in a panel or sheet. */
+  function revealStrip(el) {
+    if (!window.matchMedia || !matchMedia('(max-width: 600px)').matches || !window.requestAnimationFrame) return;
+    requestAnimationFrame(function () {
+      var a = document.activeElement, nav = document.querySelector('.tabs');
+      if (drag || !nav || !el.isConnected || (a && a.closest && a.closest('.panel, .sheet, .placement, .raninote'))) return;
+      var d = el.getBoundingClientRect().bottom + 8 - nav.getBoundingClientRect().top, bt = $('board').getBoundingClientRect().top;
+      if (d <= 0 || (bt >= 0 && bt - d < 0)) return;
+      window.scrollBy({ top: d, behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+    });
   }
   function setTheme(id) {
     if (!Avatar.SETS[id]) return;
@@ -1657,7 +1670,7 @@
   function releaseOffer() {
     if (!heldOffer.start && !heldOffer.lesson) return;
     if (Placement.isOpen() || inActivity()) return;
-    var ok = (heldOffer.lesson && heldOffer.lesson === prof.level && Profile.levelComplete(prof, UNITS, unitDone)) || (heldOffer.start && (Profile.offerDue(prof, Date.now(), UNITS, unitDone) || Profile.lessonOfferDue(prof, UNITS, unitDone)));
+    var ok = (heldOffer.lesson && heldOffer.lesson === prof.level && Profile.levelComplete(prof, UNITS, unitDone)) || (heldOffer.start && (Profile.offerDue(prof, Date.now(), UNITS, unitDone) || Profile.lessonOfferDue(prof, UNITS, unitDone, Date.now())));
     heldOffer = { start: false, lesson: null };
     if (ok) offerLevelUp();
   }

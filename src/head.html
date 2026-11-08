@@ -628,4 +628,37 @@ header h1 { margin-right: auto; } /* the gear stays right when the engine pill i
   .raninote { bottom: calc(56px + 8px + env(safe-area-inset-bottom)); }
 }
 @media (max-width: 400px) { header .engine-pill i { width: 12px; height: 12px; } }
+/* ---------- S2b: Beginner Home, prototype A (html[data-bhome] = a Beginner with Show everything off, on Home) ---------- */
+:root { --streak-ink: #7A4E0E; --streak-bg: #FBEBC9; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --streak-ink: #F2C46B; --streak-bg: #3A2E14; } }
+:root[data-theme="dark"] { --streak-ink: #F2C46B; --streak-bg: #3A2E14; }
+/* D38: one-column layouts hide the board on Beginner Home so Rani, the card and both buttons fit the first screen */
+@media (max-width: 860px) { html[data-bhome] .boardcol { display: none; } }
+.bhome { display: flex; flex-direction: column; gap: 14px; }
+.bh-hero { position: relative; display: flex; flex-direction: column; align-items: center; gap: 12px; padding-top: 2px; }
+.bh-av { width: 112px; height: 112px; display: grid; place-items: center; }
+.bh-av .gaja { width: 112px; height: 112px; }
+.bh-bub { position: relative; box-sizing: border-box; width: 100%; max-width: 380px; background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 12px 16px; text-align: center; }
+.bh-bub::before { content: ""; position: absolute; top: -7px; left: 50%; margin-left: -6px; width: 12px; height: 12px; background: var(--surface); border-left: 1px solid var(--line); border-top: 1px solid var(--line); transform: rotate(45deg); }
+.bh-head { margin: 0; font-family: var(--f-body); font-size: 17px; font-weight: 600; line-height: 1.35; text-wrap: balance; }
+.bh-line { margin: 4px 0 0; font-size: 15px; line-height: 1.4; color: var(--muted); text-wrap: balance; }
+.bh-streak { position: absolute; top: 0; right: 0; margin: 0; display: inline-flex; align-items: center; gap: 6px; font-size: 14px; font-weight: 600; line-height: 1; color: var(--streak-ink); background: var(--streak-bg); padding: 6px 10px; border-radius: 999px; }
+.bh-streak svg { flex: none; }
+.bh-card { display: flex; flex-direction: column; gap: 14px; border-radius: 16px; padding: 16px; }
+.bh-row { display: flex; align-items: center; gap: 14px; }
+.bh-ic { flex: none; width: 56px; height: 56px; border-radius: 14px; display: grid; place-items: center; font-family: var(--f-piece); font-size: 36px; line-height: 1; }
+.bh-ic.z-learn { background: var(--z-learn-soft); color: var(--z-learn); }
+.bh-ic.z-play { background: var(--accent-soft); color: var(--accent); }
+.bh-ic.z-train { background: var(--z-train-soft); color: var(--z-train); }
+.bh-tt { min-width: 0; }
+.bh-kick { margin: 0; font-size: 13px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--accent); }
+.bh-title { margin: 2px 0 0; font-size: 18px; font-weight: 600; line-height: 1.3; }
+.bh-bar { height: 8px; border-radius: 999px; background: var(--line); overflow: hidden; }
+.bh-bar i { display: block; height: 100%; border-radius: 999px; background: var(--accent); }
+.bhome .btn.big { flex: none; width: 100%; min-height: 52px; font-size: 17px; }
+.bhome .bh-alt { background: transparent; border-color: var(--muted); font-weight: 500; }
+.bhome .bh-alt:hover:not(:disabled) { border-color: var(--ink); }
+/* Settings: Coach and pieces (D41) */
+.lookset { margin-top: 12px; }
+.settitle { margin: 0 0 10px; font-size: 17px; font-weight: 600; }
 </style>

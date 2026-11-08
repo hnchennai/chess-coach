@@ -63,6 +63,8 @@
 
       <!-- HOME -->
       <div class="panel" id="panel-coach" role="tabpanel" aria-labelledby="tab-coach">
+        <!-- S2b: Beginner Home (prototype A). Shown for a Beginner with Show everything off; the cards below are the full Home. -->
+        <div class="bhome" id="bhome" hidden></div>
         <div class="card stagehero" id="stageHero"></div>
         <div class="card today" id="today"></div>
         <div class="card" id="stageCard"></div>
@@ -164,6 +166,8 @@
   <div class="sheet-panel" role="dialog" aria-modal="true" aria-labelledby="settingsTitle" tabindex="-1">
     <div class="sheet-top"><h2 id="settingsTitle">Settings</h2><button class="pl-x" type="button" data-act="settingsclose" aria-label="Close settings"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6 L18 18 M18 6 L6 18"/></svg></button></div>
     <div class="card levelcard" id="levelCard"></div>
+    <!-- S2b, D41: Coach and pieces for every level (the same markup as Home's card, rendered by renderLook) -->
+    <section class="card lookset" aria-labelledby="lookSetTitle"><h3 class="settitle" id="lookSetTitle">Coach and pieces</h3><div id="lookSet"></div></section>
   </div>
 </div>
 <div class="raninote" id="raniNote" role="status" hidden></div>

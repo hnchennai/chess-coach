@@ -119,6 +119,16 @@ Status: approved by Suresh (2026-11-08).
 | D20 | Level-up offer counts lessons from the player's start point. A Beginner who started at "Board and notation" gets it after "The blunder check", without the two skipped lessons | Confirmed by Suresh |
 | D21 | When the offer shows: right after the lesson that completes the level, and at app start once 7 days have passed since "Not yet" or since a level change in Settings. One Rani note at a time | Delegated to Claude |
 | D22 | Show everything also shows the engine pill and the opponent picker (it reveals every element, as D8 says) | Delegated to Claude |
+| D23 | Beginners never read "Stockfish" or "the engine". The opponent is "Rani's partner"; analysis is Rani speaking as "I": "Exactly the move I'd play.", "I slightly preferred ♞ f3.", "Rani's partner to move", "Rani's partner wins this one.", "This is the best move here." Improver and Club unchanged | Confirmed by Suresh |
+| D24 | "Safe or blunder?" items for Beginners read "White wants to play this move." (the board arrow shows it), no notation | Confirmed by Suresh |
+| D25 | Until Train unlocks, a Beginner's Today card heading is "Learn it, then play it" | Confirmed by Suresh |
+| D26 | Accuracy % (review, Progress history) is hidden for Beginners unless Show everything is on. Move grades in words stay | Confirmed by Suresh |
+| D27 | New copy uses the app's curly apostrophe (’), as S1 did. Capture sentences follow the signed pattern for every piece ("You took a queen.") | Delegated to Claude |
+| D28 | King and queen moves read "Rani's partner moved the queen." / "You moved your queen."; capture plus promotion reads "took your rook and turned a pawn into a queen." | Delegated to Claude (extends the signed pattern) |
+| D29 | Improver and Club players updated from 1.0.7 (start "How the pieces move") get Home at their level: Next step, Today and the roadmap start at their level's first unfinished lesson. Their stored start and finished lessons do not change, and unfinished earlier lessons stay open in Learn | Confirmed by Suresh |
+| D30 | Beginners' stage progress drops the puzzle-rating goal: a Beginner stage is done when its lessons are done and they beat Rani's partner. Next step after the lessons: "Beat Rani's practice partner" | Confirmed by Suresh |
+| D31 | Home never suggests lessons before the player's start point, for every level. Skipped lessons stay open in Learn | Confirmed by Suresh |
+| D32 | Beginners see no notation tip on move chips, and the chip's hover title drops the notation ("White knight to f3. Tap to see it on the board."). Tapping still shows the move on the board. Show everything brings the tip back | Confirmed by Suresh |
 
 ### What each level sees after S2a
 | | Beginner | Improver | Club |

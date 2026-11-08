@@ -75,6 +75,6 @@ test('checkmate replaces the sentence', () => {
 test('no move gives an empty string; no em dash in any sentence', () => {
   assert.equal(W.say(null, true), '');
   const fens = [['rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1', 'Nf3'], ['r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1', 'O-O'], ['r6k/1P6/8/8/8/8/8/4K3 w - - 0 1', 'bxa8=Q+']];
-  for (const [f, s] of fens) for (const t of both(mv(f, s))) assert.ok(!/—/.test(t), t);
+  for (const [f, s] of fens) for (const t of both(mv(f, s))) assert.ok(!/\u2014/.test(t), t);
   assert.equal(W.PARTNER, 'Rani’s practice partner');
 });

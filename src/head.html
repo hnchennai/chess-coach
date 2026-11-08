@@ -585,4 +585,40 @@ html.sheet-open, html.sheet-open body { overflow: hidden; }
   header .engine-pill { padding: 0; width: 24px; height: 24px; justify-content: center; flex: none; }
   header .engine-pill span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 }
+/* ---------- S2a: interface by level (html[data-level], html[data-showall]) ---------- */
+/* Beginners: no eval strip, engine pill, Moves card (with its legend and tip), opponent picker or rating tag, unless Show everything */
+html[data-level="beginner"]:not([data-showall]) #evalbar,
+html[data-level="beginner"]:not([data-showall]) #movesCard,
+html[data-level="beginner"]:not([data-showall]) #oppPick,
+html[data-level="beginner"]:not([data-showall]) #oppLevel,
+html[data-level="beginner"]:not([data-showall]) #enginePill,
+html[data-level="improver"]:not([data-showall]) #enginePill { display: none; }
+header h1 { margin-right: auto; } /* the gear stays right when the engine pill is hidden */
+/* Engine pill: each state has its own shape, so it never relies on colour alone */
+.engine-pill i { flex: none; box-sizing: border-box; }
+.engine-pill[data-state="loading"] i { background: transparent; border: 2px solid var(--c-inacc); border-radius: 50%; }
+.engine-pill[data-state="ready"] i { background: var(--c-best); border: 0; border-radius: 50%; }
+.engine-pill[data-state="failed"] i { background: var(--c-inacc); border: 0; border-radius: 1px; transform: rotate(45deg); }
+/* 3 or 5 tabs share the width evenly */
+.tabs { grid-template-columns: none; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); }
+/* Beginners: the move line under the verdict is a plain sentence, not mono notation */
+.verdict .mv.words { font-family: var(--f-body); font-size: 14px; }
+/* The partner's move in words on the Play panel (Beginners): a sentence, not an all-caps label */
+.eyebrow.words { text-transform: none; letter-spacing: 0; font-size: 15px; font-weight: 600; color: var(--ink); }
+/* Rani's note with the level-up offer: two buttons under the text */
+.raninote.offer { grid-template-columns: 46px minmax(0, 1fr); }
+.raninote .rn-btns { grid-column: 2; display: flex; flex-wrap: wrap; gap: 8px; }
+.raninote .rn-btns .btn { flex: 1 1 auto; }
+/* Level check: the close (X) sits top right on every screen */
+.pl-result .pl-top { justify-content: space-between; }
+.pl-result .pl-x { margin: 0 -10px 0 0; }
+.pl-puzzle .pl-x { order: 2; margin: 0 -10px 0 0; }
+/* Phones: bottom nav fixed to the bottom for every level; content and Rani's note stay above it */
+@media (max-width: 600px) {
+  .tabs { position: fixed; z-index: 45; left: 0; right: 0; bottom: 0; box-sizing: border-box; height: calc(56px + env(safe-area-inset-bottom)); padding: 4px 4px calc(4px + env(safe-area-inset-bottom)); gap: 4px; border-width: 1px 0 0; border-radius: 0; box-shadow: 0 -4px 16px -10px rgba(0, 0, 0, .3); }
+  .tab { min-height: 44px; padding: 4px 2px; justify-content: center; }
+  .wrap { padding-bottom: calc(28px + 56px + env(safe-area-inset-bottom)); }
+  .raninote { bottom: calc(56px + 8px + env(safe-area-inset-bottom)); }
+}
+@media (max-width: 400px) { header .engine-pill i { width: 12px; height: 12px; } }
 </style>

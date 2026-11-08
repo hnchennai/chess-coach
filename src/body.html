@@ -2,7 +2,7 @@
 <div class="wrap">
   <header>
     <h1>Suresh's Chess Coach</h1>
-    <p class="engine-pill" id="enginePill"><i></i><span>Loading Stockfish…</span></p>
+    <p class="engine-pill" id="enginePill" role="status" aria-label="Loading Stockfish…" data-state="loading"><i aria-hidden="true"></i><span>Loading Stockfish…</span></p>
     <button class="iconbtn" id="settingsBtn" type="button" data-act="settings" aria-label="Settings" title="Settings"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></button>
   </header>
 
@@ -89,7 +89,7 @@
           <div class="tip" id="vTip" hidden></div>
         </div>
         <div class="card opp" id="oppCard" hidden>
-          <p class="eyebrow">Why the engine played <span class="mono" id="oppMove"></span></p>
+          <p class="eyebrow" id="oppHead">Why the engine played <span class="mono" id="oppMove"></span></p>
           <ul class="why" id="oppWhy"></ul>
         </div>
         <div class="card" id="thinkCard">
@@ -109,7 +109,7 @@
             <label for="colorSel">Play as
               <select id="colorSel"><option value="w">White</option><option value="b">Black</option><option value="r">Random</option></select>
             </label>
-            <label for="levelSel">Opponent
+            <label for="levelSel" id="oppPick">Opponent
               <select id="levelSel"></select>
             </label>
             <button class="btn" id="newBtn" type="button">Start new game</button>
@@ -123,10 +123,10 @@
         <div class="znote" id="znote-train" hidden></div>
         <div class="card session" id="sessionCard" hidden></div>
         <div class="card">
-          <p class="eyebrow">Rated puzzles</p>
-          <p class="lede">Puzzles picked at your level. Your puzzle rating goes up when you solve and down when you miss.</p>
+          <p class="eyebrow" id="ratedHead">Rated puzzles</p>
+          <p class="lede" id="ratedLede">Puzzles picked at your level. Your puzzle rating goes up when you solve and down when you miss.</p>
           <div class="trainbtns">
-            <button class="btn primary" type="button" data-train="rated">Start 10 rated puzzles</button>
+            <button class="btn primary" type="button" data-train="rated" id="ratedBtn">Start 10 rated puzzles</button>
             <button class="btn" type="button" data-train="review" id="reviewDueBtn">Review missed</button>
             <button class="btn" type="button" data-train="safety">Safe or blunder?</button>
           </div>

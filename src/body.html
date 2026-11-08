@@ -1,0 +1,167 @@
+
+<div class="wrap">
+  <header>
+    <h1>Suresh's Chess Coach</h1>
+    <p class="engine-pill" id="enginePill"><i></i><span>Loading Stockfish…</span></p>
+    <button class="iconbtn" id="settingsBtn" type="button" data-act="settings" aria-label="Settings" title="Settings"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></button>
+  </header>
+
+  <div class="app">
+    <section class="boardcol" aria-label="Board">
+      <div class="modebar" id="modebar" hidden>
+        <div class="modeinfo"><span class="modetag" id="modeTag">Puzzle</span><span id="modeText"></span></div>
+        <button class="btn sm" id="modeExit" type="button">Close</button>
+      </div>
+      <div class="player">
+        <div class="pvtag" id="pvTag" role="status" hidden></div>
+        <div class="who"><span class="swatch" id="oppSwatch"></span><span id="oppName">Engine</span> <span class="tag" id="oppLevel"></span> <span class="thinking" id="thinking" hidden>thinking…</span></div>
+        <div class="caps" id="oppCaps"></div>
+        <button class="v3d" id="v3dBtn" type="button" aria-pressed="false" title="Switch between the flat board and the 3D board">3D view</button>
+      </div>
+      <div class="boardrow">
+        <div class="evalbar" id="evalbar" title="Who is better"><div class="fill" id="evalfill"></div><div class="evalnum" id="evalnum">0.0</div></div>
+        <div class="board" id="board">
+          <div class="grid" id="grid"></div>
+          <svg class="arrow" id="arrow" viewBox="0 0 8 8" aria-hidden="true"></svg>
+          <div class="banner" id="banner" hidden><div><b id="bannerTitle"></b><span id="bannerText"></span><div class="bannerbtns" id="bannerBtns"></div></div></div>
+        </div>
+      </div>
+      <div class="coachstrip" id="coachStrip" aria-live="polite"></div>
+      <div class="player">
+        <div class="who"><span class="swatch" id="youSwatch"></span>You</div>
+        <div class="caps" id="youCaps"></div>
+      </div>
+      <div class="controls" id="playControls">
+        <button class="btn primary" id="hintBtn" type="button">Hint</button>
+        <button class="btn" id="undoBtn" type="button">Take back</button>
+        <button class="btn" id="reviewBtn" type="button">Review</button>
+        <button class="btn" id="flipBtn" type="button">Flip</button>
+      </div>
+      <div class="controls" id="navControls" hidden>
+        <button class="btn" id="navFirst" type="button" aria-label="First">«</button>
+        <button class="btn" id="navPrev" type="button">‹ Prev</button>
+        <span class="navpos" id="navPos"></span>
+        <button class="btn" id="navNext" type="button">Next ›</button>
+        <button class="btn" id="navLast" type="button" aria-label="Last">»</button>
+      </div>
+      <div class="controls" id="quizControls" hidden>
+        <button class="btn big safe" id="qSafe" type="button">Safe</button>
+        <button class="btn big danger" id="qBlunder" type="button">Blunder</button>
+      </div>
+      <p class="sync" id="sync" role="status">Connecting to your account…</p>
+    </section>
+
+    <aside class="side">
+      <div class="tabs" role="tablist">
+        <button class="tab" role="tab" id="tab-coach" aria-selected="true" data-tab="coach" type="button"><svg class="ti" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11 L12 4 L21 11"/><path d="M5 10 V20 H19 V10"/><path d="M10 20 V14 H14 V20"/></svg><span>Home</span></button>
+        <button class="tab z-learn" role="tab" id="tab-path" aria-selected="false" data-tab="path" type="button"><svg class="ti" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 5 C6 4 9 4 12 6 C15 4 18 4 21 5 V19 C18 18 15 18 12 20 C9 18 6 18 3 19 z"/><path d="M12 6 V20"/></svg><span>Learn</span><i class="live-dot" title="The board is here"></i></button>
+        <button class="tab z-train" role="tab" id="tab-train" aria-selected="false" data-tab="train" type="button"><svg class="ti" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.2"/></svg><span>Train</span><i class="live-dot" title="The board is here"></i></button>
+        <button class="tab z-play" role="tab" id="tab-play" aria-selected="false" data-tab="play" type="button"><svg class="ti" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 20 H15 M8 17 H16 M10 17 L10.5 11 M14 17 L13.5 11 M9 11 H15 M12 11 C9 9 9 5 12 4 C15 5 15 9 12 11"/></svg><span>Play</span><i class="live-dot" title="The board is here"></i></button>
+        <button class="tab" role="tab" id="tab-progress" aria-selected="false" data-tab="progress" type="button"><svg class="ti" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20 V10 M10 20 V4 M16 20 V13 M22 20 H2"/></svg><span>Progress</span></button>
+      </div>
+
+      <!-- HOME -->
+      <div class="panel" id="panel-coach" role="tabpanel" aria-labelledby="tab-coach">
+        <div class="card stagehero" id="stageHero"></div>
+        <div class="card today" id="today"></div>
+        <div class="card" id="stageCard"></div>
+        <div class="card" id="roadCard"></div>
+        <div class="card" id="lookCard"></div>
+        <div class="card" id="methodsCard"></div>
+      </div>
+
+      <!-- LEARN -->
+      <div class="panel" id="panel-path" role="tabpanel" aria-labelledby="tab-path" hidden>
+        <div class="znote" id="znote-path" hidden></div>
+        <div id="unitView" hidden></div>
+        <div id="levels"></div>
+      </div>
+
+      <!-- PLAY -->
+      <div class="panel" id="panel-play" role="tabpanel" aria-labelledby="tab-play" hidden>
+        <div class="znote" id="znote-play" hidden></div>
+        <div class="card goalcard" id="goalCard" hidden></div>
+        <div class="coach v-info" id="coach" aria-live="polite">
+          <div class="avwrap" id="coachAv"></div>
+          <p class="eyebrow">Your move</p>
+          <div class="verdict"><div class="sym" id="sym">♙</div><div><h2 id="vTitle">Your move</h2><div class="mv" id="vMove"></div></div></div>
+          <p id="vText"></p>
+          <div class="tip" id="vTip" hidden></div>
+        </div>
+        <div class="card opp" id="oppCard" hidden>
+          <p class="eyebrow">Why the engine played <span class="mono" id="oppMove"></span></p>
+          <ul class="why" id="oppWhy"></ul>
+        </div>
+        <div class="card" id="thinkCard">
+          <p class="eyebrow">Think it through</p>
+          <div class="cct" id="cct"></div>
+          <div class="plan" id="plan"></div>
+        </div>
+        <div class="card" id="movesCard">
+          <p class="eyebrow">Moves</p>
+          <div class="moves" id="moves"></div>
+          <div class="legend"><span><b>!</b>best</span><span><b>✓</b>good</span><span><b>?!</b>inaccuracy</span><span><b>?</b>mistake</span><span><b>??</b>blunder</span></div>
+          <p class="sanhint">Tip: hover or tap any move, like <span class="san" tabindex="0" data-san="Nf3"><span class="fig">♞︎</span>f3</span>, to see how to read it.</p>
+        </div>
+        <div class="card" id="newCard">
+          <p class="eyebrow">New game</p>
+          <div class="settings">
+            <label for="colorSel">Play as
+              <select id="colorSel"><option value="w">White</option><option value="b">Black</option><option value="r">Random</option></select>
+            </label>
+            <label for="levelSel">Opponent
+              <select id="levelSel"></select>
+            </label>
+            <button class="btn" id="newBtn" type="button">Start new game</button>
+          </div>
+          <p class="note" id="newConfirm" hidden>Your current game isn't finished. Tap again to abandon it.</p>
+        </div>
+      </div>
+
+      <!-- TRAIN -->
+      <div class="panel" id="panel-train" role="tabpanel" aria-labelledby="tab-train" hidden>
+        <div class="znote" id="znote-train" hidden></div>
+        <div class="card session" id="sessionCard" hidden></div>
+        <div class="card">
+          <p class="eyebrow">Rated puzzles</p>
+          <p class="lede">Puzzles picked at your level. Your puzzle rating goes up when you solve and down when you miss.</p>
+          <div class="trainbtns">
+            <button class="btn primary" type="button" data-train="rated">Start 10 rated puzzles</button>
+            <button class="btn" type="button" data-train="review" id="reviewDueBtn">Review missed</button>
+            <button class="btn" type="button" data-train="safety">Safe or blunder?</button>
+          </div>
+        </div>
+        <div class="card">
+          <p class="eyebrow">Train one theme</p>
+          <div class="puzrow" id="themeList"></div>
+        </div>
+        <div class="card">
+          <p class="eyebrow">Opening drills</p>
+          <div class="puzrow" id="bookList"></div>
+        </div>
+        <div class="card">
+          <p class="eyebrow">Endgame drills</p>
+          <div class="puzrow" id="drillList"></div>
+        </div>
+      </div>
+
+      <!-- PROGRESS -->
+      <div class="panel" id="panel-progress" role="tabpanel" aria-labelledby="tab-progress" hidden>
+        <div class="card"><p class="eyebrow">Where you are</p><div class="stats" id="stats"></div></div>
+        <div class="card focus" id="focusCard"><p class="eyebrow">Your coach says</p><div id="focus"></div></div>
+        <div class="card"><p class="eyebrow">Themes</p><div id="themeStats"></div></div>
+        <div class="card"><p class="eyebrow">Recent games</p><div id="history"></div></div>
+        <p class="credit">Analysis by Stockfish 19 (GPLv3, stockfishchess.org) via stockfish.js. Puzzles mined from engine games and verified by Stockfish.</p>
+        <p class="credit">3D marble set and board: “A Beautiful Game” by the MaterialX Project (ASWF), glTF conversion by Ed Mackey, licensed <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener">CC BY 4.0</a>. Simplified and resized for this app. Three.js (MIT) draws the 3D view.</p>
+      </div>
+    </aside>
+  </div>
+</div>
+<div class="placement" id="placement" hidden></div>
+<div class="sheet" id="settingsSheet" hidden>
+  <div class="sheet-panel" role="dialog" aria-modal="true" aria-labelledby="settingsTitle" tabindex="-1">
+    <div class="sheet-top"><h2 id="settingsTitle">Settings</h2><button class="pl-x" type="button" data-act="settingsclose" aria-label="Close settings"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6 L18 18 M18 6 L6 18"/></svg></button></div>
+    <div class="card levelcard" id="levelCard"></div>
+  </div>
+</div>
+<div class="raninote" id="raniNote" role="status" hidden></div>

@@ -108,7 +108,7 @@ Size: L. Status: draft v3, owner decisions in; waiting for Suresh's yes on scena
 - Google login on the web, iOS, leaderboards and achievements, payments, Play Store release, new course content.
 
 ## Slice S2a: level-based interface (details)
-Status: approved by Suresh (2026-11-08).
+Status: approved by Suresh (2026-11-08). Shipped in PR #3 (Android v1.0.20).
 
 ### Decisions
 | # | Decision | Source |

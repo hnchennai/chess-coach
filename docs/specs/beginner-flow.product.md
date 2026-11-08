@@ -200,6 +200,9 @@ Status: approved by Suresh (2026-11-08). Applies to a Beginner with Show everyth
 | D46 | The Continue card follows the first unfinished Foundations lesson at or after the start point, then D30's "Beat Rani's practice partner", then Keep practising (D39). Button: "Start lesson" for a lesson not started yet, "Continue" for one already started; it opens the next part (learn, practice or game task) | Delegated to Claude; confirmed by Suresh in the scenarios |
 | D47 | "Beat Rani's practice partner" card: kicker "Next step", button "Play now" (or "Back to my game" with an unfinished game). No second button in this state, so there is one action | Delegated to Claude; confirmed by Suresh in the scenarios |
 | D48 | With Coach Gaja chosen, Gaja shows on Beginner Home and the lines say "Rani’s practice partner" where Rani's lines say "my practice partner" | Delegated to Claude; confirmed by Suresh in the scenarios |
+| D49 | With an unfinished game, a Continue card whose next part is a lesson game (Opening principles, The blunder check) asks first. Rani's note: "You have a game going. Finish it first?" with "Back to my game" and "Start the lesson game". The old game is dropped only on "Start the lesson game"; Esc closes the question and keeps the old game. Learn's Start buttons do not change | Confirmed by Suresh |
+| D50 | "Back to my game" on Beginner Home ends an open lesson or puzzle set, as today's Home button does: the lesson starts again at step 1 next time, puzzle results so far are kept | Confirmed by Suresh |
+| D51 | Beginner Home also hides the board on short screens (height 500px or less, a phone held sideways), with Rani, the card and both buttons in one column so Continue is on the first screen. Desktop and tablets keep the board | Confirmed by Suresh |
 
 ### Beginner Home layout (prototype A)
 - Top: Rani (or Gaja), her speech bubble (headline + one line), streak chip from 1 day.
@@ -227,6 +230,7 @@ Status: approved by Suresh (2026-11-08). Applies to a Beginner with Show everyth
   - The blunder check: "Today: one quick check before every move." / "It stops most lost pieces."
 - Lesson half done, after Foundations: as in the state table above.
 - Buttons: "Start lesson", "Continue", "Just play a game", "Back to my game", "Play now", "Start 10 puzzles". Streak chip: "1 day", "N days".
+- Ask-first note (D49): "You have a game going. Finish it first?" Buttons: "Back to my game", "Start the lesson game".
 
 ### Scenarios
 1. Given Priya is a new Beginner on a 412px phone (start "How the pieces move", nothing done), when she opens Home, then she sees no board, Rani saying "Today you’ll learn how the pieces move.", a card "Lesson 1 of 7" / "How the pieces move" with an empty bar and "Start lesson", and "Just play a game" below it, with no streak chip and Home, Learn and Play fixed at the bottom. All of it fits on the first screen.
@@ -241,6 +245,8 @@ Status: approved by Suresh (2026-11-08). Applies to a Beginner with Show everyth
 10. Given Priya is on a 1280px desktop, then the board stays left and Rani's Home sits on the right.
 11. Given Arjun is an Improver, then his Home is unchanged (Next step, Today's steps, roadmap).
 12. Given Priya changes her level from Improver to Beginner in Settings, then Home switches to Rani's Home at once (and back when she changes again).
+13. Given Priya has an unfinished game and her next step is the Opening principles game, when she taps Continue, then Rani asks "You have a game going. Finish it first?". "Back to my game" opens the old game; "Start the lesson game" starts the lesson game; Esc closes the question and keeps the old game.
+14. Given Priya holds her phone sideways (915x412), then Beginner Home has no board and the Continue button is on the first screen.
 
 ## Devil's advocate
 - The check can feel like an exam. Rani frames it as "let me see where to start", one puzzle per screen, Skip always visible, 6 puzzles max (7 with "Try Club?").

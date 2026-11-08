@@ -37,7 +37,11 @@ jobs:
         run: npm install
 
       - name: Create the Android project
-        run: npx cap add android
+        run: |
+          npx cap add android
+          # GitHub release downloads (where Gradle now lives) can be slow; give the Gradle download 5 minutes, not 10 seconds
+          sed -i 's/^networkTimeout=.*/networkTimeout=300000/' android/gradle/wrapper/gradle-wrapper.properties
+          grep networkTimeout android/gradle/wrapper/gradle-wrapper.properties
 
       - name: App icon and splash screen
         run: npx capacitor-assets generate --android --iconBackgroundColor '#cdb6ee' --splashBackgroundColor '#f4f1ea'

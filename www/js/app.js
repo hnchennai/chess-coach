@@ -1563,7 +1563,7 @@
 
   /* ---------- persistence ---------- */
   /* Sync safety: no push until this session's first pull has finished (merged, or cloud confirmed empty). */
-  var cloud = { game: null, prof: null, gt: null, pt: null, ready: false, busy: null, tries: 0, retry: null }, KSEEN = 'suresh-chess-coach.cloudSeen', RETRY = [2000, 5000, 15000];
+  var cloud = { game: null, prof: null, gt: null, pt: null, ready: false, busy: null, tries: 0, retry: null }, KSEEN = 'suresh-chess-coach.cloudSeen', RETRY = [2000, 5000, 15000, 60000];
   function snapshot() { return { sans: G.history(), user: st.user, level: st.level, ann: st.ann, notes: st.notes, tags: st.tags, fb: st.fb, opp: st.opp, evalW: st.evalW, flipped: st.flipped, recorded: st.recorded, goal: st.goal, t: st.t || 0 }; }
   function save() { st.t = Date.now(); var s = snapshot(); lsSet(STORE, s); push('game', s); }
   function saveProfile() {
@@ -1600,35 +1600,39 @@
     else if (G.turn() === st.user && !st.think) analyseForUser().then(render);
     render();
   }
-  function mergeProfile(c) {
-    if (!c) return false;
-    var before = prof;
-    prof = Profile.merge(prof, c);
+  function afterMerge(before) {
     if (prof.theme && prof.theme !== before.theme && Avatar.SETS[prof.theme] && prof.theme !== st.theme) { st.theme = prof.theme; lsSet('suresh-chess-coach.pieces', prof.theme); }
     if (prof.level && (prof.level !== before.level || prof.levelT !== before.levelT || prof.placed !== before.placed)) {
       if (Placement.isOpen() && !before.level) Placement.close();
       if (!before.level || before.provisional) showNote('Welcome back, I restored your level.');
       applyLevel();
     }
-    return true;
   }
   function pullCloud() {
     if (!cloud.game) return Promise.resolve();
     if (cloud.busy) return cloud.busy;
     clearTimeout(cloud.retry); cloud.retry = null;
     cloud.busy = Promise.all([cloud.game.get(), cloud.prof.get()]).then(function (r) {
-      var c = r[0].exists ? r[0].data() : null, localT = st.t || 0, pushGame = false;
-      if (c && c.sans && (c.t || 0) > localT && !st.busy && !drag && st.mode === 'play') { if (applySaved(c)) { lsSet(STORE, c); st.think = null; resumeGame(); } }
-      else if ((!c || localT > (c.t || 0)) && G.history().length) pushGame = true;
-      mergeProfile(r[1].exists ? r[1].data() : null); prof.provisional = false; lsSet(PSTORE, prof);
+      var c = null, pc = null, localT = st.t || 0, pushGame = false;
+      try { c = r[0].exists ? r[0].data() : null; } catch (e) { c = null; }
+      pc = r[1].exists ? r[1].data() : null; /* a profile that exists but can't be read must retry, never count as empty */
+      /* a bad cloud game or a render error must never block the profile merge or later syncs */
+      try {
+        if (c && Array.isArray(c.sans) && (c.t || 0) > localT && !st.busy && !drag && st.mode === 'play') { if (applySaved(c)) { lsSet(STORE, c); st.think = null; resumeGame(); } }
+        else if ((!c || !Array.isArray(c.sans) || localT > (c.t || 0)) && G.history().length) pushGame = true;
+      } catch (e) { pushGame = G.history().length > 0; }
+      var before = prof;
+      if (pc) prof = Profile.merge(prof, pc); /* if this throws, nothing is pushed and the pull retries */
+      try { afterMerge(before); } catch (e) {}
+      prof.provisional = false; lsSet(PSTORE, prof);
       cloud.ready = true; cloud.tries = 0; lsSet(KSEEN, true);
       if (pushGame) push('game', snapshot());
       push('prof', prof);
-      if (st.tab === 'path') renderPath(); if (st.tab === 'coach') renderCoach(); if (st.tab === 'progress') renderProgress(); if (st.tab === 'train') renderTrain();
+      try { if (st.tab === 'path') renderPath(); if (st.tab === 'coach') renderCoach(); if (st.tab === 'progress') renderProgress(); if (st.tab === 'train') renderTrain(); } catch (e) {}
       syncNote('Synced to your Claude account. Open it on any device to continue.', true);
     }).catch(function () {
       syncNote('Couldn’t reach your account. Saved on this device.', false);
-      if (!cloud.ready && cloud.tries < RETRY.length) { var ms = RETRY[cloud.tries++]; cloud.retry = setTimeout(pullCloud, ms); }
+      if (!cloud.ready) { var ms = RETRY[Math.min(cloud.tries++, RETRY.length - 1)]; cloud.retry = setTimeout(pullCloud, ms); }
     }).then(function () { cloud.busy = null; });
     return cloud.busy;
   }
@@ -1643,8 +1647,8 @@
         return pullCloud();
       });
     }).catch(function () { syncNote('Saved on this device only.', false); });
-    document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'visible') pullCloud(); });
-    window.addEventListener('online', function () { pullCloud(); });
+    document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'visible') { cloud.tries = 0; pullCloud(); } });
+    window.addEventListener('online', function () { cloud.tries = 0; pullCloud(); });
   }
 
   /* ---------- input ---------- */

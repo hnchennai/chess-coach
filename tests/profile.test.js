@@ -336,3 +336,73 @@ test('unlockDone: 3 fully done units at or after start', () => {
   assert.equal(P.unlockDone(P.migrate({ v: 5, start: 'board', unlockAll: true }), UNITS), true);
   assert.equal(P.unlockDone(P.migrate({ v: 5, start: 'board', showAll: true }), UNITS), true);
 });
+
+// ---------- S2a: level-up offer (D20, D21) ----------
+const DAY = 86400000;
+test('levelComplete: Beginner from board needs board..blunder (the units before start do not count)', () => {
+  const p = P.migrate({ v: 5, level: 'beginner', start: 'board', course: done('board', 'values', 'mate', 'opening') });
+  assert.equal(P.levelComplete(p, UNITS), false, 'blunder not done yet');
+  p.course = Object.assign(p.course, { blunder: { learn: 1, practice: 1 } });
+  assert.equal(P.levelComplete(p, UNITS), false, 'blunder apply missing: all parts are needed');
+  p.course.blunder.apply = 1;
+  assert.equal(P.levelComplete(p, UNITS), true, 'rules and special were skipped and still complete');
+  const fromRules = P.migrate({ v: 5, level: 'beginner', start: 'rules', course: done('board', 'values', 'mate', 'opening', 'blunder') });
+  assert.equal(P.levelComplete(fromRules, UNITS), false, 'start rules: rules and special count');
+  fromRules.course = Object.assign(fromRules.course, done('rules', 'special'));
+  assert.equal(P.levelComplete(fromRules, UNITS), true);
+});
+
+test('levelComplete: Improver needs every level 2 unit; Club is never complete; no level = false', () => {
+  const imp = P.migrate({ v: 5, level: 'improver', start: 'fork', course: done('fork', 'pin') });
+  assert.equal(P.levelComplete(imp, UNITS), false);
+  imp.course = Object.assign(imp.course, done('check2'));
+  assert.equal(P.levelComplete(imp, UNITS), true);
+  const club = P.migrate({ v: 5, level: 'club', start: 'kq', course: done('kq', 'kr') });
+  assert.equal(P.levelComplete(club, UNITS), false, 'Club is never complete');
+  assert.equal(P.levelComplete(P.migrate({ v: 5, course: done('rules', 'special', 'board', 'values', 'mate', 'opening', 'blunder') }), UNITS), false, 'no level');
+  assert.equal(P.levelComplete(null, UNITS), false);
+});
+
+test('levelComplete: a derived Improver (start rules) still only needs level 2 units', () => {
+  const p = P.migrate({ v: 5, level: 'improver', placed: 'derived', start: 'rules', course: done('fork', 'pin', 'check2') });
+  assert.equal(P.levelComplete(p, UNITS), true);
+});
+
+test('offerDue: complete and 7 days since max(levelOfferT, levelT)', () => {
+  const now = 100 * DAY;
+  const base = { v: 5, level: 'beginner', start: 'board', course: done('board', 'values', 'mate', 'opening', 'blunder') };
+  assert.equal(P.offerDue(P.migrate(Object.assign({}, base, { levelT: now - 8 * DAY, levelOfferT: 0 })), now, UNITS), true);
+  assert.equal(P.offerDue(P.migrate(Object.assign({}, base, { levelT: now - 8 * DAY, levelOfferT: now - 6 * DAY })), now, UNITS), false, 'Not yet 6 days ago');
+  assert.equal(P.offerDue(P.migrate(Object.assign({}, base, { levelT: now - 8 * DAY, levelOfferT: now - 7 * DAY })), now, UNITS), true, 'exactly 7 days');
+  assert.equal(P.offerDue(P.migrate(Object.assign({}, base, { levelT: now - 2 * DAY, levelOfferT: now - 30 * DAY })), now, UNITS), false, 'level changed in Settings 2 days ago');
+  assert.equal(P.offerDue(P.migrate(Object.assign({}, base, { course: done('board') , levelT: 0 })), now, UNITS), false, 'not complete');
+  assert.equal(P.offerDue(P.migrate({ v: 5, level: 'club', start: 'kq', course: done('kq', 'kr'), levelT: 0 }), now, UNITS), false, 'Club never');
+});
+
+// ---------- S2a fix round 2 (R2-8): a level finished in a session that ended before the offer could show ----------
+test('levelDoneAt: latest completion time of the counted units, 0 when the level is not complete', () => {
+  const at = (t) => ({ learn: t - 2, practice: t - 1, apply: t });
+  const p = P.migrate({ v: 5, level: 'beginner', start: 'board', course: { rules: at(9000), board: at(100), values: at(200), mate: at(300), opening: at(400), blunder: at(500) } });
+  assert.equal(P.levelDoneAt(p, UNITS), 500, 'rules (before start) does not count');
+  p.course.blunder = { learn: 600 };
+  assert.equal(P.levelDoneAt(p, UNITS), 0, 'not complete');
+  assert.equal(P.levelDoneAt(P.migrate({ v: 5, level: 'club', start: 'kq', course: { kq: at(5), kr: at(6) } }), UNITS), 0, 'Club never');
+});
+
+test('lessonOfferDue: the level was completed after the last offer answer and the last level change', () => {
+  const at = (t) => ({ learn: t, practice: t, apply: t });
+  const base = { v: 5, level: 'beginner', start: 'board', course: { board: at(100), values: at(200), mate: at(300), opening: at(400), blunder: at(1000) } };
+  assert.equal(P.lessonOfferDue(P.migrate(Object.assign({}, base, { levelT: 50, levelOfferT: 0 })), UNITS), true, 'finished, never answered');
+  assert.equal(P.lessonOfferDue(P.migrate(Object.assign({}, base, { levelT: 50, levelOfferT: 2000 })), UNITS), false, 'Not yet after finishing');
+  assert.equal(P.lessonOfferDue(P.migrate(Object.assign({}, base, { levelT: 3000 })), UNITS), false, 'level changed after finishing');
+  assert.equal(P.lessonOfferDue(P.migrate(Object.assign({}, base, { levelT: 50, course: { board: at(100) } })), UNITS), false, 'not complete');
+});
+
+// ---------- S2a fix round 3 (N-3): a clock running ahead cannot bring the offer back after "Not yet" ----------
+test('lessonOfferDue caps a future finish time at now', () => {
+  const now = 1000 * DAY, fut = now + DAY, at = (t) => ({ learn: t, practice: t, apply: t });
+  const p = P.migrate({ v: 5, level: 'beginner', start: 'board', levelT: now - 9 * DAY, levelOfferT: now, course: { board: at(100), values: at(200), mate: at(300), opening: at(400), blunder: at(fut) } });
+  assert.equal(P.lessonOfferDue(p, UNITS, null, now), false, 'finished "tomorrow", Not yet now: no offer');
+  p.levelOfferT = now - DAY;
+  assert.equal(P.lessonOfferDue(p, UNITS, null, now), true, 'still offered when the answer is older than now');
+});

@@ -107,6 +107,82 @@ Size: L. Status: draft v3, owner decisions in; waiting for Suresh's yes on scena
 ## Out of scope
 - Google login on the web, iOS, leaderboards and achievements, payments, Play Store release, new course content.
 
+## Slice S2a: level-based interface (details)
+Status: approved by Suresh (2026-11-08).
+
+### Decisions
+| # | Decision | Source |
+|---|---|---|
+| D17 | Beginners see no move list. Rani's strip under the board says the last move in plain words. In review, the same line for the move you are on | Confirmed by Suresh |
+| D18 | Move chips (piece icon + square, tap to see it on the board) stay in Rani's explanations for every level | Confirmed by Suresh |
+| D19 | Beginners get no opponent picker: "New game" always plays Rani's practice partner (Beginner bot, about 400). Lesson tasks still pick their own opponent. Show everything or a level change brings the picker back | Confirmed by Suresh |
+| D20 | Level-up offer counts lessons from the player's start point. A Beginner who started at "Board and notation" gets it after "The blunder check", without the two skipped lessons | Confirmed by Suresh |
+| D21 | When the offer shows: right after the lesson that completes the level, and at app start once 7 days have passed since "Not yet" or since a level change in Settings. One Rani note at a time | Delegated to Claude |
+| D22 | Show everything also shows the engine pill and the opponent picker (it reveals every element, as D8 says) | Delegated to Claude |
+| D23 | Beginners never read "Stockfish" or "the engine". The opponent is "Rani's partner"; analysis is Rani speaking as "I": "Exactly the move I'd play.", "I slightly preferred ♞ f3.", "Rani's partner to move", "Rani's partner wins this one.", "This is the best move here." Improver and Club unchanged | Confirmed by Suresh |
+| D24 | "Safe or blunder?" items for Beginners read "White wants to play this move." (the board arrow shows it), no notation | Confirmed by Suresh |
+| D25 | Until Train unlocks, a Beginner's Today card heading is "Learn it, then play it" | Confirmed by Suresh |
+| D26 | Accuracy % (review, Progress history) is hidden for Beginners unless Show everything is on. Move grades in words stay | Confirmed by Suresh |
+| D27 | New copy uses the app's curly apostrophe (’), as S1 did. Capture sentences follow the signed pattern for every piece ("You took a queen.") | Delegated to Claude |
+| D28 | King and queen moves read "Rani's partner moved the queen." / "You moved your queen."; capture plus promotion reads "took your rook and turned a pawn into a queen." | Delegated to Claude (extends the signed pattern) |
+| D29 | Improver and Club players updated from 1.0.7 (start "How the pieces move") get Home at their level: Next step, Today and the roadmap start at their level's first unfinished lesson. Their stored start and finished lessons do not change, and unfinished earlier lessons stay open in Learn | Confirmed by Suresh |
+| D30 | Beginners' stage progress drops the puzzle-rating goal: a Beginner stage is done when its lessons are done and they beat Rani's partner. Next step after the lessons: "Beat Rani's practice partner" | Confirmed by Suresh |
+| D31 | Home never suggests lessons before the player's start point, for every level. Skipped lessons stay open in Learn | Confirmed by Suresh |
+| D32 | Beginners see no notation tip on move chips, and the chip's hover title drops the notation ("White knight to f3. Tap to see it on the board."). Tapping still shows the move on the board. Show everything brings the tip back | Confirmed by Suresh |
+| D33 | Course text, level 1 only (all levels read it): "the Beginner engine" / "the Casual engine" become "Rani's practice partner" and "(??)" goes, in the Opening principles last step and task, The blunder check task, and the stage 1 method on Home. Later-level course text (checkpoints, endgame drills, "(about 1000)") gets its own course-text pass later | Confirmed by Suresh |
+| D34 | Beginner coach strip in play reads in order of play, nothing cut off on phones: your grade ("Blunder."), your feedback, then Rani's partner's move ("Rani's partner took your bishop. Check!"). The longer "why" stays in the coach card below | Confirmed by Suresh |
+| D35 | A Rani note that asks a question (the level-up offer) takes keyboard focus when it appears. Esc closes it without saving anything; it comes back at the next app start | Confirmed by Suresh |
+| D36 | Beginner checkmate win banner text: "Great finish. Review it." Improver and Club keep the full line | Confirmed by Suresh |
+| D37 | The Stockfish license credit on Progress stays for every level (the constitution requires credits); it is the one exception to D23 | Delegated to Claude (constitution) |
+
+### What each level sees after S2a
+| | Beginner | Improver | Club |
+|---|---|---|---|
+| Eval strip | Hidden | Shown | Shown |
+| Engine pill | Hidden | Hidden | Shown, state readable without colour |
+| Ratings (opponent tag, puzzle rating, "rated 950", "~700") | Hidden | Shown | Shown |
+| Moves card | Hidden, last move in words instead | Shown | Shown |
+| Opponent picker | Hidden | Shown | Shown |
+| Tabs | 3 until 3 lessons done, then 5 | 5 | 5 |
+| Home "Next step" and roadmap | As today (S2b changes Beginner Home) | Start at their level, not at stage 1 | Same |
+| Bottom nav on phones (up to 600px) | Fixed at the bottom | Fixed | Fixed |
+Show everything turns every "Hidden" above into "Shown" without changing the level.
+
+### New copy (signed off by Suresh)
+- Opponent name: "Rani's practice partner" (no rating). Play bar: "Your game vs Rani's practice partner, you play White".
+- Last move in words (partner / you):
+  - "Rani's partner moved a knight." / "You moved a knight."
+  - "Rani's partner moved a pawn forward." / "You moved a pawn forward."
+  - "Rani's partner took your bishop." / "You took a bishop."
+  - "Rani's partner castled to keep the king safe." / "You castled to keep your king safe."
+  - "Rani's partner turned a pawn into a queen." / "You turned a pawn into a queen."
+  - Check adds " Check!" at the end. Checkmate: "Checkmate. Rani's partner won." / "Checkmate. You won!"
+- Train card for Beginners (after unlock): "Puzzles at your level", "Puzzles picked for you. Solve them to get stronger.", button "Start 10 puzzles".
+- Tab unlock (Rani note, once): "New: Train and Progress. Practise with puzzles and see how you're doing."
+- Level-up offer (Rani note with two buttons):
+  - Beginner: "Ready for Improver? You finished every Foundations lesson. Next come forks, pins and other tactics."
+  - Improver: "Ready for Club? You finished every Tactics lesson. Next come endgames and seeing two moves ahead."
+  - Buttons: "Yes, move me up" and "Not yet".
+  - After Yes: "You're an Improver now. All tabs are open." (Club: "You're Club level now.")
+  - After Not yet: "OK. I'll ask again in a week. You can change it any time in Settings."
+
+### Scenarios
+1. Given Priya is a new Beginner on a 412px phone, when she opens Play, then she sees the board with no eval strip, no engine pill, "Rani's practice partner" with no rating, no Moves card and no opponent picker, and Home, Learn and Play fixed at the bottom of the screen.
+2. Given Priya plays a game, when her partner takes her bishop with check, then Rani's strip says "Rani's partner took your bishop. Check!" and no notation appears anywhere.
+3. Given Priya reviews a finished game, when she taps Next, then she sees "You moved a pawn forward." with no eval and no move list.
+4. Given Priya started at "How the pieces move", when she finishes "Board and notation" (her third lesson), then Rani says "New: Train and Progress..." and both tabs appear at once. Train shows "Puzzles at your level" with no rating numbers.
+5. Given Priya turns on Show everything, then the eval strip, engine pill, ratings, Moves card, opponent picker and all 5 tabs appear at once, and her level stays Beginner. Turning it off hides them again.
+6. Given Karthik started at "Board and notation", when he finishes "The blunder check", then Rani asks "Ready for Improver?". "Not yet" keeps everything as it is, and the question comes back at app start 7 days later. "Yes, move me up" makes him Improver with all 5 tabs and Forks as the next lesson; his rating becomes 1000 only if he has no rated puzzles.
+7. Given Arjun is an Improver, then the engine pill is hidden but the eval strip, Moves card and ratings show, and Home's next step points at his first unfinished level 2 lesson, not "How the pieces move".
+8. Given Meena is Club on a 360px phone, then the engine pill shows its state in words or a shape (not colour alone), the bottom nav stays visible on every tab, and Rani's notes sit above the nav, not over it.
+9. Given Priya changes her level to Club in Settings in the middle of a game, then the eval strip, engine pill, ratings and Moves card appear at once and the game carries on.
+
+### Also fixed in S2a (carry-over from S1 review)
+- Rani's note no longer covers the bottom nav.
+- The level check's close (X) sits in the same corner on every screen.
+- Focus returns to a sensible place (not the page body) after the check closes.
+- Esc closes only the top layer (Settings), not a move tip behind it.
+
 ## Devil's advocate
 - The check can feel like an exam. Rani frames it as "let me see where to start", one puzzle per screen, Skip always visible, 6 puzzles max (7 with "Try Club?").
 - Play Games needs a Play Console account ($25, ID check that can take days). Sign-in only works for listed testers until the setup is published, and a public Play Store release for a new personal account needs a closed test (12 testers, 14 days). Cheapest path: ship the level check and new interface first (slices 1 and 2); add cloud save (slice 3) when Play Console is ready.

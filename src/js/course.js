@@ -46,9 +46,9 @@ var COURSE = (function () {
       { fen: 'r1bqkbnr/pppp1ppp/2n5/4p3/2B1P3/5N2/PPPP1PPP/RNBQK2R b KQkq - 3 3', arrows: [['g1', 'f3'], ['f1', 'c4']], text: '<b>2. Develop knights and bishops.</b> Knights toward the center (f3, c3), bishops to open diagonals. Each move should bring a new piece into play.' },
       { fen: 'r1bqk2r/pppp1ppp/2n2n2/2b1p3/2B1P3/3P1N2/PPP2PPP/RNBQK2R w KQkq - 1 5', arrows: [['e1', 'g1']], text: '<b>3. Castle early.</b> Usually by move 8 to 10. Your king hides behind pawns and your rook comes toward the center.' },
       { fen: 'r1bqkbnr/pppp1p1p/2n3p1/4p2Q/2B1P3/8/PPPP1PPP/RNB1K1NR w KQkq - 0 4', arrows: [['g6', 'h5']], text: '<b>4. Don’t bring the queen out early.</b> Here the queen gets chased by a pawn and Black gains time. Knights and bishops first, queen later.' },
-      { fen: START, text: 'Your task: play a game against the Beginner engine and get <b>both knights, both bishops out and castle</b> by move 12. The checklist in the Play tab tracks it.' }
+      { fen: START, text: 'Your task: play a game against Rani’s practice partner and get <b>both knights, both bishops out and castle</b> by move 12. The checklist in the Play tab tracks it.' }
     ],
-    apply: { type: 'game', level: 1, goal: 'develop', text: 'Play the Beginner engine. Develop all four minor pieces and castle by move 12.' } });
+    apply: { type: 'game', level: 1, goal: 'develop', text: 'Play Rani’s practice partner. Develop all four minor pieces and castle by move 12.' } });
 
   unit({ id: 'blunder', level: 1, title: 'The blunder check', goal: 'Stop losing pieces to one-move tricks.',
     lesson: [
@@ -58,7 +58,7 @@ var COURSE = (function () {
       { fen: START, text: 'Practice: I’ll show you real positions and a move someone wants to play. You decide: <b>safe</b> or <b>blunder</b>?' }
     ],
     practice: { type: 'safety', count: 10, pass: 8 },
-    apply: { type: 'game', level: 2, goal: 'noBlunder', text: 'Play the Casual engine. Goal: no blunders (??) in your first 20 moves.' } });
+    apply: { type: 'game', level: 2, goal: 'noBlunder', text: 'Play Rani’s practice partner. Goal: no blunders in your first 20 moves.' } });
 
   /* ===== Level 2 ===== */
   unit({ id: 'fork', level: 2, title: 'Forks', goal: 'Attack two things at once.',

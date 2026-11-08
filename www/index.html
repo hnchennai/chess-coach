@@ -591,12 +591,55 @@ html.sheet-open, html.sheet-open body { overflow: hidden; }
   header .engine-pill { padding: 0; width: 24px; height: 24px; justify-content: center; flex: none; }
   header .engine-pill span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 }
+/* ---------- S2a: interface by level (html[data-level], html[data-showall]) ---------- */
+/* Beginners: no eval strip, engine pill, Moves card (with its legend and tip), opponent picker or rating tag, unless Show everything */
+html[data-level="beginner"]:not([data-showall]) #evalbar,
+html[data-level="beginner"]:not([data-showall]) #movesCard,
+html[data-level="beginner"]:not([data-showall]) #oppPick,
+html[data-level="beginner"]:not([data-showall]) #oppLevel,
+html[data-level="beginner"]:not([data-showall]) #enginePill,
+html[data-level="improver"]:not([data-showall]) #enginePill { display: none; }
+header h1 { margin-right: auto; } /* the gear stays right when the engine pill is hidden */
+/* Engine pill: each state has its own shape, so it never relies on colour alone */
+.engine-pill i { flex: none; box-sizing: border-box; }
+.engine-pill[data-state="loading"] i { background: transparent; border: 2px solid var(--c-inacc); border-radius: 50%; }
+.engine-pill[data-state="ready"] i { background: var(--c-best); border: 0; border-radius: 50%; }
+.engine-pill[data-state="failed"] i { background: var(--c-inacc); border: 0; border-radius: 1px; transform: rotate(45deg); }
+/* 3 or 5 tabs share the width evenly */
+.tabs { grid-template-columns: none; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); }
+/* Beginners: the move line under the verdict is a plain sentence, not mono notation */
+.verdict .mv.words { font-family: var(--f-body); font-size: 14px; }
+/* The partner's move in words on the Play panel (Beginners): a sentence, not an all-caps label */
+.eyebrow.words { text-transform: none; letter-spacing: 0; font-size: 15px; font-weight: 600; color: var(--ink); }
+/* D34: a Beginner's strip in play is never cut off (it may grow) */
+.coachstrip.full .bub span { display: block; -webkit-line-clamp: unset; overflow: visible; }
+/* U-7: Progress with the rating tile hidden: 3 tiles in one row */
+.stats.n3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+/* N-2: tile labels stay on one line; a step smaller and a little less padding on narrow phones so they fit */
+.stats span { white-space: nowrap; }
+@media (max-width: 420px) { .stats div { padding: 8px; } .stats span { font-size: 11px; } }
+/* Rani's note with the level-up offer: two buttons under the text */
+.raninote.offer { grid-template-columns: 46px minmax(0, 1fr); }
+.raninote .rn-btns { grid-column: 2; display: flex; flex-wrap: wrap; gap: 8px; }
+.raninote .rn-btns .btn { flex: 1 1 auto; }
+/* Level check: the close (X) sits top right on every screen */
+.pl-result .pl-top { justify-content: space-between; }
+.pl-result .pl-x { margin: 0 -10px 0 0; }
+.pl-puzzle .pl-x { order: 2; margin: 0 -10px 0 0; }
+/* Phones: bottom nav fixed to the bottom for every level; content and Rani's note stay above it */
+@media (max-width: 600px) {
+  .tabs { position: fixed; z-index: 45; left: 0; right: 0; bottom: 0; box-sizing: border-box; height: calc(56px + env(safe-area-inset-bottom)); padding: 4px 4px calc(4px + env(safe-area-inset-bottom)); gap: 4px; border-width: 1px 0 0; border-radius: 0; box-shadow: 0 -4px 16px -10px rgba(0, 0, 0, .3); }
+  .tab { min-height: 44px; padding: 4px 2px; justify-content: center; }
+  .wrap { padding-bottom: calc(28px + 56px + env(safe-area-inset-bottom)); }
+  .raninote { bottom: calc(56px + 8px + env(safe-area-inset-bottom)); }
+}
+@media (max-width: 400px) { header .engine-pill i { width: 12px; height: 12px; } }
 </style>
 
 <div class="wrap">
   <header>
     <h1>Suresh's Chess Coach</h1>
-    <p class="engine-pill" id="enginePill"><i></i><span>Loading Stockfish…</span></p>
+    <p class="engine-pill" id="enginePill" role="status" aria-label="Loading Stockfish…" data-state="loading"><i aria-hidden="true"></i><span>Loading Stockfish…</span></p>
     <button class="iconbtn" id="settingsBtn" type="button" data-act="settings" aria-label="Settings" title="Settings"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></button>
   </header>
 
@@ -648,10 +691,11 @@ html.sheet-open, html.sheet-open body { overflow: hidden; }
     <aside class="side">
       <div class="tabs" role="tablist">
         <button class="tab" role="tab" id="tab-coach" aria-selected="true" data-tab="coach" type="button"><svg class="ti" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11 L12 4 L21 11"/><path d="M5 10 V20 H19 V10"/><path d="M10 20 V14 H14 V20"/></svg><span>Home</span></button>
-        <button class="tab z-learn" role="tab" id="tab-path" aria-selected="false" data-tab="path" type="button"><svg class="ti" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 5 C6 4 9 4 12 6 C15 4 18 4 21 5 V19 C18 18 15 18 12 20 C9 18 6 18 3 19 z"/><path d="M12 6 V20"/></svg><span>Learn</span><i class="live-dot" title="The board is here"></i></button>
-        <button class="tab z-train" role="tab" id="tab-train" aria-selected="false" data-tab="train" type="button"><svg class="ti" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.2"/></svg><span>Train</span><i class="live-dot" title="The board is here"></i></button>
-        <button class="tab z-play" role="tab" id="tab-play" aria-selected="false" data-tab="play" type="button"><svg class="ti" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 20 H15 M8 17 H16 M10 17 L10.5 11 M14 17 L13.5 11 M9 11 H15 M12 11 C9 9 9 5 12 4 C15 5 15 9 12 11"/></svg><span>Play</span><i class="live-dot" title="The board is here"></i></button>
+        <button class="tab z-learn" role="tab" id="tab-path" aria-selected="false" data-tab="path" type="button"><svg class="ti" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 5 C6 4 9 4 12 6 C15 4 18 4 21 5 V19 C18 18 15 18 12 20 C9 18 6 18 3 19 z"/><path d="M12 6 V20"/></svg><span>Learn</span><i class="live-dot" aria-hidden="true"></i></button>
+        <button class="tab z-train" role="tab" id="tab-train" aria-selected="false" data-tab="train" type="button"><svg class="ti" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.2"/></svg><span>Train</span><i class="live-dot" aria-hidden="true"></i></button>
+        <button class="tab z-play" role="tab" id="tab-play" aria-selected="false" data-tab="play" type="button"><svg class="ti" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 20 H15 M8 17 H16 M10 17 L10.5 11 M14 17 L13.5 11 M9 11 H15 M12 11 C9 9 9 5 12 4 C15 5 15 9 12 11"/></svg><span>Play</span><i class="live-dot" aria-hidden="true"></i></button>
         <button class="tab" role="tab" id="tab-progress" aria-selected="false" data-tab="progress" type="button"><svg class="ti" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20 V10 M10 20 V4 M16 20 V13 M22 20 H2"/></svg><span>Progress</span></button>
+        <span id="liveDesc" hidden>The board is here</span>
       </div>
 
       <!-- HOME -->
@@ -683,7 +727,7 @@ html.sheet-open, html.sheet-open body { overflow: hidden; }
           <div class="tip" id="vTip" hidden></div>
         </div>
         <div class="card opp" id="oppCard" hidden>
-          <p class="eyebrow">Why the engine played <span class="mono" id="oppMove"></span></p>
+          <p class="eyebrow" id="oppHead">Why the engine played <span class="mono" id="oppMove"></span></p>
           <ul class="why" id="oppWhy"></ul>
         </div>
         <div class="card" id="thinkCard">
@@ -703,7 +747,7 @@ html.sheet-open, html.sheet-open body { overflow: hidden; }
             <label for="colorSel">Play as
               <select id="colorSel"><option value="w">White</option><option value="b">Black</option><option value="r">Random</option></select>
             </label>
-            <label for="levelSel">Opponent
+            <label for="levelSel" id="oppPick">Opponent
               <select id="levelSel"></select>
             </label>
             <button class="btn" id="newBtn" type="button">Start new game</button>
@@ -717,10 +761,10 @@ html.sheet-open, html.sheet-open body { overflow: hidden; }
         <div class="znote" id="znote-train" hidden></div>
         <div class="card session" id="sessionCard" hidden></div>
         <div class="card">
-          <p class="eyebrow">Rated puzzles</p>
-          <p class="lede">Puzzles picked at your level. Your puzzle rating goes up when you solve and down when you miss.</p>
+          <p class="eyebrow" id="ratedHead">Rated puzzles</p>
+          <p class="lede" id="ratedLede">Puzzles picked at your level. Your puzzle rating goes up when you solve and down when you miss.</p>
           <div class="trainbtns">
-            <button class="btn primary" type="button" data-train="rated">Start 10 rated puzzles</button>
+            <button class="btn primary" type="button" data-train="rated" id="ratedBtn">Start 10 rated puzzles</button>
             <button class="btn" type="button" data-train="review" id="reviewDueBtn">Review missed</button>
             <button class="btn" type="button" data-train="safety">Safe or blunder?</button>
           </div>
@@ -745,6 +789,7 @@ html.sheet-open, html.sheet-open body { overflow: hidden; }
         <div class="card focus" id="focusCard"><p class="eyebrow">Your coach says</p><div id="focus"></div></div>
         <div class="card"><p class="eyebrow">Themes</p><div id="themeStats"></div></div>
         <div class="card"><p class="eyebrow">Recent games</p><div id="history"></div></div>
+        <!-- License credits stay for every level, Beginners too (constitution; D37 is the one exception to D23). -->
         <p class="credit">Analysis by Stockfish 19 (GPLv3, stockfishchess.org) via stockfish.js. Puzzles mined from engine games and verified by Stockfish.</p>
         <p class="credit">3D marble set and board: “A Beautiful Game” by the MaterialX Project (ASWF), glTF conversion by Ed Mackey, licensed <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener">CC BY 4.0</a>. Simplified and resized for this app. Three.js (MIT) draws the 3D view.</p>
       </div>
@@ -773,4 +818,5 @@ html.sheet-open, html.sheet-open body { overflow: hidden; }
 <script src="js/puzzles.js"></script>
 <script src="js/profile.js"></script>
 <script src="js/placement.js"></script>
+<script src="js/words.js"></script>
 <script src="js/app.js"></script>

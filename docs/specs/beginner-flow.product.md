@@ -31,7 +31,7 @@ Size: L. Status: draft v3, owner decisions in; waiting for Suresh's yes on scena
 | D6 | Check puzzles come from the local puzzle bank (no network, no AI) | Constitution |
 | D7 | Starting rating per level, only for players with no rated puzzles yet | Delegated to Claude (fixes Club players showing 800) |
 | D8 | "Show everything" switch reveals all tabs and elements, without changing level, hints or course | Delegated to Claude |
-| D9 | Skipping: at the first question = Beginner who knows the moves; during puzzles = level from answers so far (0 to 2 correct = Beginner, 3+ = Improver); "Try Club?" = 2 harder puzzles, 1+ correct = Club, Skip there = stays Improver | Delegated to Claude, please confirm in scenarios |
+| D9 | Skipping: at the first question = Beginner who knows the moves; during puzzles = level from answers so far (0 to 2 correct = Beginner, 3+ = Improver); "Try Club?" = 2 harder puzzles, 1+ correct = Club (also when they skip after 1 correct; skip with 0 correct = stays Improver). On a retake from Settings, any Skip, X or Esc cancels and keeps the current level | Confirmed by Suresh |
 | D10 | Beginner Home = prototype A, one next step: Rani, one Continue card, "Just play a game" | Confirmed by Suresh |
 | D11 | Suresh already has a Play Console account | Confirmed by Suresh |
 | D12 | Hints stay unlimited for every level (today's behaviour) | Confirmed by Suresh |
@@ -47,8 +47,8 @@ Size: L. Status: draft v3, owner decisions in; waiting for Suresh's yes on scena
      - "I play often" -> 6 puzzles (easy to hard).
 2. Result screen: "You're starting as an Improver", the three levels with theirs marked, "Start" button, "Choose a different level" link. A Know-the-moves player with 5 of 5 also sees "Try Club?".
 3. App opens in the interface for that level.
-4. Settings has "Your level" (change level, retake the check), "Show everything", and "Save to Google Play Games" (Android).
-5. Players updating from 1.0.7 with any progress are not asked. Their level comes from their puzzle rating band, all 5 tabs stay unlocked, and Rani shows once: "You're set as Improver. Change it any time in Settings."
+4. Settings (gear button in the header, every screen) has "Your level" (change level, retake the check), "Show everything", and "Save to Google Play Games" (Android).
+5. Players updating from 1.0.7 with any progress are not asked. Their level comes from their puzzle rating band (a player with games but no rated puzzles has the default 800, so becomes Improver), all 5 tabs stay unlocked, and Rani shows once: "You're set as Improver. Change it any time in Settings."
 
 ## Interface by level
 | Element | Beginner | Improver | Club |
@@ -93,10 +93,10 @@ Size: L. Status: draft v3, owner decisions in; waiting for Suresh's yes on scena
 6. Beginner hides eval strip, notation, ratings and engine pill on every screen, including 3D view, puzzles and game review, unless "Show everything" is on.
 7. Beginner sees exactly 3 tabs until 3 lessons at or after their start point are fully done (learn, practice and apply), then 5. Example: start `board` needs `board`, `values` and the next lesson. "Show everything" shows all 5 at once.
 8. Level, start point and "Show everything" survive restarts, updates and cloud restore, and a level change in Settings updates the interface immediately. Changing level in Settings moves the course start to that level's start point (Beginner: `rules`) without marking or clearing any completed lesson; finished lessons are skipped as usual.
-9. New players get the starting rating for their level only if they have no rated puzzles yet.
+9. New players get the starting rating for their level only if they have no rated puzzles yet, whether the level comes from the check or from Settings (confirmed by Suresh).
 10. Bottom nav stays visible at the bottom of the screen on phones (360 to 600px) on every tab.
 11. Android: a reinstall with Play Games signed in restores the profile; declining causes no error dialog and no repeated prompt.
-12. Merging two profiles never removes a completed lesson, game or reviewed game.
+12. Merging two profiles never removes a completed lesson, puzzle record or reviewed game. Game history keeps the newest 30 games, as on one phone (confirmed by Suresh).
 13. Nothing here needs the network except Play Games sign-in and cloud save.
 15. Rani offers the next level when all lessons of the current level are done; the level changes only after the player taps Yes.
 14. All new copy follows DESIGN.md: one headline plus at most two short lines, no em dashes.

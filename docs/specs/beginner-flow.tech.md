@@ -19,7 +19,7 @@ Pairs with `beginner-flow.product.md`. Draft v2, after independent spec review. 
 - `build.sh` and `sync_www.sh` add `profile.js` and `placement.js` to the script list before `app.js`.
 
 ### Data (profile v5)
-- `level`: `'beginner' | 'improver' | 'club'`; `levelT`: time of the last level choice (0 when derived); `placed`: `'check' | 'chosen' | 'derived' | 'cloud'`.
+- `level`: `'beginner' | 'improver' | 'club'`; `levelT`: time of the last level choice (0 when derived); `placed`: `'check' | 'chosen' | 'derived'`.
 - `start`: unit id the course begins at. `nextUnit()` skips units before `start`; nothing is ever marked done to achieve this.
 - `showAll`: boolean (reveal everything, no other effect). `unlockAll`: boolean (set for upgraded v4 players and on level-up). `provisional`: boolean, true for a level set before the first successful cloud load.
 - `pgsDeclined`: boolean (never auto-prompt again). `levelOfferT`: time of the last "Not yet".
@@ -68,3 +68,9 @@ Pairs with `beginner-flow.product.md`. Draft v2, after independent spec review. 
 - Play Games sign-in only works for testers until the setup is published. Mitigated by the empty-`PGS_APP_ID` switch and the publish checkpoint.
 - Play Console identity verification can take days; S3 waits on it.
 - Level-based hiding must not break the 3D board, puzzles or review. Covered by e2e at each level.
+
+## Sync safety rules (added after S1 review)
+- No profile or game push to any cloud until this session's first pull has finished (data merged, or the cloud confirmed empty). A failed pull retries with backoff; pushes wait.
+- `provisional` is set only by the first-launch check on a device that has never completed a cloud load (`suresh-chess-coach.cloudSeen` flag). Settings changes and retakes are never provisional.
+- `unlockAll` from a derived (v4) copy does not override a local non-derived level.
+- `merge()` skips corrupted entries instead of throwing, keeps unknown keys from either copy and the higher `v`.

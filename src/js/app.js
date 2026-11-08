@@ -1697,6 +1697,7 @@
   });
   document.addEventListener('keydown', function (e) {
     if (/input|select|textarea/i.test(e.target.tagName || '')) return;
+    var ss = $('settingsSheet'); if ((ss && !ss.hidden) || Placement.isOpen()) return; /* arrow keys in a sheet must not move the lesson or review behind it */
     if (st.mode === 'review') { if (e.key === 'ArrowLeft') { gotoPly(st.rv.ply - 1); e.preventDefault(); } if (e.key === 'ArrowRight') { gotoPly(st.rv.ply + 1); e.preventDefault(); } }
     if (st.mode === 'lesson') { if (e.key === 'ArrowLeft') lessonNav(-1); if (e.key === 'ArrowRight') lessonNav(1); }
   });
@@ -1814,7 +1815,8 @@
   function enginePill(s) {
     var el = $('enginePill');
     el.classList.toggle('ok', s === 'ready');
-    el.querySelector('span').textContent = s === 'ready' ? 'Stockfish 19 ready' : s === 'failed' ? 'Basic engine (Stockfish unavailable here)' : 'Loading Stockfish…';
+    var txt = s === 'ready' ? 'Stockfish 19 ready' : s === 'failed' ? 'Basic engine' : 'Loading Stockfish…';
+    el.querySelector('span').textContent = txt; el.title = s === 'failed' ? 'Basic engine (Stockfish could not load here)' : txt;
   }
   function start(data) {
     fillLevels();

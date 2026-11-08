@@ -1,15 +1,11 @@
 # Crew state: beginner flow (size L)
 
-- Phase: 4/5, S1 final re-review, then Suresh's merge checkpoint
+- Phase: S1 shipped; next S2a
 - Spec: docs/specs/beginner-flow.product.md + .tech.md, approved (D1 to D16)
-- Branches:
-  - `crew/beginner-flow`: constitution, design, spec
-  - `crew/s1-level-check`: S1 build + fix round 1 (bc884d7) + spec answers
-  - `crew/move-src`: source moved into `src/`, `scripts/build.sh`, handoff; plus fix round 2 (sync robustness: bad cloud game doc can't block sync; retries continue while not synced)
 - Slices:
-  - S1 level check, profile v5, Settings: in review. Reviews: spec (1 blocker, fixed), data (1 blocker, fixed; 2 should-fix, fixed in round 2), UX (0 blockers, should-fixes fixed). Waiting on: UX delta re-review and data re-check of round 2.
-  - S2a level-based interface: planned
-  - S2b beginner Home (prototype A): planned
-  - S3 Play Games cloud save: parked (needs new Play Console account)
-- Next action: when both re-checks pass, open one PR to main with S1 + source move; Suresh merges; publish web artifact from www/; confirm APK release.
+  - S1 level check, profile v5, Settings: merged (PR #1), released as Android v1.0.13, web artifact version 18. Monitor: escape check due 2026-11-15.
+  - S2a level-based interface (hide eval/notation/ratings/engine pill for Beginner unless Show everything, plain move strip, fixed bottom nav on phones, tab unlock after 3 lessons, level-up offer): next
+  - S2b beginner Home (prototype A): after S2a
+  - S3 Play Games cloud save: parked until Suresh has a new Play Console account
+- Carry-over nits for S2a: Rani's note covers the bottom nav at 412; engine pill still shown to Beginners (AC6); retake X sits in different corners on welcome vs result; focus goes to body after the check closes; Esc in Settings also hides a sticky move tip behind it; colour-only engine dot below 400px; Home "Next step" and stage roadmap still point Improver/Club at stage 1 lessons.
 - Open questions for Suresh: none

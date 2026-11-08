@@ -8,7 +8,7 @@ Start any new session with: "Use build-crew, continue from .crew/HANDOFF.md". Re
 - `www/` holds everything the app needs offline: `vendor/` (chess.js 0.10.3, Three.js r128, GLTFLoader), `sf/` (Stockfish 19 lite WASM), `models/` (marble set, CC BY 4.0).
 - Android: Capacitor 6. GitHub Actions (`.github/workflows/build-apk.yml`) builds and signs on every push. Pushes to `main` publish a GitHub Release `v1.0.<run>` with `.apk` and `.aab`. Suresh installs updates with Obtainium.
 - Signing: release key alias `chesscoach`, only in GitHub secrets `ANDROID_KEYSTORE_BASE64` and `ANDROID_KEY_PASSWORD`. Suresh holds the backup. Never commit a keystore.
-- Web version: a claude.ai artifact (https://claude.ai/artifact/9TP4qbQZzroJGhDtGWs67L), last published at app 1.0.7 level. It can be republished from a Claude session that has the Artifact tool, using the files in `www/`. Later: host `www/` on GitHub Pages or Cloudflare Pages for selling.
+- Web version: a claude.ai artifact (https://claude.ai/artifact/9TP4qbQZzroJGhDtGWs67L), last published at v1.0.13 (version 18), now loading vendor/ files like Android. It can be republished from a Claude session that has the Artifact tool, using the files in `www/`. Later: host `www/` on GitHub Pages or Cloudflare Pages for selling.
 - Puzzle bank: `src/js/puzzles.js` is generated. To rebuild it: `npm i chess.js@0.10.3` in a scratch folder, then `node tools/mkbank.js <(cat data/mined*.jsonl) src/js/puzzles.js`. `tools/miner.js` mined the positions with Stockfish.
 
 ## Tests
@@ -25,7 +25,7 @@ Start any new session with: "Use build-crew, continue from .crew/HANDOFF.md". Re
 
 ## Current work: beginner flow (size L)
 Spec: `docs/specs/beginner-flow.product.md` and `.tech.md` (approved by Suresh; decisions D1 to D16).
-- S1 level check, profile v5, Settings: built, reviewed twice, fixes in. Branch `crew/s1-level-check`. Remaining before merge: data re-review should-fixes (see STATE.md), then Suresh's merge checkpoint.
+- S1 level check, profile v5, Settings: shipped (PR #1, Android v1.0.13, web artifact version 18).
 - S2a level-based interface, fixed bottom nav, tab unlock, level-up offer: next.
 - S2b beginner Home (prototype A: Rani, one Continue card, "Just play a game"): after S2a.
 - S3 Play Games cloud save: parked until the new Play Console account exists. Setup steps for Suresh are in the conversation and in the tech spec.

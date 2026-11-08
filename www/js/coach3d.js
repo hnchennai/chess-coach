@@ -143,7 +143,9 @@ var Coach3D = (function () {
     for (var i = 0; i < list.length; i++) {
       var c = list[i]; if (!force && !visible(c)) continue; any = true;
       var s = st ? st.get(c) : c.__q; if (!s) { s = { born: t }; if (st) st.set(c, s); else c.__q = s; }
-      if (still()) pose(c.dataset.mood, 1, 9); else pose(c.dataset.mood, t + i * 0.37, t - s.born);
+      /* F6: under reduced motion each canvas is drawn once per mood and size (a new mood or size is a new canvas), then left still */
+      var sk = c.dataset.mood + '|' + c.dataset.size;
+      if (still()) { if (s.still === sk) continue; s.still = sk; pose(c.dataset.mood, 1, 9); } else { s.still = null; pose(c.dataset.mood, t + i * 0.37, t - s.born); }
       R.render(scene, cam);
       var x = c.getContext('2d'); x.clearRect(0, 0, c.width, c.height); x.drawImage(R.domElement, 0, 0, c.width, c.height);
     }
@@ -151,7 +153,7 @@ var Coach3D = (function () {
   }
   function loop(now) {
     raf = 0; if (!ready || choice !== 'rani') return;
-    if (!document.hidden && now - lastT > (still() ? 400 : 33)) { lastT = now; drawAll(now, false); }
+    if (!document.hidden && now - lastT > (still() ? 250 : 33)) { lastT = now; drawAll(now, false); } /* still: only finds canvases not drawn yet */
     raf = requestAnimationFrame(loop);
   }
   function start() { if (!raf && ready && choice === 'rani') raf = requestAnimationFrame(loop); }

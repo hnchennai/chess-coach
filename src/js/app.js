@@ -456,7 +456,7 @@
     var pt = $('pvTag'); pt.hidden = !st.pv; if (st.pv) pt.textContent = st.pv.label;
     renderStrip();
     if (st.v3d && window.Board3D) sync3d(g, last, targets, checkSq);
-    renderArrows(); renderEval(); renderCaps(g); renderMode(); renderPlayPanel(); renderMoves(); renderEnd(); renderSession(); releaseOffer();
+    renderArrows(); renderEval(); renderCaps(g); renderMode(); renderPlayPanel(); renderMoves(); renderEnd(); renderSession(); renderSlots(); releaseOffer();
     if (st.tab === 'coach') { if (plain()) renderBHome(); else renderCont(); } /* AC8: a game that starts or ends next to Home (desktop) shows at once */
     var u = viewUser(), pl = plain();
     $('oppLevel').textContent = pl ? '' : st.mode === 'play' ? OPP[st.level].name + ' · ' + (st.level === 8 ? 'max' : '~' + OPP[st.level].elo) : st.mode === 'review' && OPP[st.rv.level] ? OPP[st.rv.level].name : '';
@@ -679,6 +679,43 @@
     if (g.insufficient_material()) return { r: 'D', title: 'Draw', text: 'Not enough pieces left to checkmate.' };
     return { r: 'D', title: 'Draw', text: '50 moves without a capture or pawn move.' };
   }
+  /* ---------- F2: the tip slot (F-D3 to F-D6, F-D12 to F-D14). A tinted card with the coach and one tip, in four places only:
+     the end card after a game, the end card after a lesson step or puzzle set, the bottom of Home, the bottom of Progress.
+     No network, no ads code, nothing collected. ---------- */
+  var slotTips = {}, visits = { coach: 0, progress: 0 };
+  /* F-D4: a lesson, game, puzzle set, drill, review or the level check is in progress */
+  function activityOn() { return st.mode === 'lesson' || st.mode === 'review' || !!(st.ses && !st.ses.finished && !st.ses.end) || gameOn() || Placement.isOpen(); }
+  /* F-D5: no slot anywhere on the player's first calendar day (and none before a level is set). Home and Progress also
+     drop it while an activity is in progress, so the slot never shares a screen with a board that is in use. */
+  function slotAllowed(place) {
+    if (!prof.level || Tips.firstDay(prof, Date.now())) return false;
+    return place === 'home' || place === 'progress' ? !activityOn() : true;
+  }
+  /* F-D12: one tip per screen visit. The same tip while the player stays on the card or the tab; a level change picks again. */
+  function slotTip(place, visit) {
+    var s = slotTips[place];
+    if (!s || s.visit !== visit || s.level !== prof.level) s = slotTips[place] = { visit: visit, level: prof.level, tip: Tips.pick(prof.level) };
+    return s.tip;
+  }
+  /* THE SLOT SEAM. renderSlot is the only code that fills a slot. Today it always shows the coach's tip. A later slice (F3)
+     may put an ad in this same box, here and nowhere else, when one has loaded, and keep the tip as the fallback (offline,
+     no ad). The box has one fixed height (CSS .tipslot), so whatever fills it never moves the page. */
+  function renderSlot(el, place, visit) {
+    if (!el) return;
+    if (!slotAllowed(place)) { el.hidden = true; if (el._k) { el._k = ''; el.innerHTML = ''; } return; }
+    var coach = Coach3D.get(), tip = slotTip(place, visit), key = coach + '|' + tip;
+    el.hidden = false;
+    if (el._k === key) return;
+    el._k = key; el.setAttribute('role', 'note'); el.setAttribute('aria-label', Tips.aria(coach, tip));
+    el.innerHTML = '<span class="ts-av" aria-hidden="true">' + Avatar.coach('happy', 46) + '</span><span class="ts-body" aria-hidden="true"><b class="ts-label">' + esc(Tips.label(coach)) + '</b><span class="ts-text">' + esc(tip) + '</span></span>';
+  }
+  /* An end card's slot: an empty box of the fixed height in the card's markup, filled by renderSlot. */
+  function slotHost(place) { return slotAllowed(place) ? '<div class="tipslot" data-slot="' + place + '"></div>' : ''; }
+  function renderSlots() {
+    if (st.tab === 'coach') renderSlot($('homeSlot'), 'home', visits.coach);
+    if (st.tab === 'progress') renderSlot($('progSlot'), 'progress', visits.progress);
+  }
+
   /* ---------- F1: end cards. One main button (the next step), small buttons for the other choices, always a Home button.
      Flow (flow.js) decides which card; this wires each button to an action the app already has. ---------- */
   function ecBtn(b, attrs, cls) { return '<button class="btn ' + cls + '" type="button" ' + (attrs[b.go] || '') + '>' + esc(b.label) + '</button>'; }
@@ -718,8 +755,9 @@
         var gl = st.goal, nx = lessonAfter();
         var c = Flow.afterGame({ goal: gl && gl.status !== 'active' ? gl.status : null, next: nx });
         html = '<h3 class="ec-title">' + esc(speak(r.title)) + '</h3><p class="ec-text">' + esc(speak(r.text)) + '</p>' +
-          ecButtons(c, { review: 'data-act="review"', newgame: 'data-act="again"', home: 'data-act="home"', nextlesson: nx ? partAttr(nx.unit.id, nx.part) : '', tryagain: gl ? 'data-apply="' + gl.unit + '"' : '' });
-        key = 'g' + G.history().length;
+          ecButtons(c, { review: 'data-act="review"', newgame: 'data-act="again"', home: 'data-act="home"', nextlesson: nx ? partAttr(nx.unit.id, nx.part) : '', tryagain: gl ? 'data-apply="' + gl.unit + '"' : '' }) +
+          (st.tab === 'play' ? slotHost('game') : ''); /* F2: the slot is on the game's own screen (Play), never beside Home's slot */
+        key = 'g' + G.history().length + ':' + (prof.games[0] ? prof.games[0].id : '');
       }
     } else if (reviewDone()) {
       var sc = stepCard(), c2 = Flow.afterReview(sc);
@@ -730,8 +768,10 @@
     if (!html) { el.hidden = true; el._h = ''; el._k = ''; return; }
     if (el._h !== html) { el._h = html; el.innerHTML = html; }
     el.hidden = false;
-    if (el._k !== key) { el._k = key; revealEnd(el); }
+    renderSlot(el.querySelector('[data-slot]'), 'game', key);
+    if (el._k !== key) { el._k = key; if (booted) revealEnd(el); } /* never scroll by itself when the app opens */
   }
+  var booted = false;
   /* When the card first shows, bring it on screen if the whole board can stay on screen too (never during a drag). */
   function revealEnd(el) {
     if (!window.requestAnimationFrame) return;
@@ -743,6 +783,8 @@
       window.scrollBy({ top: Math.min(d, bt), behavior: window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
     });
   }
+  /* F-D7: an end card is on screen (after a lesson step or a puzzle set): its main button is the screen's one main button. */
+  function endShown() { return !!(st.end || (st.ses && (st.ses.finished || st.ses.end))); }
   /* After a lesson step or puzzle set. u: the lesson's id (or null); from: 'learn' | 'session'; s: the set (or null). */
   function stepEnd(u, from, passed, s) {
     var U = u ? UNIT[u] : null, np = U ? nextPart(U) : null, o = (s && s.opts) || {};
@@ -981,6 +1023,7 @@
   }
   function renderSession() {
     var c = $('sessionCard'), s = st.ses;
+    $('ratedBtn').classList.toggle('primary', !endShown()); /* F-D7: Train's start button steps back while an end card shows */
     if (!s) { c.hidden = true; return; }
     c.hidden = false;
     var home = $('panel-' + ZTAB[zoneOf()]); if (home && c.parentNode !== home) home.insertBefore(c, home.firstChild);
@@ -990,14 +1033,15 @@
     if (s.finished) {
       var passed = s.pass == null || s.right >= s.pass;
       body = '<div class="sesav">' + Avatar.coach(passed ? 'proud' : 'worried', 52) + '</div><h3 class="ec-title">' + (passed ? 'Session complete' : 'Almost there') + '</h3><p class="ec-text">' + s.right + ' of ' + s.count + ' correct' + (s.pass != null ? (passed ? '. Passed! This step is done.' : '. You need ' + s.pass + ' to pass. Have another go.') : '.') + '</p>' +
-        stepEnd(s.unit && s.part ? s.unit : null, 'session', passed, s);
+        stepEnd(s.unit && s.part ? s.unit : null, 'session', passed, s) + slotHost('step');
     } else {
       var mt = (plain() && msg.titlePlain) || msg.title; /* D24: no notation in a Beginner's quiz title */
       body = '<div class="sesav">' + Avatar.coach(msgMood(msg), 52) + '</div>' + (mt ? '<h3' + (s.end ? ' class="ec-title"' : '') + '>' + esc(speak(mt)) + '</h3>' : '') + (msg.mv && !plain() ? '<p class="mono">' + figs(esc(msg.mv)) + '</p>' : '') + (msg.text ? '<p>' + speak(msg.text) + '</p>' : '') + (msg.tip ? '<p class="tip" style="margin-top:10px">' + speak(msg.tip) + '</p>' : '') +
         (s.canNext ? '<div class="row2"><button class="btn primary" type="button" data-act="next">Next ›</button>' + (s.canRetry ? '<button class="btn" type="button" data-act="retry">Try again</button>' : '') + '</div>' : '') +
-        (s.end ? stepEnd(s.unit, 'session', s.end.passed, s) : ''); /* an endgame drill that is over */
+        (s.end ? stepEnd(s.unit, 'session', s.end.passed, s) + slotHost('step') : ''); /* an endgame drill that is over */
     }
     if (c._h !== head + body) { c._h = head + body; c.innerHTML = head + body; }
+    renderSlot(c.querySelector('[data-slot]'), 'step', s);
   }
   function startSession(kind, opts) {
     clearSession(); st.rv = null; st.flipped = false;
@@ -1019,7 +1063,7 @@
   function finishSession() {
     var s = st.ses; s.finished = true;
     if (s.unit && s.part && (s.pass == null || s.right >= s.pass)) markUnit(s.unit, s.part);
-    saveProfile(); render();
+    saveProfile(); renderPath(); render();
   }
   function markUnit(id, part) {
     var wasOpen = unlockedByLessons(), wasComplete = Profile.levelComplete(prof, UNITS, unitDone);
@@ -1265,6 +1309,7 @@
     if (end === 'win' || end === 'held') { s.right = 1; markUnit(D.unit, 'apply'); s.msg = end === 'held' ? { title: 'Draw held!', text: 'You defended for ' + D.moves + ' moves against Stockfish. That is real endgame technique.' } : { title: 'Checkmate in ' + D.moves + ' moves!', text: 'Drill passed. That technique is yours now.' }; }
     else { s.wrong = 1; s.msg = { title: end === 'draw' ? (g.in_stalemate() ? 'Stalemate, a draw' : 'Draw') : end === 'limit' ? 'Out of moves' : 'Lost', text: end === 'draw' && g.in_stalemate() ? 'The king had no moves but wasn’t in check. Leave it a square until you can mate.' : 'Use Hint when you’re unsure, and follow the method from the lesson.' }; }
     s.end = { passed: end === 'win' || end === 'held' }; /* F1: the drill's end card (renderSession) */
+    renderPath();
     render(); return true;
   }
 
@@ -1353,8 +1398,9 @@
     var lv = $('levels'), uv = $('unitView'), le = $('learnEnd'), eu = st.end && UNIT[st.end.unit];
     /* F1: the Learn part of a lesson is finished: its end card, with the course open under it */
     le.hidden = !eu;
-    var leh = eu ? '<div class="sesav">' + Avatar.coach('proud', 52) + '</div><p class="eyebrow">' + PART_NAME.learn + '</p><h3 class="ec-title">' + esc(eu.title) + '</h3>' + stepEnd(eu.id, 'learn', true, null) : '';
+    var leh = eu ? '<div class="sesav">' + Avatar.coach('proud', 52) + '</div><p class="eyebrow">' + PART_NAME.learn + '</p><h3 class="ec-title">' + esc(eu.title) + '</h3>' + stepEnd(eu.id, 'learn', true, null) + slotHost('learn') : '';
     if (le._h !== leh) { le._h = leh; le.innerHTML = leh; }
+    if (eu) renderSlot(le.querySelector('[data-slot]'), 'learn', st.end);
     if (st.mode === 'lesson' && st.ls) {
       var L = st.ls, step = L.unit.lesson[L.i];
       lv.hidden = true; uv.hidden = false;
@@ -1369,7 +1415,7 @@
       var u = UNIT[st.unitOpen], c = prof.course[u.id] || {};
       lv.hidden = true; uv.hidden = false;
       uv.innerHTML = '<div class="card unitcard"><button class="back" type="button" data-act="units">‹ All levels</button><p class="eyebrow" style="margin-top:10px">Level ' + u.level + ' · ' + esc(COURSE.LEVELS[u.level - 1].name) + '</p><h3>' + esc(u.title) + '</h3><p class="goal">Goal: ' + esc(u.goal) + '</p><div class="steps3">' +
-        unitParts(u).map(function (k, i) { return '<div class="step3' + (c[k] ? ' done' : '') + '"><span class="n">' + (c[k] ? '✓' : i + 1) + '</span><div><b>' + PART_NAME[k] + '</b><small>' + esc(partDesc(u, k)) + '</small></div><button class="btn sm' + (!c[k] && nextPart(u) === k ? ' primary' : '') + '" type="button" data-part="' + k + '" data-u="' + u.id + '">' + (c[k] ? 'Redo' : 'Start') + '</button></div>'; }).join('') +
+        unitParts(u).map(function (k, i) { return '<div class="step3' + (c[k] ? ' done' : '') + '"><span class="n">' + (c[k] ? '✓' : i + 1) + '</span><div><b>' + PART_NAME[k] + '</b><small>' + esc(partDesc(u, k)) + '</small></div><button class="btn sm' + (!c[k] && nextPart(u) === k && !endShown() ? ' primary' : '') + '" type="button" data-part="' + k + '" data-u="' + u.id + '">' + (c[k] ? 'Redo' : 'Start') + '</button></div>'; }).join('') +
         '</div></div>';
       return;
     }
@@ -1589,7 +1635,7 @@
       afterLevel(); focusTab(); /* never leave focus on the page body */
       startOfferCheck(); focusOffer();
     },
-    cancel: function () { var a = document.activeElement; if (!a || a === document.body) focusTab(); startOfferCheck(); focusOffer(); }
+    cancel: function () { renderSlots(); var a = document.activeElement; if (!a || a === document.body) focusTab(); startOfferCheck(); focusOffer(); }
   };
   /* After the check: a Beginner goes straight into their next lesson; Improver and Club go to Home. */
   function afterLevel() {
@@ -1602,6 +1648,7 @@
     var n = (+lsGet(KCHECKS) || 0) + 1; lsSet(KCHECKS, n);
     if (st.mode === 'placement') PL_HOST.endBoard();
     Placement.open(PL_HOST, { retake: !!retake, seed: installId(), attempt: n });
+    renderSlots(); /* F-D4: no slot under the level check */
   }
   function placementMove(from, to) {
     var P = st.pl, mv = P.g.move({ from: from, to: to, promotion: 'q' });
@@ -1944,6 +1991,7 @@
   /* ---------- tabs ---------- */
   function switchTab(name) {
     if (!tabOpen(name) || !$('panel-' + name)) name = 'coach'; /* S2a: a Beginner's Train and Progress stay out of reach until unlocked */
+    if (st.tab !== name && visits[name] != null) visits[name]++; /* F-D12: a new visit to Home or Progress picks a new tip */
     st.tab = name; syncHomeMode();
     ['coach', 'path', 'play', 'train', 'progress'].forEach(function (t) { $('tab-' + t).setAttribute('aria-selected', t === name ? 'true' : 'false'); $('panel-' + t).hidden = t !== name; });
     if (name === 'progress') renderProgress();
@@ -1951,7 +1999,7 @@
     if (name === 'path') renderPath();
     if (name === 'coach') renderCoach();
     lsSet('suresh-chess-coach.tab', name);
-    renderZones(); releaseOffer();
+    renderZones(); renderEnd(); renderSlots(); releaseOffer();
   }
 
   /* ---------- persistence ---------- */
@@ -2244,6 +2292,7 @@
     render(); resumeGame();
     if (lsGet(K3D) === true) set3d(true, true);
     if (Profile.needsCheck(prof)) openPlacement(false);
+    booted = true;
     initCloud();
   }
   if (window.claude && window.claude.hot && window.claude.hot.snapshot) { try { window.claude.hot.snapshot(snapshot); } catch (e) {} }

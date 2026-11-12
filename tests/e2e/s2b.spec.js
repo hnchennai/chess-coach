@@ -20,12 +20,19 @@ const ASK = 'You have a game going. Finish it first?';
 const OFFER_B = 'Ready for Improver? You finished every Foundations lesson. Next come forks, pins and other tactics.';
 const BEFORE = require('./s2b-home-before.json'); // Improver and Club Home text from the build before S2b (AC11, AC12)
 // F1 (F-D8, F-D10): the Continue card now comes first and the stage card lost its "Next step" button and sub line.
-// Everything else on Improver and Club Home is still the text from before S2b: compare without those two parts.
+// F2 (F-D3): the tip slot is new at the bottom. Everything else on Improver and Club Home is still the text from before S2b:
+// compare without those parts.
 const beforeText = (key) => BEFORE[key].replace(/\nNext step: [^\n]* ›\n\n[^\n]*/, '');
 async function homeText(page) {
   assert.ok(/^Continue/.test((await page.locator('#contCard .bh-kick').textContent()).trim()), 'the Continue card has its kicker');
   assert.equal(await page.locator('#contCard button').count(), 1, 'and one button');
-  return page.evaluate(() => { const c = document.getElementById('contCard'); c.hidden = true; const t = document.getElementById('panel-coach').innerText; c.hidden = false; return t; });
+  // F2 (F-D3): the tip slot is new at the bottom of Home; it is a note with the coach's label, one tip and no button
+  const slot = page.locator('#homeSlot');
+  if (await slot.isVisible()) { assert.ok(/^(Rani|Gaja)’s tip: .+/.test(await slot.getAttribute('aria-label'))); assert.equal(await slot.locator('button, a').count(), 0); }
+  return page.evaluate(() => {
+    const c = document.getElementById('contCard'), s = document.getElementById('homeSlot'), sh = s.hidden; c.hidden = true; s.hidden = true;
+    const t = document.getElementById('panel-coach').innerText; c.hidden = false; s.hidden = sh; return t;
+  });
 }
 const HOME_CARDS = ['#stageHero', '#today', '#stageCard', '#roadCard', '#lookCard', '#methodsCard'];
 const FOUND = ['rules', 'special', 'board', 'values', 'mate', 'opening', 'blunder'];

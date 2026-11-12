@@ -40,8 +40,8 @@ const GAME_OPEN = { sans: ['e4', 'e5', 'Nf3', 'Nc6'], user: 'w', level: 1, ann: 
 // 1. e4 e5 2. Bc4 Nc6 3. Qh5 Nf6: White mates with Qxf7.
 const MATE1 = (o) => Object.assign({ sans: ['e4', 'e5', 'Bc4', 'Nc6', 'Qh5', 'Nf6'], user: 'w', level: 1, ann: {}, notes: {}, tags: {}, fb: null, opp: null, evalW: 0, flipped: false, recorded: false, goal: null, t: NOW - 60000 }, o);
 const goal = (type, unit) => ({ type, unit, text: 'Lesson task.', status: 'active' });
-// Fool's mate: the player (White) is mated.
-const LOST = { sans: ['f3', 'e5', 'g4', 'Qh4#'], user: 'w', level: 3, ann: {}, notes: {}, tags: {}, fb: null, opp: null, evalW: 0, t: NOW };
+// Fool's mate: the player (White) is mated. Saved as the app saves it after the partner's mating move (already recorded).
+const LOST = { sans: ['f3', 'e5', 'g4', 'Qh4#'], user: 'w', level: 3, ann: {}, notes: {}, tags: {}, fb: null, opp: null, evalW: 0, recorded: true, t: NOW };
 const PAST = (o) => Object.assign({ id: 'gp', d: NOW - DAY, r: 'W', user: 'b', level: 3, acc: 80, counts: {}, tags: {}, sans: ['f3', 'e5', 'g4', 'Qh4#'], ann: {} }, o);
 
 function seedFn([pk, p, gk, g, tk, tab, ck, coach]) {
@@ -129,6 +129,8 @@ async function card(page, root) {
       focusable: all('button').every((b) => b.tabIndex >= 0 && !b.disabled), all: el.innerText };
   }, root);
 }
+// F-D7: how many main (primary) buttons a tab's panel shows.
+const mains = (page, panel) => page.evaluate((id) => Array.from(document.querySelectorAll('#' + id + ' .btn.primary')).filter((e) => e.offsetParent !== null).length, panel);
 // F-D7 / F-D11 / AC13: one main button (48px), small buttons 44px, every button reachable by keyboard.
 function cardRules(c, vp, why) {
   assert.equal(c.shown, true, why + ': card shown');
@@ -149,6 +151,45 @@ function beginnerWords(c, why) {
   assert.ok(!SAN.test(c.all), why + ': notation: ' + (c.all.match(SAN) || [])[0]);
   assert.ok(!LATER.test(c.all), why + ': a lesson outside Foundations: ' + (c.all.match(LATER) || [])[0]);
 }
+/* ---------- F2: the tip slot ---------- */
+// The signed tips (docs/specs/flow-rework.product.md).
+const BEGINNER = ['Before you move, look at what their last move attacks.', 'Castle early. A king in the middle is easy to attack.', 'Bring out your knights and bishops before your queen.', 'A free piece is one nobody guards. Take it.',
+  'Before you let go of a piece, check it is safe on its new square.', 'Pawns can’t move back. Push them with care.', 'Two pieces attacking one square beat one piece guarding it.', 'When you are ahead, swap pieces. The game gets simpler.'];
+const OTHER = ['Checks, captures, threats. Look at them in that order, every move.', 'A knight on the edge covers fewer squares. Keep it near the middle.', 'Two attacks at once win a piece. Look for forks every move.', 'Rooks belong on open files. Put one there before your opponent does.',
+  'A pinned piece is a poor guard. Count it out.', 'In the endgame, the king is a fighting piece. Bring it to the middle.', 'Passed pawns must be pushed. Put a rook behind them.', 'After every game, find the one move where it turned.'];
+// A player on their first day: the level was set today and today is the only day with a record.
+const FIRST_DAY = { levelT: NOW, t: NOW, days: played(0) };
+// A clock the test can move: the page's Date runs ahead (or behind) by localStorage '__clock' milliseconds. Set it and reload.
+const CLOCK = { fn: () => {
+  const off = +(localStorage.getItem('__clock') || 0), RD = Date; if (!off) return;
+  class D extends RD { constructor(...a) { if (a.length) super(...a); else super(RD.now() + off); } static now() { return RD.now() + off; } }
+  window.Date = D;
+}, arg: null };
+async function slot(page, sel) {
+  return page.evaluate((s) => {
+    const el = document.querySelector(s), on = (e) => !!e && e.offsetParent !== null;
+    if (!on(el)) return { shown: false };
+    const sibs = Array.from(el.parentElement.children).filter(on).filter((e) => !e.classList.contains('credit'));
+    return { shown: true, role: el.getAttribute('role'), aria: el.getAttribute('aria-label'), label: el.querySelector('.ts-label').textContent, text: el.querySelector('.ts-text').textContent,
+      h: el.getBoundingClientRect().height, focusables: el.querySelectorAll('a, button, input, select, textarea, [tabindex]').length, tabIndex: el.tabIndex, gaja: !!el.querySelector('.ts-av svg.gaja'),
+      pic: !!el.querySelector('.ts-av canvas, .ts-av svg'), inner: el.querySelector('.ts-body').getAttribute('aria-hidden'), last: sibs[sibs.length - 1] === el, tinted: getComputedStyle(el).backgroundColor };
+  }, sel);
+}
+// AC6 to AC9: the look and the words of a slot. list: the tips this player may get. coach: 'Rani' | 'Gaja'.
+function slotRules(s, list, coach, why) {
+  assert.equal(s.shown, true, why + ': the slot shows');
+  assert.equal(s.label, coach + '’s tip', why + ': label');
+  assert.ok(list.includes(s.text), why + ': one tip from the right list: ' + s.text);
+  assert.equal(s.role, 'note', why + ': a note'); assert.equal(s.aria, coach + '’s tip: ' + s.text, why + ': what a screen reader hears');
+  assert.equal(s.inner, 'true', why + ': the words are read once');
+  assert.equal(s.focusables, 0, why + ': nothing inside takes focus'); assert.equal(s.tabIndex, -1, why + ': the slot takes no focus');
+  assert.equal(s.pic, true, why + ': the coach picture');
+  assert.ok(s.h >= 76, why + ': 76px or more: ' + s.h);
+  assert.ok(!/—/.test(s.text + s.label), why + ': no em dash');
+}
+// How many slots are on screen.
+const anySlot = (page) => page.evaluate(() => Array.from(document.querySelectorAll('.tipslot')).filter((e) => e.offsetParent !== null).length);
+
 // The Continue card on the full Home.
 async function cont(page) {
   return page.evaluate(() => {
@@ -330,6 +371,8 @@ const cases = [
   ['F1-3b: a lost game and a Beginner’s result card (plain words)', async (vp) => {
     let page = await seeded(vp, improver(), { tab: 'play', game: LOST });
     let c = await card(page, '#gameEnd');
+    await page.waitForTimeout(600);
+    assert.equal(await page.evaluate(() => window.scrollY), 0, 'opening the app with a finished game does not scroll the page by itself');
     assert.equal(c.title, 'Checkmate'); assert.equal(c.text, 'The engine wins this one. Review it to find the turning point.');
     assert.equal(c.main, 'Review this game'); assert.deepEqual(c.small, ['New game', 'Home']);
     cardRules(c, vp, 'lost game'); await underBoard(page, vp, 'lost game');
@@ -457,6 +500,7 @@ const cases = [
     assert.equal(c.title, 'Session complete'); assert.equal(c.text, '8 of 10 correct. Passed! This step is done.');
     assert.equal(c.line, 'Next: play it in a real game.'); assert.equal(c.main, 'Play the lesson game'); assert.deepEqual(c.small, ['Go again', 'Home']);
     cardRules(c, vp, 'practice passed'); beginnerWords(c, 'practice passed');
+    assert.equal(await mains(page, 'panel-path'), 1, 'one main button on the screen (the lesson’s part list under the card has none)');
     await shot(page, vp, 'session-passed', '#sessionCard');
     await page.locator('#sessionCard .ec-main').click();
     await page.waitForFunction(() => window.__coach.st.goal && window.__coach.st.goal.unit === 'blunder' && window.__coach.st.mode === 'play');
@@ -473,6 +517,7 @@ const cases = [
     assert.equal(c.line, null); assert.equal(c.main, 'Go again'); assert.deepEqual(c.small, ['Home']);
     assert.ok(!/Next|lesson game|Start next lesson/.test(c.all), 'no next step: ' + c.all);
     cardRules(c, vp, 'not passed'); beginnerWords(c, 'not passed');
+    assert.equal(await mains(page, 'panel-path'), 1, 'one main button on the screen');
     await shot(page, vp, 'session-not-passed', '#sessionCard');
     assert.equal(((await getProf(page)).course.blunder || {}).practice, undefined, 'the step is not done');
     await page.locator('#sessionCard .ec-main').click();
@@ -584,8 +629,10 @@ const cases = [
     assert.equal(c.title, 'Session complete'); assert.equal(c.text, '10 of 10 correct.');
     assert.equal(c.line, null); assert.equal(c.main, '10 more puzzles'); assert.deepEqual(c.small, ['Home']);
     cardRules(c, vp, 'Train puzzle set');
+    assert.equal(await mains(page, 'panel-train'), 1, 'one main button on the screen (Train’s own start button steps back)');
     await page.locator('#sessionCard .ec-main').click();
     await page.waitForFunction(() => { const s = window.__coach.st.ses; return s && s.rated && !s.finished && s.i === 0; });
+    assert.equal(await page.locator('#ratedBtn').evaluate((b) => b.classList.contains('primary')), true, 'Train’s start button is the main button again');
     // the review of missed puzzles
     await page.evaluate(() => { const p = window.__coach.getProf(), id = window.__coach.PZ[0].id; p.puz[id] = { n: 1, ok: 0, box: 0, due: Date.now() - 1000 }; window.__coach.trainStart('review'); });
     await page.waitForFunction(() => { const s = window.__coach.st.ses; return s && s.title === 'Review missed puzzles'; });
@@ -619,6 +666,7 @@ const cases = [
     const c = await card(page, '#sessionCard');
     assert.equal(c.title, 'Out of moves'); assert.equal(c.line, null); assert.equal(c.main, 'Go again'); assert.deepEqual(c.small, ['Home']);
     cardRules(c, vp, 'drill not passed');
+    assert.equal(await mains(page, 'panel-path'), 1, 'one main button on the screen');
     await page.locator('#sessionCard .ec-main').click();
     await page.waitForFunction(() => window.__coach.st.dr && !window.__coach.st.dr.done && window.__coach.st.dr.moves === 0);
     return page;
@@ -630,6 +678,198 @@ const cases = [
     const col = await page.evaluate(() => { const e = document.getElementById('gameEnd'), cs = getComputedStyle(e); return { bg: cs.backgroundColor, ink: getComputedStyle(e.querySelector('.ec-title')).color }; });
     assert.notEqual(col.bg, 'rgb(255, 255, 255)', 'dark surface'); assert.notEqual(col.bg, col.ink);
     await shot(page, vp, 'game-loss-dark', '#gameEnd');
+    return page;
+  }]  ,
+  /* ---------- F2: the tip slot ---------- */
+  ['F2-10 / Scenario 10 / AC7: no slot anywhere on the first day; from the next calendar day at the bottom of Home and Progress and on end cards', async (vp) => {
+    // A new install: the level check, no slot
+    let page = await newPage(vp, null, CLOCK);
+    await page.waitForFunction(() => window.Placement.isOpen());
+    assert.equal(await anySlot(page), 0, 'no slot in the level check');
+    await page.context().close();
+    // The first day of an Improver (level set today, today's record only)
+    page = await seeded(vp, improver(FIRST_DAY), { tab: 'coach', game: LOST, extra: CLOCK });
+    assert.equal((await slot(page, '#homeSlot')).shown, false, 'first day: no slot on Home');
+    await shot(page, vp, 'home-first-day-no-slot', '#methodsCard');
+    await page.locator('#tab-progress').click();
+    assert.equal((await slot(page, '#progSlot')).shown, false, 'first day: no slot on Progress');
+    await page.locator('#tab-play').click();
+    assert.equal((await card(page, '#gameEnd')).main, 'Review this game'); assert.equal(await anySlot(page), 0, 'first day: no slot on the game end card');
+    await page.locator('#tab-train').click(); await page.locator('#ratedBtn').click();
+    await page.waitForFunction(() => window.__coach.st.ses && window.__coach.st.ses.rated);
+    await jump(page, 9); await lastPuzzle(page);
+    assert.equal((await card(page, '#sessionCard')).main, '10 more puzzles'); assert.equal(await anySlot(page), 0, 'first day: no slot on the set’s end card');
+    await page.evaluate(() => window.__coach.startPart('fork', 'learn')); await finishLesson(page);
+    assert.equal((await card(page, '#learnEnd')).main, 'Start practice'); assert.equal(await anySlot(page), 0, 'first day: no slot on the lesson step’s end card');
+    for (const t of ['coach', 'path', 'play', 'train', 'progress']) { await page.locator('#tab-' + t).click(); assert.equal(await anySlot(page), 0, 'first day: no slot on ' + t); }
+    const day1 = await getProf(page);
+    // Tomorrow: the same phone, one calendar day later
+    await page.evaluate(() => localStorage.setItem('__clock', String(86400000))); await page.reload();
+    await page.waitForFunction(() => window.__coach && window.Placement);
+    await page.locator('#tab-coach').click();
+    let s = await slot(page, '#homeSlot');
+    assert.equal(s.shown, true, 'the next day: the slot at the bottom of Home'); slotRules(s, OTHER, 'Rani', 'Home');
+    assert.equal(s.last, true, 'the slot is the last thing on Home');
+    await page.locator('#tab-progress').click();
+    s = await slot(page, '#progSlot'); assert.equal(s.shown, true, 'the next day: the slot on Progress'); slotRules(s, OTHER, 'Rani', 'Progress');
+    await page.locator('#tab-play').click();
+    s = await slot(page, '#gameEnd .tipslot'); assert.equal(s.shown, true, 'the next day: the slot on the game end card'); slotRules(s, OTHER, 'Rani', 'game end');
+    await page.evaluate(() => window.__coach.trainStart('rated')); await jump(page, 9); await lastPuzzle(page);
+    s = await slot(page, '#sessionCard .tipslot'); assert.equal(s.shown, true, 'the next day: the slot on the set’s end card'); slotRules(s, OTHER, 'Rani', 'set end');
+    await page.evaluate(() => window.__coach.startPart('pin', 'learn')); await finishLesson(page);
+    s = await slot(page, '#learnEnd .tipslot'); assert.equal(s.shown, true, 'the next day: the slot on the lesson step’s end card'); slotRules(s, OTHER, 'Rani', 'lesson step end');
+    // AC7: the clock set back five days: nothing breaks, nothing is lost, and the first day does not come back
+    const day2 = await getProf(page);
+    await page.evaluate(() => localStorage.setItem('__clock', String(-5 * 86400000))); await page.reload();
+    await page.waitForFunction(() => window.__coach && window.Placement);
+    const back = await getProf(page);
+    assert.deepEqual(back.course, day2.course, 'lessons kept'); assert.deepEqual(back.puz, day2.puz, 'puzzles kept'); assert.equal(back.rating, day2.rating); assert.equal(back.games.length, day2.games.length);
+    assert.ok(Object.keys(day1.course).every((k) => back.course[k]), 'day one’s lesson is still done');
+    await page.locator('#tab-coach').click();
+    assert.equal((await cont(page)).shown, true, 'Home works'); assert.equal((await slot(page, '#homeSlot')).shown, true, 'not the first day again');
+    await page.locator('#tab-progress').click(); assert.ok((await page.locator('#stats').innerText()).length > 0, 'Progress works');
+    return page;
+  }],
+  ['F2-11 / Scenario 11: a Beginner on the second day finishes a game: Rani’s tip under the buttons, a Beginner tip, and it stays the same', async (vp) => {
+    let page = await seeded(vp, prof(), { tab: 'play', game: MATE1() });
+    await mateInOne(page);
+    const c = await card(page, '#gameEnd');
+    assert.equal(c.main, 'Review this game'); assert.equal(c.slot, true);
+    let s = await slot(page, '#gameEnd .tipslot');
+    slotRules(s, BEGINNER, 'Rani', 'Beginner game end'); beginnerWords({ all: s.text }, 'Beginner tip');
+    const m = await page.evaluate(() => { const e = document.getElementById('gameEnd'), t = e.querySelector('.tipslot').getBoundingClientRect(); let low = 0; e.querySelectorAll('button').forEach((b) => { low = Math.max(low, b.getBoundingClientRect().bottom); }); return { slotTop: t.top, low, mainTop: e.querySelector('.ec-main').getBoundingClientRect().top + window.scrollY }; });
+    assert.ok(m.slotTop >= m.low, 'the slot is under the buttons');
+    await underBoard(page, vp, 'game end with the slot');
+    await shot(page, vp, 'game-win-beginner-slot', '#gameEnd');
+    // it does not change while she stays on the card: re-renders (flip the board twice) and time
+    await page.locator('#flipBtn').click(); await page.locator('#flipBtn').click(); await page.waitForTimeout(700);
+    const s2 = await slot(page, '#gameEnd .tipslot');
+    assert.equal(s2.text, s.text, 'the same tip'); assert.equal(s2.h, s.h);
+    assert.equal(await page.evaluate(() => document.querySelector('#gameEnd .ec-main').getBoundingClientRect().top + window.scrollY), m.mainTop, 'AC8: nothing on the card moved');
+    assert.equal(await page.evaluate(() => document.querySelectorAll('.tipslot').length - Array.from(document.querySelectorAll('.tipslot')).filter((e) => e.offsetParent === null).length), 1, 'one slot on the screen');
+    await page.context().close();
+    // F-D13: a Beginner with Show everything on still gets Beginner tips; an Improver gets the other list
+    page = await seeded(vp, prof({ showAll: true }), { tab: 'play', game: Object.assign({}, LOST, { level: 1 }) });
+    s = await slot(page, '#gameEnd .tipslot'); slotRules(s, BEGINNER, 'Rani', 'Beginner with Show everything');
+    await page.locator('#tab-coach').click();
+    slotRules(await slot(page, '#homeSlot'), BEGINNER, 'Rani', 'Beginner with Show everything, Home');
+    assert.equal((await slot(page, '#gameEnd .tipslot')).shown, false, 'the result card’s slot is on Play only: one slot per screen');
+    await page.context().close();
+    page = await seeded(vp, improver(), { tab: 'play', game: LOST });
+    slotRules(await slot(page, '#gameEnd .tipslot'), OTHER, 'Rani', 'Improver game end');
+    return page;
+  }],
+  ['F2-12 / Scenario 12 / AC6: no slot on screen in the middle of a lesson, game, puzzle or review, nor in Settings or the level check', async (vp) => {
+    const tabs = async (page, why) => { for (const t of ['coach', 'path', 'play', 'train', 'progress']) { await page.locator('#tab-' + t).click(); assert.equal(await anySlot(page), 0, why + ': no slot with ' + t + ' open'); } };
+    // a game in progress
+    let page = await seeded(vp, improver({ course: done('fork'), games: [PAST()] }), { tab: 'play', game: Object.assign({}, GAME_OPEN, { level: 3 }) });
+    await tabs(page, 'game in progress');
+    // a review, to its last move (the review card has no slot)
+    await page.locator('#tab-progress').click(); await page.locator('#history [data-review]').first().click();
+    await tabs(page, 'review'); await page.locator('#tab-play').click(); await page.locator('#navLast').click();
+    assert.equal((await card(page, '#gameEnd')).title, 'That’s the whole game.'); assert.equal(await anySlot(page), 0, 'review: no slot on its last move');
+    await page.context().close();
+    // a lesson, then a puzzle set (no game going, so only the activity hides the slot)
+    page = await seeded(vp, improver({ course: done('fork') }), { tab: 'coach' });
+    assert.equal(await anySlot(page), 1, 'Home has its slot before the lesson');
+    await page.locator('#contCard .bh-go').click(); await page.waitForFunction(() => window.__coach.st.mode === 'lesson');
+    await tabs(page, 'lesson');
+    await page.evaluate(() => window.__coach.trainStart('rated')); await page.waitForFunction(() => window.__coach.st.mode === 'puzzle');
+    await tabs(page, 'puzzle set');
+    await page.evaluate(() => window.__coach.startPart('kq', 'apply')); await page.waitForFunction(() => window.__coach.st.mode === 'drill');
+    await tabs(page, 'drill');
+    // leaving the activity brings Home's slot back; Train's list and Learn's list never have one
+    await page.locator('#tab-path').click(); await page.locator('#modeExit').click();
+    await page.locator('#tab-coach').click(); assert.equal((await slot(page, '#homeSlot')).shown, true, 'the slot is back on Home');
+    await page.locator('#tab-train').click(); assert.equal(await anySlot(page), 0, 'Train has no slot');
+    await page.locator('#tab-path').click(); assert.equal(await anySlot(page), 0, 'Learn has no slot');
+    await page.locator('#tab-play').click(); assert.equal(await anySlot(page), 0, 'Play has no slot without a finished game');
+    // Settings and the level check
+    await page.locator('#tab-coach').click(); await page.locator('#settingsBtn').click();
+    assert.equal(await page.locator('#settingsSheet .tipslot').count(), 0, 'no slot in Settings');
+    await page.keyboard.press('Escape');
+    await page.evaluate(() => window.__coach.openPlacement(true)); await page.waitForFunction(() => window.Placement.isOpen());
+    assert.equal(await anySlot(page), 0, 'no slot during the level check');
+    return page;
+  }],
+  ['F2-13 / Scenario 13 / AC10: offline, the slot still shows a tip and nothing reaches for the network', async (vp) => {
+    const page = await seeded(vp, improver({ course: done('fork') }), { tab: 'coach', game: LOST });
+    await page.context().setOffline(true);
+    await page.locator('#tab-progress').click();
+    slotRules(await slot(page, '#progSlot'), OTHER, 'Rani', 'offline Progress');
+    await shot(page, vp, 'progress-slot', '#progSlot');
+    await page.locator('#tab-coach').click();
+    slotRules(await slot(page, '#homeSlot'), OTHER, 'Rani', 'offline Home');
+    await page.locator('#tab-play').click();
+    slotRules(await slot(page, '#gameEnd .tipslot'), OTHER, 'Rani', 'offline game end');
+    await page.waitForTimeout(500);
+    assert.deepEqual(page.outside, [], 'nothing left the page origin');
+    assert.equal(await page.evaluate(() => performance.getEntriesByType('resource').filter((r) => !r.name.startsWith(location.origin) && !/fonts\.(googleapis|gstatic)\.com/.test(r.name)).length), 0, 'no resource from another origin');
+    return page;
+  }],
+  ['F2-14 / Scenario 14: with Coach Gaja the label reads "Gaja’s tip" and shows Gaja', async (vp) => {
+    let page = await seeded(vp, improver({ course: done('fork') }), { tab: 'coach', coach: 'gaja' });
+    let s = await slot(page, '#homeSlot');
+    slotRules(s, OTHER, 'Gaja', 'Gaja Home'); assert.equal(s.gaja, true, 'Gaja’s picture');
+    await page.locator('#tab-progress').click();
+    slotRules(await slot(page, '#progSlot'), OTHER, 'Gaja', 'Gaja Progress');
+    await shot(page, vp, 'progress-slot-gaja', '#progSlot');
+    // changing the coach on Home changes the label at once and keeps the tip
+    await page.locator('#tab-coach').click();
+    s = await slot(page, '#homeSlot');
+    await page.locator('#lookCard [data-coach="rani"]').click();
+    const r = await slot(page, '#homeSlot');
+    slotRules(r, OTHER, 'Rani', 'back to Rani'); assert.equal(r.text, s.text, 'the tip stays'); assert.equal(r.gaja, false);
+    await page.context().close();
+    page = await seeded(vp, prof(), { tab: 'coach', coach: 'gaja' });
+    slotRules(await slot(page, '#homeSlot'), BEGINNER, 'Gaja', 'Gaja Beginner Home');
+    return page;
+  }],
+  ['F2-15 / Scenario 15: Beginner Home on the second day is as in S2b, with the slot under "Just play a game" and Continue on the first screen', async (vp) => {
+    const page = await seeded(vp, prof({ course: done('rules') }), { tab: 'coach' });
+    const m = await page.evaluate(() => {
+      const q = (s) => document.querySelector(s), box = (s) => q(s).getBoundingClientRect(), nav = q('.tabs'), fixed = getComputedStyle(nav).position === 'fixed';
+      return { y: window.scrollY, kick: q('#bhome .bh-kick').textContent, go: q('#bhome .bh-go').textContent, alt: q('#bhome .bh-alt').textContent, goBottom: box('#bhome .bh-go').bottom, altBottom: box('#bhome .bh-alt').bottom,
+        slotTop: box('#homeSlot').top, bottom: fixed ? nav.getBoundingClientRect().top : window.innerHeight, w: window.innerWidth, slotRight: box('#homeSlot').right, slotLeft: box('#homeSlot').left,
+        prim: Array.from(document.querySelectorAll('#panel-coach .btn.primary')).filter((e) => e.offsetParent !== null).length, cards: ['contCard', 'stageHero', 'today'].filter((id) => document.getElementById(id).offsetParent !== null) };
+    });
+    assert.equal(m.kick, 'Lesson 2 of 7'); assert.equal(m.go, 'Start lesson'); assert.equal(m.alt, 'Just play a game'); assert.deepEqual(m.cards, [], 'Beginner Home as in S2b');
+    assert.equal(m.prim, 1, 'one primary button');
+    assert.ok(m.slotTop >= m.altBottom, 'the slot is under "Just play a game"');
+    assert.ok(m.y === 0 && m.goBottom <= m.bottom + 0.5, 'Continue is on the first screen (' + Math.round(m.goBottom) + ' of ' + Math.round(m.bottom) + ')');
+    assert.ok(m.slotLeft >= 0 && m.slotRight <= m.w + 0.5, 'the slot fits the width');
+    const s = await slot(page, '#homeSlot');
+    slotRules(s, BEGINNER, 'Rani', 'Beginner Home'); beginnerWords({ all: s.text }, 'Beginner Home tip'); assert.equal(s.last, true);
+    await shot(page, vp, 'home-beginner-slot', '#homeSlot');
+    // with a game going, "Back to my game" replaces the second button and Home drops the slot (never beside a game in progress)
+    await page.locator('#bhome .bh-alt').click(); await page.waitForFunction(() => window.__coach.st.tab === 'play');
+    await page.waitForFunction(() => !window.__coach.st.busy);
+    await page.locator('#board .sq[data-sq="e2"]').click(); await page.locator('#board .sq[data-sq="e4"]').click();
+    await page.waitForFunction(() => window.__coach.hist().length >= 2 && !window.__coach.st.busy, null, { timeout: 20000 });
+    await page.locator('#tab-coach').click();
+    assert.equal((await page.locator('#bhome .bh-alt').textContent()).trim(), 'Back to my game'); assert.equal(await anySlot(page), 0);
+    return page;
+  }],
+  ['F2-8 / AC8: the slot has one fixed height (76px or more) for every tip, nothing is cut off, and it is a note, not a control', async (vp) => {
+    const page = await seeded(vp, prof({ unlockAll: true }), { tab: 'play', game: Object.assign({}, LOST, { level: 1 }) });
+    const measure = (sel) => page.evaluate(([s, tips]) => {
+      const el = document.querySelector(s), tx = el.querySelector('.ts-text'), keep = tx.textContent, out = [];
+      for (const t of tips) { tx.textContent = t; const b = el.querySelector('.ts-body'); out.push({ t, h: el.getBoundingClientRect().height, fits: b.scrollHeight <= el.clientHeight && b.getBoundingClientRect().bottom <= el.getBoundingClientRect().bottom + 0.5 && b.getBoundingClientRect().top >= el.getBoundingClientRect().top - 0.5, lines: Math.round(tx.getBoundingClientRect().height / parseFloat(getComputedStyle(tx).lineHeight)) }); }
+      tx.textContent = keep; return out;
+    }, [sel, BEGINNER.concat(OTHER)]);
+    const places = [['#gameEnd .tipslot', 'play'], ['#homeSlot', 'coach'], ['#progSlot', 'progress']];
+    let h0 = null;
+    for (const [sel, tab] of places) {
+      await page.locator('#tab-' + tab).click();
+      const rows = await measure(sel);
+      for (const r of rows) {
+        if (h0 == null) h0 = r.h;
+        assert.equal(r.h, h0, sel + ': one height for every tip and place: ' + r.t);
+        assert.ok(r.fits, sel + ': the tip fits the box: ' + r.t);
+        assert.ok(r.lines <= 3, sel + ': a short tip (' + r.lines + ' lines): ' + r.t);
+      }
+    }
+    assert.ok(h0 >= 76, 'the height is 76px or more: ' + h0);
     return page;
   }]
 ];

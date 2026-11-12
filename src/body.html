@@ -30,7 +30,7 @@
         <div class="who"><span class="swatch" id="youSwatch"></span>You</div>
         <div class="caps" id="youCaps"></div>
       </div>
-      <!-- F1 (F-D9): the game result, and the last move of a review, as a card under the board. Nothing sits over the board. -->
+      <!-- F1 (F-D9, F-D24): the game result as a card under the board (on Play; one line on other tabs). Nothing sits over the board. -->
       <div class="card endcard" id="gameEnd" hidden></div>
       <div class="controls" id="playControls">
         <button class="btn primary" id="hintBtn" type="button">Hint</button>
@@ -49,6 +49,8 @@
         <button class="btn big safe" id="qSafe" type="button">Safe</button>
         <button class="btn big danger" id="qBlunder" type="button">Blunder</button>
       </div>
+      <!-- F1: the last move of a finished game's review. Under the Prev and Next controls, so they never move. -->
+      <div class="card endcard" id="reviewEnd" hidden></div>
       <p class="sync" id="sync" role="status">Connecting to your account…</p>
     </section>
 
@@ -169,6 +171,10 @@
       </div>
     </aside>
   </div>
+  <!-- F2 (F-D27): on desktop (board left, panel right) the tip slot is this one strip under both columns, for every place -->
+  <div class="tipslot slotstrip" id="slotStrip" hidden></div>
+  <!-- An end card that appears is read out here (title and lines), politely -->
+  <div class="sr" id="endLive" aria-live="polite"></div>
 </div>
 <div class="placement" id="placement" hidden></div>
 <div class="sheet" id="settingsSheet" hidden>

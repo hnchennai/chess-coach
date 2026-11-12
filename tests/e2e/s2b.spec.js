@@ -177,7 +177,7 @@ async function layoutRules(page, vp, why) {
   const m = await page.evaluate(() => {
     const b = document.getElementById('bhome'), q = (s) => b.querySelector(s), box = (s) => q(s) ? q(s).getBoundingClientRect() : null, cs = (s) => getComputedStyle(q(s));
     const av = q('.bh-av').firstElementChild.getBoundingClientRect();
-    const prim = Array.from(document.querySelectorAll('#panel-coach .btn.primary')).filter((e) => e.offsetParent !== null).length;
+    const prim = Array.from(document.querySelectorAll('.btn.primary')).filter((e) => e.offsetParent !== null).length; // F-D28: counted on the whole screen, the board column included
     return { av: [av.width, av.height], head: [parseFloat(cs('.bh-head').fontSize), cs('.bh-head').fontWeight], lineColor: cs('.bh-line').color, muted: getComputedStyle(document.documentElement).getPropertyValue('--muted').trim(),
       radius: parseFloat(cs('.bh-card').borderTopLeftRadius), go: box('.bh-go'), alt: box('.bh-alt'), card: box('.bh-card'), blockW: b.getBoundingClientRect().width, prim,
       goPrimary: q('.bh-go').classList.contains('primary') && q('.bh-go').classList.contains('big'), altPrimary: q('.bh-alt') ? q('.bh-alt').classList.contains('primary') : false };

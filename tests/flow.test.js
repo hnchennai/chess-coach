@@ -36,9 +36,9 @@ test('Game row 4: lesson game, task not passed: Try again, small Review this gam
   assert.ok(!JSON.stringify(c).includes('Pins and skewers'));
 });
 test('Game row 5: review finished: "That’s the whole game.", the Continue card’s step, small New game and Home', () => {
-  const c = F.afterReview({ title: 'Pins and skewers', button: 'Continue' });
+  const c = F.afterReview({ title: 'Pins and skewers', button: 'Continue', lesson: true });
   assert.equal(c.title, 'That’s the whole game.');
-  assert.equal(c.line, 'Pins and skewers');
+  assert.equal(c.line, 'Next lesson: Pins and skewers');
   assert.deepEqual(c.main, { label: 'Continue', go: 'step' });
   assert.deepEqual(labels(c.small), ['New game', 'Home']); assert.deepEqual(gos(c.small), ['newgame', 'home']);
 });
@@ -156,4 +156,33 @@ test('D49: a main button that starts a lesson game asks first while a game is un
 test('No em dash and no straight apostrophe in any copy', () => {
   const all = JSON.stringify([F.afterGame({ goal: 'done', next: NEXT }), F.afterGame({ goal: 'failed' }), F.afterReview({ title: 't', button: 'b' }), F.COPY]);
   assert.ok(!/—/.test(all)); assert.ok(!/'/.test(all));
+});
+
+/* ---------- Fix round 1: F-D18, F-D23, F-D29 ---------- */
+test('F-D23: lesson game passed while another part of the same lesson is undone names that part, never "Next lesson: <same lesson>"', () => {
+  let c = F.afterGame({ goal: 'done', nextPart: 'practice', next: { title: 'Opening principles' } });
+  assert.equal(c.line, 'Next: practise it.'); assert.deepEqual(c.main, { label: 'Start practice', go: 'part' }); assert.deepEqual(labels(c.small), ['Review this game', 'Home']);
+  c = F.afterGame({ goal: 'done', nextPart: 'other', next: NEXT });
+  assert.equal(c.line, 'Next: one more step.'); assert.deepEqual(c.main, { label: 'Continue', go: 'part' });
+  c = F.afterGame({ goal: 'done', nextPart: 'game', next: NEXT });
+  assert.equal(c.line, 'Next: play it in a real game.'); assert.deepEqual(c.main, { label: 'Play the lesson game', go: 'part' });
+  assert.ok(!JSON.stringify(F.afterGame({ goal: 'done', nextPart: 'practice', next: NEXT })).includes('Next lesson'));
+  assert.deepEqual(F.afterGame({ goal: 'failed', nextPart: 'practice', next: NEXT }).main, { label: 'Try again', go: 'tryagain' }, 'not passed: still Try again');
+});
+test('F-D18: a lesson game’s goal decided before the game ends: next-step buttons and Keep playing', () => {
+  let c = F.goalCard({ goal: 'done', nextPart: null, next: NEXT });
+  assert.equal(c.line, 'Next lesson: Pins and skewers'); assert.deepEqual(c.main, { label: 'Start next lesson', go: 'nextlesson' }); assert.deepEqual(c.small, [{ label: 'Keep playing', go: 'keep' }]);
+  c = F.goalCard({ goal: 'done', nextPart: 'practice', next: NEXT });
+  assert.equal(c.line, 'Next: practise it.'); assert.deepEqual(c.main, { label: 'Start practice', go: 'part' }); assert.deepEqual(labels(c.small), ['Keep playing']);
+  c = F.goalCard({ goal: 'failed', nextPart: null, next: NEXT });
+  assert.equal(c.line, null); assert.deepEqual(c.main, { label: 'Try again', go: 'tryagain' }); assert.deepEqual(labels(c.small), ['Keep playing']);
+  c = F.goalCard({ goal: 'done', nextPart: null, next: null });
+  assert.equal(c.line, null); assert.equal(c.main, null, 'no lesson left: nothing to start'); assert.deepEqual(labels(c.small), ['Keep playing']);
+  assert.equal(F.goalCard({ goal: 'active' }), null, 'no buttons while the goal is open');
+  for (const g of ['done', 'failed']) assert.ok(!/Back to the course/.test(JSON.stringify(F.goalCard({ goal: g, next: NEXT }))));
+});
+test('F-D29: the review-finished card labels the step: "Next lesson: <title>" for a lesson, else the Continue card’s title', () => {
+  assert.equal(F.afterReview({ title: 'Pins and skewers', button: 'Start lesson', lesson: true }).line, 'Next lesson: Pins and skewers');
+  assert.equal(F.afterReview({ title: 'Puzzles to reach 1200', button: 'Start 10 puzzles', lesson: false }).line, 'Puzzles to reach 1200');
+  assert.equal(F.afterReview({ title: 'Beat Rani’s practice partner', button: 'Play now' }).line, 'Beat Rani’s practice partner');
 });

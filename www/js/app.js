@@ -34,7 +34,7 @@
   var st = {
     theme: 'classic', mode: 'play', tab: 'path', user: 'w', level: 2, flipped: false,
     ann: {}, notes: {}, tags: {}, sel: null, arrows: [], hls: [], hintLvl: 0,
-    busy: false, evalW: 0, fb: null, opp: null, think: null, over: false, bannerOff: false,
+    busy: false, evalW: 0, fb: null, opp: null, think: null, over: false,
     recorded: false, t: 0, goal: null, rv: null, pz: null, ses: null, ls: null, dr: null, bk: null, sq: null, qz: null, unitOpen: null, confirmNew: false
   };
   var prof = Profile.blank();
@@ -465,7 +465,7 @@
     $('oppSwatch').style.background = u === 'w' ? '#1E1915' : '#FBF8F1';
     $('thinking').hidden = !st.busy;
     var hint = $('hintBtn'), canHint = st.mode === 'play' || st.mode === 'puzzle' || st.mode === 'drill' || st.mode === 'book';
-    hint.hidden = !canHint; hint.disabled = !interactive();
+    hint.hidden = !canHint; hint.disabled = !interactive(); renderHint();
     hint.textContent = st.hintLvl >= 3 ? 'Hint shown' : 'Hint ' + (st.hintLvl + 1) + ' of 3';
     $('undoBtn').hidden = st.mode !== 'play';
     $('undoBtn').disabled = st.busy || !G.history({ verbose: true }).some(function (m) { return m.color === st.user; });
@@ -477,6 +477,13 @@
     if (st.mode === 'lesson') { $('navFirst').hidden = $('navLast').hidden = true; $('navPrev').disabled = st.ls.i === 0; $('navNext').textContent = st.ls.i === st.ls.unit.lesson.length - 1 ? 'Finish ✓' : 'Next ›'; $('navPos').textContent = (st.ls.i + 1) + ' / ' + st.ls.unit.lesson.length; }
     else { $('navFirst').hidden = $('navLast').hidden = false; $('navPrev').disabled = false; $('navNext').textContent = 'Next ›'; }
   }
+  /* F-D28: Hint is the filled (main) button only while a game, puzzle or drill is in progress on its own tab. On Home, and
+     when an end card or a decided lesson goal holds the screen's main button, it is a plain button. */
+  function hintMain() {
+    if (st.mode === 'play') return st.tab === 'play' && !G.game_over() && !goalChoice();
+    return !!st.ses && !sesEnded() && st.tab === ZTAB[zoneOf()];
+  }
+  function renderHint() { $('hintBtn').classList.toggle('primary', hintMain()); }
   /* ---------- 3D view ---------- */
   var b3host = null, K3D = 'suresh-chess-coach.view3d';
   function sync3d(g, last, targets, checkSq) {
@@ -655,9 +662,16 @@
     if (!gl || st.mode !== 'play') { c.hidden = true; return; }
     c.hidden = false;
     var status = gl.status === 'done' ? '<b>Goal reached!</b> ' : gl.status === 'failed' ? '<b>Not this time.</b> ' : '';
-    c.innerHTML = '<p class="eyebrow">Course goal · ' + esc(UNIT[gl.unit] ? UNIT[gl.unit].title : '') + '</p><p>' + status + esc(gl.text) + '</p><div class="gstat">' + (gl.progress || '') + '</div>' +
-      (gl.status !== 'active' && !G.game_over() ? '<div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap"><button class="btn sm" type="button" data-unit="' + gl.unit + '">Back to the course</button>' + (gl.status === 'failed' ? '<button class="btn sm primary" type="button" data-apply="' + gl.unit + '">Try again</button>' : '') + '</div>' : '');
+    var h = '<p class="eyebrow">Course goal · ' + esc(UNIT[gl.unit] ? UNIT[gl.unit].title : '') + '</p><p>' + status + esc(gl.text) + '</p><div class="gstat">' + (gl.progress || '') + '</div>';
+    /* F-D18: the goal is decided and the game goes on: the next step (asks first, D49: this game is unfinished), or Keep playing */
+    if (goalChoice()) {
+      var n = unitNext(gl.unit, gl.status === 'done'), gc = Flow.goalCard({ goal: gl.status, nextPart: n.kind, next: n.nx });
+      h += ecButtons(gc, { tryagain: partAttr(gl.unit, 'apply'), part: n.np ? partAttr(gl.unit, n.np) : '', nextlesson: n.nx ? partAttr(n.nx.unit.id, n.nx.part) : '', keep: 'data-act="keep"' });
+    }
+    if (c._h !== h) { c._h = h; c.innerHTML = h; }
   }
+  /* A lesson game's goal is decided before the game ends, and the player has not chosen Keep playing yet. */
+  function goalChoice() { var gl = st.goal; return !!(gl && st.mode === 'play' && gl.status !== 'active' && !gl.kept && !G.game_over()); }
   function renderMoves() {
     var el = $('moves'), sans, ann, cur = -1;
     if (st.mode === 'review') { sans = st.rv.sans; ann = st.rv.ann || {}; cur = st.rv.ply - 1; }
@@ -687,22 +701,27 @@
   function activityOn() { return st.mode === 'lesson' || st.mode === 'review' || !!(st.ses && !st.ses.finished && !st.ses.end) || gameOn() || Placement.isOpen(); }
   /* F-D5: no slot anywhere on the player's first calendar day (and none before a level is set). Home and Progress also
      drop it while an activity is in progress, so the slot never shares a screen with a board that is in use. */
-  function slotAllowed(place) {
-    if (!prof.level || Tips.firstDay(prof, Date.now())) return false;
+  /* F-D12: one decision per screen visit: whether the slot shows (the first-day rule is read once, so midnight on day one
+     never puts a slot into a card that is already open) and which tip. The same while the player stays on the card or the
+     tab; a level change decides again. */
+  function slotVisit(place, visit) {
+    var s = slotTips[place];
+    if (!s || s.visit !== visit || s.level !== prof.level) s = slotTips[place] = { visit: visit, level: prof.level, day: !!prof.level && !Tips.firstDay(prof, Date.now()), tip: null };
+    return s;
+  }
+  function slotAllowed(place, visit) {
+    if (!slotVisit(place, visit).day) return false;
     return place === 'home' || place === 'progress' ? !activityOn() : true;
   }
-  /* F-D12: one tip per screen visit. The same tip while the player stays on the card or the tab; a level change picks again. */
-  function slotTip(place, visit) {
-    var s = slotTips[place];
-    if (!s || s.visit !== visit || s.level !== prof.level) s = slotTips[place] = { visit: visit, level: prof.level, tip: Tips.pick(prof.level) };
-    return s.tip;
-  }
+  function slotTip(place, visit) { var s = slotVisit(place, visit); return s.tip || (s.tip = Tips.pick(prof.level)); }
+  /* F-D27: desktop = the board and the panel sit side by side. There the slot is one strip under both columns. */
+  function wide() { var a = document.querySelector('.app'); return !!a && getComputedStyle(a).gridTemplateColumns.split(' ').length > 1; }
   /* THE SLOT SEAM. renderSlot is the only code that fills a slot. Today it always shows the coach's tip. A later slice (F3)
      may put an ad in this same box, here and nowhere else, when one has loaded, and keep the tip as the fallback (offline,
      no ad). The box has one fixed height (CSS .tipslot), so whatever fills it never moves the page. */
   function renderSlot(el, place, visit) {
     if (!el) return;
-    if (!slotAllowed(place)) { el.hidden = true; if (el._k) { el._k = ''; el.innerHTML = ''; } return; }
+    if (!place || !slotAllowed(place, visit)) { el.hidden = true; if (el._k) { el._k = ''; el.innerHTML = ''; } return; }
     var coach = Coach3D.get(), tip = slotTip(place, visit), key = coach + '|' + tip;
     el.hidden = false;
     if (el._k === key) return;
@@ -710,70 +729,123 @@
     el.innerHTML = '<span class="ts-av" aria-hidden="true">' + Avatar.coach('happy', 46) + '</span><span class="ts-body" aria-hidden="true"><b class="ts-label">' + esc(Tips.label(coach)) + '</b><span class="ts-text">' + esc(tip) + '</span></span>';
   }
   /* An end card's slot: an empty box of the fixed height in the card's markup, filled by renderSlot. */
-  function slotHost(place) { return slotAllowed(place) ? '<div class="tipslot" data-slot="' + place + '"></div>' : ''; }
-  function renderSlots() {
-    if (st.tab === 'coach') renderSlot($('homeSlot'), 'home', visits.coach);
-    if (st.tab === 'progress') renderSlot($('progSlot'), 'progress', visits.progress);
+  function slotHost(place, visit) { return !wide() && slotAllowed(place, visit) ? '<div class="tipslot" data-slot="' + place + '"></div>' : ''; }
+  /* The place whose slot the desktop strip shows: the end card on screen, or Home, or Progress. */
+  function stripPlace() {
+    var t = st.tab;
+    if (t === 'coach') return ['home', visits.coach];
+    if (t === 'progress') return ['progress', visits.progress];
+    if (t === 'play') return endFull ? ['game', endFull] : null;
+    if (t === 'path' && st.end) return ['learn', st.end];
+    return sesEnded() && ZTAB[zoneOf()] === t ? ['step', st.ses] : null;
   }
+  function renderSlots() {
+    var w = wide(), p = w ? stripPlace() : null;
+    if (st.tab === 'coach') renderSlot($('homeSlot'), w ? null : 'home', visits.coach);
+    if (st.tab === 'progress') renderSlot($('progSlot'), w ? null : 'progress', visits.progress);
+    renderSlot($('slotStrip'), p && p[0], p && p[1]);
+  }
+  /* When the window turns from phone to desktop layout or back, the slot moves between its place and the strip. */
+  var wasWide = null;
+  window.addEventListener('resize', function () { var w = wide(); if (w === wasWide) return; wasWide = w; if (!booted) return; render(); if (st.end) renderPath(); });
 
   /* ---------- F1: end cards. One main button (the next step), small buttons for the other choices, always a Home button.
      Flow (flow.js) decides which card; this wires each button to an action the app already has. ---------- */
   function ecBtn(b, attrs, cls) { return '<button class="btn ' + cls + '" type="button" ' + (attrs[b.go] || '') + '>' + esc(b.label) + '</button>'; }
   function ecButtons(c, attrs) {
-    return (c.line ? '<p class="ec-line">' + esc(c.line) + '</p>' : '') + '<div class="ec-btns">' + ecBtn(c.main, attrs, 'primary big ec-main') +
+    return (c.line ? '<p class="ec-line">' + esc(c.line) + '</p>' : '') + '<div class="ec-btns">' + (c.main ? ecBtn(c.main, attrs, 'primary big ec-main') : '') +
       (c.small.length ? '<div class="ec-smalls">' + c.small.map(function (b) { return ecBtn(b, attrs, 'ec-small'); }).join('') + '</div>' : '') + '</div>';
   }
   function partAttr(u, k) { return 'data-act="epart" data-u="' + u + '" data-k="' + k + '"'; }
-  /* The next lesson an end card may name: the lesson Home's Continue card is on. A Beginner's is always a Foundations
-     lesson, with or without Show everything (D39). */
+  /* F-D25: one source for the next step. Every end card names the step of the Home the player sees: Beginner Home
+     (plain(): Home.state, Foundations only, D39) or the full Home (nextAction; a Beginner with Show everything on too, D40). */
   function lessonAfter() {
-    if (prof.level === 'beginner') { var s = homeState(); return s.kind === 'lesson' ? { unit: s.unit, part: s.part, title: s.unit.title } : null; }
+    if (plain()) { var s = homeState(); return s.kind === 'lesson' ? { unit: s.unit, part: s.part, title: s.unit.title } : null; }
     var a = nextAction(currentStage()).info;
     return a.kind === 'lesson' ? { unit: a.unit, part: a.part, title: a.unit.title } : null;
   }
-  /* A Beginner whose Foundations lessons are done: the end card follows Beginner Home ("Play now" or "Start 10 puzzles"). */
+  /* Beginner Home with its Foundations lessons done: the end card follows it ("Play now" or "Start 10 puzzles"). */
   function beginnerAfter() {
-    if (prof.level !== 'beginner') return null;
+    if (!plain()) return null;
     var s = homeState(); if (s.kind === 'lesson') return null;
     var L = Home.lines(s, Coach3D.get(), gameOn());
     return { button: L.button, attr: bhAttr(s)[L.go] };
   }
   /* The player's next step, as Home's Continue card names it (Beginner Home's card, or the Improver and Club card). */
   function stepCard() {
-    if (plain()) { var s = homeState(), L = Home.lines(s, Coach3D.get(), gameOn()); return { title: L.title, button: L.button, attr: bhAttr(s)[L.go] }; }
-    var C = contCard(); return { title: C.title, button: C.button, attr: contAttr(C) };
+    if (plain()) { var s = homeState(), L = Home.lines(s, Coach3D.get(), gameOn()); return { title: L.title, button: L.button, attr: bhAttr(s)[L.go], lesson: s.kind === 'lesson' }; }
+    var C = contCard(); return { title: C.title, button: C.button, attr: contAttr(C), lesson: C.go === 'part' };
+  }
+  /* What follows a passed part of lesson u: its next undone part (F-D23: np, and kind in Flow's words), else the next lesson. */
+  function unitNext(u, passed) {
+    var U = UNIT[u], np = U && passed ? nextPart(U) : null;
+    return { np: np, kind: partKind(U, np), nx: U && passed && !np ? lessonAfter() : null };
+  }
+  function partKind(U, np) { return !np ? null : np === 'practice' ? 'practice' : np === 'apply' && U.apply.type === 'game' ? 'game' : 'other'; }
+  /* R6: an end card that appears through the player's own action is read out (politely), and when the control that led
+     to it is gone, focus goes to the card's heading. Never when the app opens, never during a drag. */
+  function cardShown(el) {
+    if (!booted || !el) return;
+    var live = $('endLive'), parts = [];
+    ['.ec-title', '.ec-text', '.ec-line'].forEach(function (q) { var e = el.querySelector(q); if (e && e.textContent) parts.push(e.textContent); });
+    if (live) { live.textContent = ''; var say = parts.join(' '); setTimeout(function () { live.textContent = say; }, 60); }
+    var a = document.activeElement, h = el.querySelector('.ec-title');
+    if (h && !drag && (!a || a === document.body || !a.isConnected || a.offsetParent === null)) try { h.focus({ preventScroll: true }); } catch (e) {}
   }
   /* The last move of a finished game's review, reached by stepping there (a review opens on the last move). */
   function reviewDone() { var rv = st.rv; return !!(st.mode === 'review' && rv && rv.stepped && rv.sans.length && rv.ply === rv.sans.length && (rv.past || G.game_over())); }
   function navTo(p) { if (st.rv) { st.rv.stepped = true; gotoPly(p); } }
   /* F-D9: the game result is a card under the board, so the final position stays in view. */
+  var endFull = null; /* the finished game whose full result card (with buttons) is on screen, for the desktop slot strip */
   function renderEnd() {
-    var el = $('gameEnd'), html = '', key = '';
+    var el = $('gameEnd'), html = '', key = '', full = false;
     if (st.mode === 'play') {
       var r = result(G, st.user); st.over = !!r;
       if (r) {
-        var gl = st.goal, nx = lessonAfter();
-        var c = Flow.afterGame({ goal: gl && gl.status !== 'active' ? gl.status : null, next: nx });
-        html = '<h3 class="ec-title">' + esc(speak(r.title)) + '</h3><p class="ec-text">' + esc(speak(r.text)) + '</p>' +
-          ecButtons(c, { review: 'data-act="review"', newgame: 'data-act="again"', home: 'data-act="home"', nextlesson: nx ? partAttr(nx.unit.id, nx.part) : '', tryagain: gl ? 'data-apply="' + gl.unit + '"' : '' }) +
-          (st.tab === 'play' ? slotHost('game') : ''); /* F2: the slot is on the game's own screen (Play), never beside Home's slot */
-        key = 'g' + G.history().length + ':' + (prof.games[0] ? prof.games[0].id : '');
+        /* The game itself is the card's identity (R1): recording it, or a cloud pull of the profile, changes nothing here. */
+        key = 'g' + G.history().length + '|' + G.fen();
+        var gl = st.goal, T = 'class="ec-title" tabindex="-1">' + esc(speak(r.title));
+        if (st.tab !== 'play') html = '<p ' + T + '</p>'; /* F-D24: off the Play tab, one line and no buttons */
+        else {
+          html = '<h3 ' + T + '</h3><p class="ec-text">' + esc(speak(r.text)) + '</p>';
+          /* R2: a lesson game's buttons wait until its task is decided (the last move is still being checked), so the
+             main button never changes under the finger */
+          full = !(gl && gl.status === 'active');
+          if (full) {
+            var n = gl ? unitNext(gl.unit, gl.status === 'done') : { np: null, kind: null, nx: null };
+            var c = Flow.afterGame({ goal: gl ? gl.status : null, nextPart: n.kind, next: n.nx });
+            html += ecButtons(c, { review: 'data-act="review"', newgame: 'data-act="again"', home: 'data-act="home"', part: n.np ? partAttr(gl.unit, n.np) : '', nextlesson: n.nx ? partAttr(n.nx.unit.id, n.nx.part) : '', tryagain: gl ? 'data-apply="' + gl.unit + '"' : '' }) +
+              slotHost('game', key);
+          }
+        }
       }
-    } else if (reviewDone()) {
-      var sc = stepCard(), c2 = Flow.afterReview(sc);
-      html = '<h3 class="ec-title">' + esc(c2.title) + '</h3><p class="ec-line">' + esc(c2.line) + '</p>' +
-        ecButtons({ line: null, main: c2.main, small: c2.small }, { step: sc.attr, newgame: 'data-act="rvnew"', home: 'data-act="home"' });
-      key = 'r';
     }
-    if (!html) { el.hidden = true; el._h = ''; el._k = ''; return; }
-    if (el._h !== html) { el._h = html; el.innerHTML = html; }
-    el.hidden = false;
-    renderSlot(el.querySelector('[data-slot]'), 'game', key);
-    if (el._k !== key) { el._k = key; if (booted) revealEnd(el); } /* never scroll by itself when the app opens */
+    endFull = full ? key : null;
+    if (!html) { el.hidden = true; el._h = ''; el._k = ''; }
+    else {
+      el.classList.toggle('ec-oneline', st.tab !== 'play');
+      if (el._h !== html) { el._h = html; el.innerHTML = html; }
+      el.hidden = false;
+      renderSlot(el.querySelector('[data-slot]'), 'game', key);
+      /* Brought into view and read out once per game, when the last move's check is over (the rows above the board
+         are settled by then, so the whole board stays on screen). Never when the app opens. */
+      if (full && !st.busy && el._k !== key) { el._k = key; if (booted) { revealEnd(el); cardShown(el); } }
+    }
+    /* The last move of a finished game's review: its card sits under the Prev and Next controls (R7). No slot (F-D17). */
+    var rv = $('reviewEnd'), rh = '';
+    if (reviewDone()) {
+      var sc = stepCard(), c2 = Flow.afterReview(sc);
+      rh = '<h3 class="ec-title" tabindex="-1">' + esc(c2.title) + '</h3><p class="ec-line">' + esc(c2.line) + '</p>' +
+        ecButtons({ line: null, main: c2.main, small: c2.small }, { step: sc.attr, newgame: 'data-act="rvnew"', home: 'data-act="home"' });
+    }
+    if (rv._h !== rh) { rv._h = rh; rv.innerHTML = rh; }
+    rv.hidden = !rh;
+    if (!rh) rv._k = ''; else if (!rv._k) { rv._k = 'r'; if (booted) { revealEnd(rv); cardShown(rv); } }
   }
-  var booted = false;
+  var booted = false, revealN = 0;
   /* When the card first shows, bring it on screen if the whole board can stay on screen too (never during a drag). */
   function revealEnd(el) {
+    revealN++;
     if (!window.requestAnimationFrame) return;
     requestAnimationFrame(function () {
       var nav = document.querySelector('.tabs'); if (drag || !el.isConnected || el.hidden) return;
@@ -784,13 +856,16 @@
     });
   }
   /* F-D7: an end card is on screen (after a lesson step or a puzzle set): its main button is the screen's one main button. */
-  function endShown() { return !!(st.end || (st.ses && (st.ses.finished || st.ses.end))); }
+  function sesEnded() { return !!(st.ses && (st.ses.finished || st.ses.end)); }
+  /* R3: scoped to the tab the card is on, so a Learn end card never takes Train's main button away. */
+  function endOn(tab) { return (tab === 'path' && !!st.end) || (sesEnded() && ZTAB[zoneOf()] === tab); }
   /* After a lesson step or puzzle set. u: the lesson's id (or null); from: 'learn' | 'session'; s: the set (or null). */
   function stepEnd(u, from, passed, s) {
-    var U = u ? UNIT[u] : null, np = U ? nextPart(U) : null, o = (s && s.opts) || {};
-    var nx = U && passed && !np ? lessonAfter() : null, af = U && passed && !np && !nx ? beginnerAfter() : null;
-    var c = Flow.afterStep({ unit: !!U, from: from, passed: passed, nextPart: !np ? null : np === 'practice' ? 'practice' : np === 'apply' && U.apply.type === 'game' ? 'game' : 'other',
-      next: nx, after: af, set: o.review ? 'review' : s && s.kind === 'puzzles' ? 'puzzles' : 'other' });
+    var U = u ? UNIT[u] : null, n = unitNext(u, passed), np = n.np, nx = n.nx, o = (s && s.opts) || {};
+    var af = U && passed && !np && !nx ? beginnerAfter() : null;
+    /* F-D26: "10 more puzzles" is for a mixed set at the player's level only; a themed set ends with Go again */
+    var c = Flow.afterStep({ unit: !!U, from: from, passed: passed, nextPart: n.kind,
+      next: nx, after: af, set: o.review ? 'review' : s && s.kind === 'puzzles' && !o.theme ? 'puzzles' : 'other' });
     return ecButtons(c, { home: 'data-act="home"', again: from === 'learn' ? 'data-part="learn" data-u="' + u + '"' : 'data-again="1"', part: U && np ? partAttr(u, np) : '',
       nextlesson: nx ? partAttr(nx.unit.id, nx.part) : '', after: af ? af.attr : '', more: 'data-act="more"' });
   }
@@ -811,7 +886,7 @@
     if (st.mode === 'placement') return placementMove(from, to);
     var fenBefore = G.fen(), mv = G.move({ from: from, to: to, promotion: 'q' });
     if (!mv) return;
-    st.sel = null; resetHints(); st.busy = true; st.bannerOff = false; st.opp = null; st.think = null; st.confirmNew = false;
+    st.sel = null; resetHints(); st.busy = true; st.opp = null; st.think = null; st.confirmNew = false;
     var words = Words.say(mv, true);
     st.fb = { cls: 'info', sym: '♙', title: 'Checking your move…', mv: 'You played ' + mv.san, words: words };
     render();
@@ -878,10 +953,10 @@
     G.undo();
     var n = G.history().length;
     [st.ann, st.notes, st.tags].forEach(function (o) { Object.keys(o).forEach(function (k) { if (+k >= n) delete o[k]; }); });
-    st.sel = null; resetHints(); st.bannerOff = false; st.recorded = false; st.opp = null;
+    st.sel = null; resetHints(); st.recorded = false; st.opp = null;
     var prev = st.notes[n - 1]; st.evalW = prev && typeof prev.ev === 'number' ? prev.ev : 0;
     if (prev && prev.side === 'e') st.opp = { san: G.history()[n - 1], why: prev.why };
-    if (st.goal && st.goal.status === 'failed' && st.goal.type !== 'win') st.goal.status = 'active';
+    if (st.goal && st.goal.status === 'failed' && st.goal.type !== 'win') { st.goal.status = 'active'; st.goal.kept = false; }
     st.fb = { cls: 'info', sym: '♙', title: 'Taken back', text: 'Your move again. Check their threats first, then your checks and captures.' };
     st.think = null; render();
     analyseForUser().then(function () { save(); render(); });
@@ -895,7 +970,7 @@
     /* D19: a Beginner's "New game" always plays Rani's practice partner (the Beginner bot); lesson tasks pass their own level. */
     st.user = c; st.level = opts.level || (plain() ? Profile.LEVELS.beginner.opp : +$('levelSel').value); $('levelSel').value = String(st.level);
     st.goal = opts.goal || null;
-    G.reset(); st.ann = {}; st.notes = {}; st.tags = {}; st.sel = null; resetHints(); st.evalW = 20; st.flipped = false; st.over = false; st.bannerOff = false; st.recorded = false; st.opp = null; st.think = null;
+    G.reset(); st.ann = {}; st.notes = {}; st.tags = {}; st.sel = null; resetHints(); st.evalW = 20; st.flipped = false; st.over = false; st.recorded = false; st.opp = null; st.think = null;
     st.fb = st.user === 'w'
       ? { cls: 'info', sym: '♙', title: 'Your move', mv: 'You play White', noSan: true, text: 'Grab the center. ' + mvcSan(START_FEN, 'e4') + ' or ' + mvcSan(START_FEN, 'd4') + ' are the classic first moves. Tap a piece to see where it can go.', tip: '<b>First 10 moves:</b> center pawns, knights and bishops out, then castle.' }
       : { cls: 'info', sym: '♙', title: 'Engine to move', mv: 'You play Black', noSan: true };
@@ -1026,7 +1101,7 @@
   }
   function renderSession() {
     var c = $('sessionCard'), s = st.ses;
-    $('ratedBtn').classList.toggle('primary', !endShown()); /* F-D7: Train's start button steps back while an end card shows */
+    $('ratedBtn').classList.toggle('primary', !endOn('train')); /* F-D7: Train's start button steps back while an end card shows on Train */
     if (!s) { c.hidden = true; return; }
     c.hidden = false;
     var home = $('panel-' + ZTAB[zoneOf()]); if (home && c.parentNode !== home) home.insertBefore(c, home.firstChild);
@@ -1035,16 +1110,17 @@
     var msg = s.msg || {}, body = '';
     if (s.finished) {
       var passed = s.pass == null || s.right >= s.pass;
-      body = '<div class="sesav">' + Avatar.coach(passed ? 'proud' : 'worried', 52) + '</div><h3 class="ec-title">' + (passed ? 'Session complete' : 'Almost there') + '</h3><p class="ec-text">' + s.right + ' of ' + s.count + ' correct' + (s.pass != null ? (passed ? '. Passed! This step is done.' : '. You need ' + s.pass + ' to pass. Have another go.') : '.') + '</p>' +
-        stepEnd(s.unit && s.part ? s.unit : null, 'session', passed, s) + slotHost('step');
+      body = '<div class="sesav">' + Avatar.coach(passed ? 'proud' : 'worried', 52) + '</div><h3 class="ec-title" tabindex="-1">' + (passed ? 'Session complete' : 'Almost there') + '</h3><p class="ec-text">' + s.right + ' of ' + s.count + ' correct' + (s.pass != null ? (passed ? '. Passed! This step is done.' : '. You need ' + s.pass + ' to pass. Have another go.') : '.') + '</p>' +
+        stepEnd(s.unit && s.part ? s.unit : null, 'session', passed, s) + slotHost('step', s);
     } else {
       var mt = (plain() && msg.titlePlain) || msg.title; /* D24: no notation in a Beginner's quiz title */
-      body = '<div class="sesav">' + Avatar.coach(msgMood(msg), 52) + '</div>' + (mt ? '<h3' + (s.end ? ' class="ec-title"' : '') + '>' + esc(speak(mt)) + '</h3>' : '') + (msg.mv && !plain() ? '<p class="mono">' + figs(esc(msg.mv)) + '</p>' : '') + (msg.text ? '<p>' + speak(msg.text) + '</p>' : '') + (msg.tip ? '<p class="tip" style="margin-top:10px">' + speak(msg.tip) + '</p>' : '') +
+      body = '<div class="sesav">' + Avatar.coach(msgMood(msg), 52) + '</div>' + (mt ? '<h3' + (s.end ? ' class="ec-title" tabindex="-1"' : '') + '>' + esc(speak(mt)) + '</h3>' : '') + (msg.mv && !plain() ? '<p class="mono">' + figs(esc(msg.mv)) + '</p>' : '') + (msg.text ? '<p>' + speak(msg.text) + '</p>' : '') + (msg.tip ? '<p class="tip" style="margin-top:10px">' + speak(msg.tip) + '</p>' : '') +
         (s.canNext ? '<div class="row2"><button class="btn primary" type="button" data-act="next">Next ›</button>' + (s.canRetry ? '<button class="btn" type="button" data-act="retry">Try again</button>' : '') + '</div>' : '') +
-        (s.end ? stepEnd(s.unit, 'session', s.end.passed, s) + slotHost('step') : ''); /* an endgame drill that is over */
+        (s.end ? stepEnd(s.unit, 'session', s.end.passed, s) + slotHost('step', s) : ''); /* an endgame drill that is over */
     }
     if (c._h !== head + body) { c._h = head + body; c.innerHTML = head + body; }
     renderSlot(c.querySelector('[data-slot]'), 'step', s);
+    if ((s.finished || s.end) && !s.told) { s.told = true; cardShown(c); }
   }
   function startSession(kind, opts) {
     clearSession(); st.rv = null; st.flipped = false;
@@ -1401,9 +1477,11 @@
     var lv = $('levels'), uv = $('unitView'), le = $('learnEnd'), eu = st.end && UNIT[st.end.unit];
     /* F1: the Learn part of a lesson is finished: its end card, with the course open under it */
     le.hidden = !eu;
-    var leh = eu ? '<div class="sesav">' + Avatar.coach('proud', 52) + '</div><p class="eyebrow">' + PART_NAME.learn + '</p><h3 class="ec-title">' + esc(eu.title) + '</h3>' + stepEnd(eu.id, 'learn', true, null) + slotHost('learn') : '';
+    var leh = eu ? '<div class="sesav">' + Avatar.coach('proud', 52) + '</div><p class="eyebrow">' + PART_NAME.learn + '</p><h3 class="ec-title" tabindex="-1">' + esc(eu.title) + '</h3>' + stepEnd(eu.id, 'learn', true, null) + slotHost('learn', st.end) : '';
     if (le._h !== leh) { le._h = leh; le.innerHTML = leh; }
     if (eu) renderSlot(le.querySelector('[data-slot]'), 'learn', st.end);
+    renderSlots(); /* the desktop strip follows the Learn end card */
+    if (eu && !st.end.told) { st.end.told = true; cardShown(le); }
     if (st.mode === 'lesson' && st.ls) {
       var L = st.ls, step = L.unit.lesson[L.i];
       lv.hidden = true; uv.hidden = false;
@@ -1418,7 +1496,7 @@
       var u = UNIT[st.unitOpen], c = prof.course[u.id] || {};
       lv.hidden = true; uv.hidden = false;
       uv.innerHTML = '<div class="card unitcard"><button class="back" type="button" data-act="units">‹ All levels</button><p class="eyebrow" style="margin-top:10px">Level ' + u.level + ' · ' + esc(COURSE.LEVELS[u.level - 1].name) + '</p><h3>' + esc(u.title) + '</h3><p class="goal">Goal: ' + esc(u.goal) + '</p><div class="steps3">' +
-        unitParts(u).map(function (k, i) { return '<div class="step3' + (c[k] ? ' done' : '') + '"><span class="n">' + (c[k] ? '✓' : i + 1) + '</span><div><b>' + PART_NAME[k] + '</b><small>' + esc(partDesc(u, k)) + '</small></div><button class="btn sm' + (!c[k] && nextPart(u) === k && !endShown() ? ' primary' : '') + '" type="button" data-part="' + k + '" data-u="' + u.id + '">' + (c[k] ? 'Redo' : 'Start') + '</button></div>'; }).join('') +
+        unitParts(u).map(function (k, i) { return '<div class="step3' + (c[k] ? ' done' : '') + '"><span class="n">' + (c[k] ? '✓' : i + 1) + '</span><div><b>' + PART_NAME[k] + '</b><small>' + esc(partDesc(u, k)) + '</small></div><button class="btn sm' + (!c[k] && nextPart(u) === k && !endOn('path') ? ' primary' : '') + '" type="button" data-part="' + k + '" data-u="' + u.id + '">' + (c[k] ? 'Redo' : 'Start') + '</button></div>'; }).join('') +
         '</div></div>';
       return;
     }
@@ -1510,7 +1588,7 @@
       else { t = 'Review'; x = 'Step through with Next.'; }
     }
     else if (st.mode === 'lesson' && st.ls) { t = st.ls.unit.title; x = st.ls.unit.lesson[st.ls.i].text; mood = 'happy'; }
-    else if (st.ses && st.ses.finished) { t = 'Session complete'; x = st.ses.right + ' of ' + st.ses.count + ' correct.'; mood = 'proud'; }
+    else if (st.ses && st.ses.finished) { var sok = st.ses.pass == null || st.ses.right >= st.ses.pass; t = sok ? 'Session complete' : 'Almost there'; x = st.ses.right + ' of ' + st.ses.count + ' correct.'; mood = sok ? 'proud' : 'worried'; }
     else if (st.ses && st.ses.msg) { t = (pl && st.ses.msg.titlePlain) || st.ses.msg.title || ''; x = st.ses.msg.text || (pl ? '' : st.ses.msg.mv) || ''; mood = msgMood(st.ses.msg); }
     if (st.busy) mood = 'think';
     t = speak(t); x = speak(x);
@@ -2002,7 +2080,7 @@
     if (name === 'path') renderPath();
     if (name === 'coach') renderCoach();
     lsSet('suresh-chess-coach.tab', name);
-    renderZones(); renderEnd(); renderSlots(); releaseOffer();
+    renderZones(); renderEnd(); renderHint(); renderSlots(); releaseOffer();
   }
 
   /* ---------- persistence ---------- */
@@ -2031,7 +2109,7 @@
     G.reset(); saved.sans.forEach(function (m) { G.move(m); });
     st.user = saved.user || 'w'; st.level = saved.level || 2; st.ann = saved.ann || {}; st.notes = saved.notes || {}; st.tags = saved.tags || {};
     st.fb = saved.fb || null; st.opp = saved.opp || null; st.evalW = saved.evalW || 0; st.flipped = !!saved.flipped; st.recorded = !!saved.recorded; st.t = saved.t || 0; st.goal = saved.goal || null;
-    st.sel = null; resetHints(); st.bannerOff = false;
+    st.sel = null; resetHints();
     $('levelSel').value = String(st.level);
     var last = G.history({ verbose: true }).slice(-1)[0];
     if (last && last.color !== st.user) st.arrows = [{ from: last.from, to: last.to, color: 'var(--c-blund)' }];
@@ -2233,15 +2311,16 @@
     if (d.part) { st.unitOpen = d.u; startPart(d.u, d.part); return; }
     if (d.zgo) { switchTab(d.zgo); return; }
     if (d.coach) { Coach3D.set(d.coach); $('coachAv').dataset.k = ''; $('coachStrip').dataset.k = ''; var sc = $('sessionCard'); if (sc) sc._h = ''; renderLook(); renderCoach(); render(); return; }
-    if (d.act === 'units') { st.unitOpen = null; renderPath(); return; }
+    if (d.act === 'units') { st.unitOpen = null; st.end = null; renderPath(); return; }
+    if (d.act === 'keep') { if (st.goal) { st.goal.kept = true; save(); } render(); return; } /* F-D18 */
     /* F1: end card buttons */
     if (d.act === 'home') { exitMode('home'); if (!document.activeElement || document.activeElement === document.body) focusTab(); return; }
     if (d.act === 'epart') { goPart(d.u, d.k); return; }
-    if (d.act === 'more') { var ms = st.ses; if (ms && ms.opts && ms.opts.theme) themeStart(ms.opts.theme); else trainStart('rated'); return; }
+    if (d.act === 'more') { trainStart('rated'); return; }
     if (d.act === 'rvnew') { st.mode = 'play'; st.rv = null; resetHints(); newGame(false); render(); return; }
     if (d.act === 'recgame') { newGame(false, { level: plain() ? Profile.LEVELS.beginner.opp : recLevel() }); return; }
     if (d.act === 'review') { enterReview(null); return; }
-    if (d.act === 'again') { st.bannerOff = true; newGame(true); return; }
+    if (d.act === 'again') { newGame(true); return; }
     if (d.act === 'next') { nextItem(); return; }
     if (d.act === 'retry') { retryPuzzle(); return; }
     if (d.act === 'close') { exitMode(true); return; }
@@ -2267,6 +2346,16 @@
     if (d.act === 'bhask') { askFirst(d.u); return; }
     if (d.act === 'askback') { answerAsk(false); return; }
     if (d.act === 'askgo') { answerAsk(true); return; }
+  });
+
+  /* R6: after an end card's button hides or rebuilds its card, focus never falls to the page body: it goes to the selected tab
+     (unless the action itself placed it, as Rani's question and a new card's heading do). */
+  var endClick = false;
+  document.addEventListener('click', function (e) { endClick = !!(e.target.closest && e.target.closest('.endcard button, #sessionCard .ec-btns button, #goalCard button')); }, true);
+  document.addEventListener('click', function () {
+    if (!endClick) return; endClick = false;
+    var a = document.activeElement;
+    if (!a || a === document.body || !a.isConnected || a.offsetParent === null) focusTab();
   });
 
   /* ---------- boot ---------- */
@@ -2301,5 +2390,6 @@
   if (window.claude && window.claude.hot && window.claude.hot.snapshot) { try { window.claude.hot.snapshot(snapshot); } catch (e) {} }
   window.claude && window.claude.hot && window.claude.hot.ready ? window.claude.hot.ready(start) : start((window.claude && window.claude.hot && window.claude.hot.data) || {});
   window.__coach = { st: st, getProf: function () { return prof; }, PZ: PZ, startPart: startPart, trainStart: trainStart, openPlacement: openPlacement, nextUnit: nextUnit, hist: function () { return G.history(); }, openSettings: openSettings,
+    reveals: function () { return revealN; }, /* how often an end card was scrolled into view (e2e) */
     nextLabel: function () { return nextAction(currentStage()).label; } /* today's Next step, for the e2e check that the Continue card follows it */ };
 })();

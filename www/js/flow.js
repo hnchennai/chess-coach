@@ -6,7 +6,7 @@
 })(typeof window !== 'undefined' ? window : this, function () {
   'use strict';
   var COPY = {
-    home: 'Home', practice: 'Start practice', lessonGame: 'Play the lesson game', nextLesson: 'Start next lesson', more: '10 more puzzles', tryAgain: 'Try again',
+    home: 'Home', practice: 'Start practice', lessonGame: 'Play the lesson game', nextLesson: 'Start next lesson', more: '10 more puzzles', tryAgain: 'Try again', keep: 'Keep playing',
     review: 'Review this game', newGame: 'New game', again: 'Go again', cont: 'Continue', startLesson: 'Start lesson', play: 'Play now', puzzles: 'Start 10 puzzles', back: 'Back to my game',
     toPractice: 'Next: practise it.', toGame: 'Next: play it in a real game.', toStep: 'Next: one more step.', nextIs: 'Next lesson: ', whole: 'That’s the whole game.',
     kicker: 'Continue', lessonOf: 'Continue · Lesson ', reach: 'Puzzles to reach ', sharp: 'Keep sharp: rated puzzles'
@@ -17,17 +17,36 @@
   function b(label, go) { return { label: label, go: go }; }
   var HOME = b(COPY.home, 'home'), REVIEW = b(COPY.review, 'review'), NEW = b(COPY.newGame, 'newgame'), AGAIN = b(COPY.again, 'again');
 
+  /* The lesson's next unfinished part, in the signed words (F-D23): 'practice' | 'game' | any other task. */
+  function partStep(nextPart) {
+    if (nextPart === 'practice') return { line: COPY.toPractice, main: b(COPY.practice, 'part') };
+    if (nextPart === 'game') return { line: COPY.toGame, main: b(COPY.lessonGame, 'part') };
+    return { line: COPY.toStep, main: b(COPY.cont, 'part') };
+  }
   /* After a game (the card under the board). c.goal: null (a normal game) | 'done' | 'failed' (a lesson game's task).
-     c.next: { title } = the next lesson at the player's level, or null. */
+     c.nextPart: another part of the same lesson is still undone (F-D23). c.next: { title } = the next lesson, or null. */
   function afterGame(c) {
     c = c || {};
     if (c.goal === 'failed') return { line: null, main: b(COPY.tryAgain, 'tryagain'), small: [REVIEW, HOME] };
+    if (c.goal === 'done' && c.nextPart) { var p = partStep(c.nextPart); return { line: p.line, main: p.main, small: [REVIEW, HOME] }; }
     if (c.goal === 'done' && c.next) return { line: COPY.nextIs + c.next.title, main: b(COPY.nextLesson, 'nextlesson'), small: [REVIEW, HOME] };
     return { line: null, main: REVIEW, small: [NEW, HOME] };
   }
-  /* The last move of a finished game's review. step: the Continue card's { title, button }. */
+  /* F-D18: a lesson game's goal decided before the game ends (the goal card on Play). Passed: the next step, small
+     "Keep playing". Failed: "Try again", small "Keep playing". main is null when a passed goal has no lesson to go to. */
+  function goalCard(c) {
+    c = c || {};
+    var keep = [b(COPY.keep, 'keep')];
+    if (c.goal === 'failed') return { line: null, main: b(COPY.tryAgain, 'tryagain'), small: keep };
+    if (c.goal !== 'done') return null;
+    if (c.nextPart) { var p = partStep(c.nextPart); return { line: p.line, main: p.main, small: keep }; }
+    if (c.next) return { line: COPY.nextIs + c.next.title, main: b(COPY.nextLesson, 'nextlesson'), small: keep };
+    return { line: null, main: null, small: keep };
+  }
+  /* The last move of a finished game's review. step: the Continue card's { title, button, lesson } (F-D29: a lesson is
+     named with its signed label). */
   function afterReview(step) {
-    return { title: COPY.whole, line: step.title, main: b(step.button, 'step'), small: [NEW, HOME] };
+    return { title: COPY.whole, line: (step.lesson ? COPY.nextIs : '') + step.title, main: b(step.button, 'step'), small: [NEW, HOME] };
   }
   /* After a lesson step or a puzzle set.
      c.unit: part of a lesson. c.from: 'learn' | 'session'. c.passed. c.nextPart: the lesson's next unfinished part
@@ -43,9 +62,7 @@
     }
     if (!c.passed) return { line: null, main: AGAIN, small: [HOME] }; /* not passing never offers the next step */
     var small = c.from === 'learn' ? [HOME] : [AGAIN, HOME];
-    if (c.nextPart === 'practice') return { line: COPY.toPractice, main: b(COPY.practice, 'part'), small: small };
-    if (c.nextPart === 'game') return { line: COPY.toGame, main: b(COPY.lessonGame, 'part'), small: small };
-    if (c.nextPart) return { line: COPY.toStep, main: b(COPY.cont, 'part'), small: small };
+    if (c.nextPart) { var p = partStep(c.nextPart); return { line: p.line, main: p.main, small: small }; }
     if (c.next) return { line: COPY.nextIs + c.next.title, main: b(COPY.nextLesson, 'nextlesson'), small: [AGAIN, HOME] };
     if (c.after) return { line: null, main: b(c.after.button, 'after'), small: [AGAIN, HOME] };
     return { line: null, main: HOME, small: [AGAIN] };
@@ -67,5 +84,5 @@
   /* D49: a main button that would start a lesson game while another game is unfinished asks first. */
   function asks(part, applyType, ongoing) { return !!(ongoing && part === 'apply' && applyType === 'game'); }
 
-  return { afterGame: afterGame, afterReview: afterReview, afterStep: afterStep, cont: cont, asks: asks, COPY: COPY };
+  return { afterGame: afterGame, goalCard: goalCard, afterReview: afterReview, afterStep: afterStep, cont: cont, asks: asks, COPY: COPY };
 });

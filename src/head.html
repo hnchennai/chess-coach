@@ -677,6 +677,10 @@ header h1 { margin-right: auto; } /* the gear stays right when the engine pill i
 /* ---------- F1: end cards (after a game, a lesson step or a puzzle set). One main button, small buttons, always Home. ---------- */
 .endcard { display: flow-root; }
 .ec-title { margin: 0; font-family: var(--f-display); font-size: 20px; line-height: 1.25; }
+.ec-title:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+.endcard.ec-oneline { padding-block: 10px; } /* F-D24: off the Play tab, the result is one line */
+.ec-oneline .ec-title { font-size: 17px; }
+.goalcard .ec-btns { padding-top: 10px; }
 .endcard .eyebrow { margin: 0 0 2px; }
 .ec-text { margin: 4px 0 0; }
 .ec-line { margin: 8px 0 0; font-weight: 600; }
@@ -690,9 +694,11 @@ header h1 { margin-right: auto; } /* the gear stays right when the engine pill i
   .ec-smalls { flex: 0 1 auto; }
   .ec-small { flex: 0 0 auto; padding-inline: 16px; }
 }
-/* ---------- F2: the tip slot. One fixed height (F-D12): the page never jumps when it shows or when the tip changes.
+/* ---------- F2: the tip slot. One height for every signed tip (a minimum, so a larger system font grows the box instead of
+   cutting the tip); the tip is fixed for the visit (F-D12), so the page never jumps.
    A note, not a control: no hover, no focus. ---------- */
-.tipslot { box-sizing: border-box; height: 96px; display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-radius: 12px; background: var(--accent-soft); color: var(--ink); overflow: hidden; }
+.tipslot { box-sizing: border-box; min-height: 96px; display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-radius: 12px; background: var(--accent-soft); color: var(--ink); }
+.slotstrip { margin-top: 28px; } /* F-D27: desktop only (app.js shows it when the board and the panel sit side by side) */
 .endcard .tipslot, .session .tipslot { clear: both; margin-top: 12px; }
 .ts-av { flex: none; width: 46px; height: 46px; display: grid; place-items: center; }
 .ts-body { min-width: 0; display: flex; flex-direction: column; gap: 2px; }

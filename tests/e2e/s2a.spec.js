@@ -279,8 +279,12 @@ const cases = [
     await shot(page, vp, 'improver_play');
     await page.locator('#tab-coach').click();
     const hero = await page.locator('#stageHero').innerText(), today = await page.locator('#today').innerText(), road = await page.locator('#roadCard .roadrow.cur').innerText();
-    assert.ok(hero.includes('Next step: Learn: Forks'), hero);
-    assert.ok(!/How the pieces move/.test(hero + today), 'never suggests a unit before the start point');
+    // F1 (F-D10): the Next step moved from the stage card's button to the Continue card
+    const cont = await page.locator('#contCard').innerText();
+    assert.equal((await page.locator('#contCard .bh-title').innerText()).trim(), 'Forks', cont);
+    assert.equal(await page.evaluate(() => window.__coach.nextLabel()), 'Learn: Forks');
+    assert.ok(!/Next step/i.test(hero), hero);
+    assert.ok(!/How the pieces move/.test(hero + today + cont), 'never suggests a unit before the start point');
     assert.ok(today.includes('Forks'), today);
     assert.ok(road.includes('2. Tactics'), 'roadmap: you are here = stage 2: ' + road);
     assert.ok(!/Done/.test(await page.locator('#roadCard .roadrow[data-stage="1"]').innerText()), 'a skipped stage is not marked done');
@@ -288,8 +292,9 @@ const cases = [
   }],
   ['Club Home starts at stage 3 (Endgames and calculation)', async (vp) => {
     const page = await seeded(vp, prof({ level: 'club', start: 'kq', rating: 1300 }));
-    const hero = await page.locator('#stageHero').innerText();
-    assert.ok(hero.includes('Mate with king and queen'), hero);
+    // F1 (F-D10): the Next step is on the Continue card
+    assert.equal((await page.locator('#contCard .bh-title').innerText()).trim(), 'Mate with king and queen');
+    assert.equal(await page.evaluate(() => window.__coach.nextLabel()), 'Learn: Mate with king and queen');
     assert.ok((await page.locator('#roadCard .roadrow.cur').innerText()).includes('3. Endgames and calculation'));
     return page;
   }],
@@ -488,7 +493,9 @@ const cases = [
     assert.equal(pr.level, 'improver'); assert.equal(pr.start, 'rules', 'stored start unchanged');
     const hero = await page.locator('#stageHero').innerText();
     assert.ok(/Stage 2 of 6/i.test(hero), hero);
-    assert.ok(hero.includes('Next step: Learn: Forks'), hero);
+    // F1 (F-D10): the Next step is on the Continue card
+    assert.equal((await page.locator('#contCard .bh-title').innerText()).trim(), 'Forks');
+    assert.equal(await page.evaluate(() => window.__coach.nextLabel()), 'Learn: Forks');
     assert.ok((await page.locator('#today .step3').first().innerText()).includes('Forks'), 'Today step 1 is Forks');
     assert.ok((await page.locator('#roadCard .roadrow.cur').innerText()).includes('2. Tactics'));
     await page.locator('#tab-path').click();
@@ -560,7 +567,8 @@ const cases = [
     // A lost game: the banner and "Rani's partner to move".
     page = await seeded(vp, prof(), { sans: ['f3', 'e5', 'g4', 'Qh4#'], user: 'w', level: 1, ann: {}, notes: {}, tags: {}, fb: null, opp: null, evalW: 0, t: NOW }, 'play');
     await page.locator('#tab-play').click();
-    assert.ok((await page.locator('#banner').innerText()).includes('Rani’s partner wins this one. Review it to find the turning point.'));
+    // F1 (F-D9): the result is a card under the board, not a box over it
+    assert.ok((await page.locator('#gameEnd').innerText()).includes('Rani’s partner wins this one. Review it to find the turning point.'));
     await page.context().close();
     page = await seeded(vp, prof(), { sans: [], user: 'b', level: 1, ann: {}, notes: {}, tags: {}, fb: { cls: 'info', sym: '♙', title: 'Engine to move', mv: 'You play Black', noSan: true }, opp: null, evalW: 0, t: NOW }, 'play');
     await page.locator('#tab-play').click();
@@ -802,7 +810,7 @@ const cases = [
   ['U-6: a Beginner’s win banner says "Great finish. Review it."', async (vp) => {
     const page = await seeded(vp, prof(), { sans: ['f3', 'e5', 'g4', 'Qh4#'], user: 'b', level: 1, ann: {}, notes: {}, tags: {}, fb: null, opp: null, evalW: 0, t: NOW }, 'play');
     await page.locator('#tab-play').click();
-    assert.equal((await page.locator('#bannerText').innerText()).trim(), 'Great finish. Review it.');
+    assert.equal((await page.locator('#gameEnd .ec-text').innerText()).trim(), 'Great finish. Review it.'); // F1 (F-D9): the result card under the board
     return page;
   }],
   ['U-7: a Beginner’s Progress tiles have no orphan', async (vp) => {

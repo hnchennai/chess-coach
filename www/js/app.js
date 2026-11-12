@@ -456,8 +456,8 @@
     var pt = $('pvTag'); pt.hidden = !st.pv; if (st.pv) pt.textContent = st.pv.label;
     renderStrip();
     if (st.v3d && window.Board3D) sync3d(g, last, targets, checkSq);
-    renderArrows(); renderEval(); renderCaps(g); renderMode(); renderPlayPanel(); renderMoves(); renderBanner(); renderSession(); releaseOffer();
-    if (st.tab === 'coach' && plain()) renderBHome(); /* AC8: a game that starts or ends next to Home (desktop) shows at once */
+    renderArrows(); renderEval(); renderCaps(g); renderMode(); renderPlayPanel(); renderMoves(); renderEnd(); renderSession(); releaseOffer();
+    if (st.tab === 'coach') { if (plain()) renderBHome(); else renderCont(); } /* AC8: a game that starts or ends next to Home (desktop) shows at once */
     var u = viewUser(), pl = plain();
     $('oppLevel').textContent = pl ? '' : st.mode === 'play' ? OPP[st.level].name + ' · ' + (st.level === 8 ? 'max' : '~' + OPP[st.level].elo) : st.mode === 'review' && OPP[st.rv.level] ? OPP[st.rv.level].name : '';
     $('oppName').textContent = pl && (st.mode === 'play' || st.mode === 'review' || st.mode === 'drill') ? partnerName() : { play: 'Engine', review: 'Engine', puzzle: 'Puzzle', lesson: 'Lesson', drill: 'Stockfish', book: 'Opening book', squares: 'Board drill', quiz: 'Safe or blunder?', reach: 'Piece drill', placement: 'Level check' }[st.mode] || '';
@@ -491,7 +491,7 @@
     var btn = $('v3dBtn'); btn.setAttribute('aria-pressed', String(v)); btn.textContent = v ? '2D view' : '3D view';
     $('board').classList.toggle('is3d', v);
     if (!v) { Board3D.disable(); if (b3host) b3host.hidden = true; render(); return; }
-    if (!b3host) { b3host = document.createElement('div'); b3host.className = 'b3d'; $('board').insertBefore(b3host, $('banner')); }
+    if (!b3host) { b3host = document.createElement('div'); b3host.className = 'b3d'; $('board').appendChild(b3host); }
     b3host.hidden = false; b3host.classList.add('loading');
     Board3D.enable(b3host, { onTap: function (s) { press(s); } }).then(function () { b3host.classList.remove('loading'); render(); })
       .catch(function (e) { b3host.classList.remove('loading'); set3d(false, true); btn.textContent = '3D unavailable'; btn.title = e && e.message ? e.message : 'Could not start the 3D board.'; });
@@ -656,7 +656,7 @@
     c.hidden = false;
     var status = gl.status === 'done' ? '<b>Goal reached!</b> ' : gl.status === 'failed' ? '<b>Not this time.</b> ' : '';
     c.innerHTML = '<p class="eyebrow">Course goal · ' + esc(UNIT[gl.unit] ? UNIT[gl.unit].title : '') + '</p><p>' + status + esc(gl.text) + '</p><div class="gstat">' + (gl.progress || '') + '</div>' +
-      (gl.status !== 'active' ? '<div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap"><button class="btn sm" type="button" data-unit="' + gl.unit + '">Back to the course</button>' + (gl.status === 'failed' ? '<button class="btn sm primary" type="button" data-apply="' + gl.unit + '">Try again</button>' : '') + '</div>' : '');
+      (gl.status !== 'active' && !G.game_over() ? '<div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap"><button class="btn sm" type="button" data-unit="' + gl.unit + '">Back to the course</button>' + (gl.status === 'failed' ? '<button class="btn sm primary" type="button" data-apply="' + gl.unit + '">Try again</button>' : '') + '</div>' : '');
   }
   function renderMoves() {
     var el = $('moves'), sans, ann, cur = -1;
@@ -679,13 +679,84 @@
     if (g.insufficient_material()) return { r: 'D', title: 'Draw', text: 'Not enough pieces left to checkmate.' };
     return { r: 'D', title: 'Draw', text: '50 moves without a capture or pawn move.' };
   }
-  function renderBanner() {
-    var b = $('banner');
-    if (st.mode !== 'play') { b.hidden = true; return; }
-    var r = result(G, st.user); st.over = !!r;
-    if (!r || st.bannerOff) { b.hidden = true; return; }
-    b.hidden = false; $('bannerTitle').textContent = speak(r.title); $('bannerText').textContent = speak(r.text);
-    $('bannerBtns').innerHTML = '<button class="btn primary sm" type="button" data-act="review">Review this game</button><button class="btn sm" type="button" data-act="again">New game</button>';
+  /* ---------- F1: end cards. One main button (the next step), small buttons for the other choices, always a Home button.
+     Flow (flow.js) decides which card; this wires each button to an action the app already has. ---------- */
+  function ecBtn(b, attrs, cls) { return '<button class="btn ' + cls + '" type="button" ' + (attrs[b.go] || '') + '>' + esc(b.label) + '</button>'; }
+  function ecButtons(c, attrs) {
+    return (c.line ? '<p class="ec-line">' + esc(c.line) + '</p>' : '') + '<div class="ec-btns">' + ecBtn(c.main, attrs, 'primary big ec-main') +
+      (c.small.length ? '<div class="ec-smalls">' + c.small.map(function (b) { return ecBtn(b, attrs, 'ec-small'); }).join('') + '</div>' : '') + '</div>';
+  }
+  function partAttr(u, k) { return 'data-act="epart" data-u="' + u + '" data-k="' + k + '"'; }
+  /* The next lesson an end card may name: the lesson Home's Continue card is on. A Beginner's is always a Foundations
+     lesson, with or without Show everything (D39). */
+  function lessonAfter() {
+    if (prof.level === 'beginner') { var s = homeState(); return s.kind === 'lesson' ? { unit: s.unit, part: s.part, title: s.unit.title } : null; }
+    var a = nextAction(currentStage()).info;
+    return a.kind === 'lesson' ? { unit: a.unit, part: a.part, title: a.unit.title } : null;
+  }
+  /* A Beginner whose Foundations lessons are done: the end card follows Beginner Home ("Play now" or "Start 10 puzzles"). */
+  function beginnerAfter() {
+    if (prof.level !== 'beginner') return null;
+    var s = homeState(); if (s.kind === 'lesson') return null;
+    var L = Home.lines(s, Coach3D.get(), gameOn());
+    return { button: L.button, attr: bhAttr(s)[L.go] };
+  }
+  /* The player's next step, as Home's Continue card names it (Beginner Home's card, or the Improver and Club card). */
+  function stepCard() {
+    if (plain()) { var s = homeState(), L = Home.lines(s, Coach3D.get(), gameOn()); return { title: L.title, button: L.button, attr: bhAttr(s)[L.go] }; }
+    var C = contCard(); return { title: C.title, button: C.button, attr: contAttr(C) };
+  }
+  /* The last move of a finished game's review, reached by stepping there (a review opens on the last move). */
+  function reviewDone() { var rv = st.rv; return !!(st.mode === 'review' && rv && rv.stepped && rv.sans.length && rv.ply === rv.sans.length && (rv.past || G.game_over())); }
+  function navTo(p) { if (st.rv) { st.rv.stepped = true; gotoPly(p); } }
+  /* F-D9: the game result is a card under the board, so the final position stays in view. */
+  function renderEnd() {
+    var el = $('gameEnd'), html = '', key = '';
+    if (st.mode === 'play') {
+      var r = result(G, st.user); st.over = !!r;
+      if (r) {
+        var gl = st.goal, nx = lessonAfter();
+        var c = Flow.afterGame({ goal: gl && gl.status !== 'active' ? gl.status : null, next: nx });
+        html = '<h3 class="ec-title">' + esc(speak(r.title)) + '</h3><p class="ec-text">' + esc(speak(r.text)) + '</p>' +
+          ecButtons(c, { review: 'data-act="review"', newgame: 'data-act="again"', home: 'data-act="home"', nextlesson: nx ? partAttr(nx.unit.id, nx.part) : '', tryagain: gl ? 'data-apply="' + gl.unit + '"' : '' });
+        key = 'g' + G.history().length;
+      }
+    } else if (reviewDone()) {
+      var sc = stepCard(), c2 = Flow.afterReview(sc);
+      html = '<h3 class="ec-title">' + esc(c2.title) + '</h3><p class="ec-line">' + esc(c2.line) + '</p>' +
+        ecButtons({ line: null, main: c2.main, small: c2.small }, { step: sc.attr, newgame: 'data-act="rvnew"', home: 'data-act="home"' });
+      key = 'r';
+    }
+    if (!html) { el.hidden = true; el._h = ''; el._k = ''; return; }
+    if (el._h !== html) { el._h = html; el.innerHTML = html; }
+    el.hidden = false;
+    if (el._k !== key) { el._k = key; revealEnd(el); }
+  }
+  /* When the card first shows, bring it on screen if the whole board can stay on screen too (never during a drag). */
+  function revealEnd(el) {
+    if (!window.requestAnimationFrame) return;
+    requestAnimationFrame(function () {
+      var nav = document.querySelector('.tabs'); if (drag || !el.isConnected || el.hidden) return;
+      var bottom = nav && getComputedStyle(nav).position === 'fixed' ? nav.getBoundingClientRect().top : window.innerHeight;
+      var d = el.getBoundingClientRect().bottom + 8 - bottom, bt = $('board').getBoundingClientRect().top;
+      if (d <= 0 || bt < 0) return;
+      window.scrollBy({ top: Math.min(d, bt), behavior: window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+    });
+  }
+  /* After a lesson step or puzzle set. u: the lesson's id (or null); from: 'learn' | 'session'; s: the set (or null). */
+  function stepEnd(u, from, passed, s) {
+    var U = u ? UNIT[u] : null, np = U ? nextPart(U) : null, o = (s && s.opts) || {};
+    var nx = U && passed && !np ? lessonAfter() : null, af = U && passed && !np && !nx ? beginnerAfter() : null;
+    var c = Flow.afterStep({ unit: !!U, from: from, passed: passed, nextPart: !np ? null : np === 'practice' ? 'practice' : np === 'apply' && U.apply.type === 'game' ? 'game' : 'other',
+      next: nx, after: af, set: o.review ? 'review' : s && s.kind === 'puzzles' ? 'puzzles' : 'other' });
+    return ecButtons(c, { home: 'data-act="home"', again: from === 'learn' ? 'data-part="learn" data-u="' + u + '"' : 'data-again="1"', part: U && np ? partAttr(u, np) : '',
+      nextlesson: nx ? partAttr(nx.unit.id, nx.part) : '', after: af ? af.attr : '', more: 'data-act="more"' });
+  }
+  /* D49: a main button that would start a lesson game while another game is unfinished asks first. */
+  function goPart(u, k) {
+    var U = UNIT[u]; if (!U) return;
+    if (Flow.asks(k, U.apply && U.apply.type, gameOn())) { askFirst(u); return; }
+    st.unitOpen = u; startPart(u, k);
   }
 
   /* ---------- game flow ---------- */
@@ -896,13 +967,14 @@
   }
 
   /* ---------- sessions ---------- */
-  function clearSession() { st.ses = null; st.pz = null; st.qz = null; st.sq = null; st.dr = null; st.bk = null; st.ls = null; st.rc = null; st.flash = null; }
+  function clearSession() { st.end = null; st.ses = null; st.pz = null; st.qz = null; st.sq = null; st.dr = null; st.bk = null; st.ls = null; st.rc = null; st.flash = null; }
   function exitMode(toGame) {
     var from = st.mode, unit = st.ses && st.ses.unit;
     clearSession(); st.mode = 'play'; st.rv = null; st.sel = null; resetHints();
     var last = G.history({ verbose: true }).slice(-1)[0];
     if (last && last.color !== st.user) st.arrows = [{ from: last.from, to: last.to, color: 'var(--c-blund)' }];
-    if (toGame) switchTab('play');
+    if (toGame === 'home') switchTab('coach'); /* F-D11: an end card's Home button */
+    else if (toGame) switchTab('play');
     else if (from === 'lesson' || unit) { st.unitOpen = unit || st.unitOpen; switchTab('path'); }
     else if (st.tab === 'train') renderTrain();
     render();
@@ -917,12 +989,13 @@
     var msg = s.msg || {}, body = '';
     if (s.finished) {
       var passed = s.pass == null || s.right >= s.pass;
-      body = '<div class="sesav">' + Avatar.coach(passed ? 'proud' : 'worried', 52) + '</div><h3>' + (passed ? 'Session complete' : 'Almost there') + '</h3><p>' + s.right + ' of ' + s.count + ' correct' + (s.pass != null ? (passed ? '. Passed! This step is done.' : '. You need ' + s.pass + ' to pass. Have another go.') : '.') + '</p>' +
-        '<div class="row2">' + (s.unit ? '<button class="btn primary" type="button" data-unit="' + s.unit + '">Back to the course</button>' : '') + '<button class="btn" type="button" data-again="1">Go again</button><button class="btn" type="button" data-act="close">Close</button></div>';
+      body = '<div class="sesav">' + Avatar.coach(passed ? 'proud' : 'worried', 52) + '</div><h3 class="ec-title">' + (passed ? 'Session complete' : 'Almost there') + '</h3><p class="ec-text">' + s.right + ' of ' + s.count + ' correct' + (s.pass != null ? (passed ? '. Passed! This step is done.' : '. You need ' + s.pass + ' to pass. Have another go.') : '.') + '</p>' +
+        stepEnd(s.unit && s.part ? s.unit : null, 'session', passed, s);
     } else {
       var mt = (plain() && msg.titlePlain) || msg.title; /* D24: no notation in a Beginner's quiz title */
-      body = '<div class="sesav">' + Avatar.coach(msgMood(msg), 52) + '</div>' + (mt ? '<h3>' + esc(speak(mt)) + '</h3>' : '') + (msg.mv && !plain() ? '<p class="mono">' + figs(esc(msg.mv)) + '</p>' : '') + (msg.text ? '<p>' + speak(msg.text) + '</p>' : '') + (msg.tip ? '<p class="tip" style="margin-top:10px">' + speak(msg.tip) + '</p>' : '') +
-        (s.canNext ? '<div class="row2"><button class="btn primary" type="button" data-act="next">Next ›</button>' + (s.canRetry ? '<button class="btn" type="button" data-act="retry">Try again</button>' : '') + '</div>' : '') + (s.after || '');
+      body = '<div class="sesav">' + Avatar.coach(msgMood(msg), 52) + '</div>' + (mt ? '<h3' + (s.end ? ' class="ec-title"' : '') + '>' + esc(speak(mt)) + '</h3>' : '') + (msg.mv && !plain() ? '<p class="mono">' + figs(esc(msg.mv)) + '</p>' : '') + (msg.text ? '<p>' + speak(msg.text) + '</p>' : '') + (msg.tip ? '<p class="tip" style="margin-top:10px">' + speak(msg.tip) + '</p>' : '') +
+        (s.canNext ? '<div class="row2"><button class="btn primary" type="button" data-act="next">Next ›</button>' + (s.canRetry ? '<button class="btn" type="button" data-act="retry">Try again</button>' : '') + '</div>' : '') +
+        (s.end ? stepEnd(s.unit, 'session', s.end.passed, s) : ''); /* an endgame drill that is over */
     }
     if (c._h !== head + body) { c._h = head + body; c.innerHTML = head + body; }
   }
@@ -935,7 +1008,7 @@
   function nextItem(first) {
     var s = st.ses; if (!s) return;
     if (!first) s.i++;
-    resetHints(); st.sel = null; st.flash = null; s.canNext = false; s.canRetry = false; s.msg = null; s.after = null;
+    resetHints(); st.sel = null; st.flash = null; s.canNext = false; s.canRetry = false; s.msg = null; s.end = null;
     if (s.i >= s.count) return finishSession();
     if (s.kind === 'puzzles') { var p = s.opts.pick ? s.opts.pick(s) : s.items[s.i]; if (!p) { s.count = s.i; return finishSession(); } s.items[s.i] = p; startPuzzle(p); }
     else if (s.kind === 'safety') { if (!s.items[s.i]) { s.count = s.i; return finishSession(); } startQuiz(s.items[s.i]); }
@@ -1166,7 +1239,7 @@
     var g = new Chess(d.fen);
     st.mode = 'drill';
     st.dr = { g: g, side: g.turn(), goal: d.goal, limit: d.limit, moves: 0, done: false, unit: unitId, name: UNIT[unitId] ? UNIT[unitId].title : 'Endgame drill', ev: null };
-    st.ses = { kind: 'drill', title: st.dr.name, count: 1, i: 0, right: 0, wrong: 0, items: [], unit: unitId, msg: { title: 'Your move', text: esc(d.text || '') + ' Stuck? Hint shows Stockfish’s idea.' } };
+    st.ses = { kind: 'drill', title: st.dr.name, count: 1, i: 0, right: 0, wrong: 0, items: [], unit: unitId, part: 'apply', msg: { title: 'Your move', text: esc(d.text || '') + ' Stuck? Hint shows Stockfish’s idea.' } };
     switchTab(tabOpen('train') ? 'train' : 'path'); render();
   }
   function drillMove(from, to) {
@@ -1191,7 +1264,7 @@
     if (D.goal === 'hold' && end === 'draw') end = 'held';
     if (end === 'win' || end === 'held') { s.right = 1; markUnit(D.unit, 'apply'); s.msg = end === 'held' ? { title: 'Draw held!', text: 'You defended for ' + D.moves + ' moves against Stockfish. That is real endgame technique.' } : { title: 'Checkmate in ' + D.moves + ' moves!', text: 'Drill passed. That technique is yours now.' }; }
     else { s.wrong = 1; s.msg = { title: end === 'draw' ? (g.in_stalemate() ? 'Stalemate, a draw' : 'Draw') : end === 'limit' ? 'Out of moves' : 'Lost', text: end === 'draw' && g.in_stalemate() ? 'The king had no moves but wasn’t in check. Leave it a square until you can mate.' : 'Use Hint when you’re unsure, and follow the method from the lesson.' }; }
-    s.after = '<div class="row2"><button class="btn primary" type="button" data-drill="' + D.unit + '">Try again</button><button class="btn" type="button" data-unit="' + D.unit + '">Back to the course</button></div>';
+    s.end = { passed: end === 'win' || end === 'held' }; /* F1: the drill's end card (renderSession) */
     render(); return true;
   }
 
@@ -1251,7 +1324,7 @@
   }
   function lessonNav(d) {
     var L = st.ls;
-    if (d > 0 && L.i === L.unit.lesson.length - 1) { var id = L.unit.id; markUnit(id, 'learn'); clearSession(); st.mode = 'play'; resetHints(); st.unitOpen = id; render(); renderPath(); return; }
+    if (d > 0 && L.i === L.unit.lesson.length - 1) { var id = L.unit.id; markUnit(id, 'learn'); clearSession(); st.mode = 'play'; resetHints(); st.unitOpen = null; st.end = { unit: id }; render(); renderPath(); return; } /* F1: the Learn part's end card, over the course */
     L.i = Math.max(0, Math.min(L.unit.lesson.length - 1, L.i + d)); showLessonStep();
   }
 
@@ -1277,7 +1350,11 @@
   }
   function renderPath() {
     renderToday();
-    var lv = $('levels'), uv = $('unitView');
+    var lv = $('levels'), uv = $('unitView'), le = $('learnEnd'), eu = st.end && UNIT[st.end.unit];
+    /* F1: the Learn part of a lesson is finished: its end card, with the course open under it */
+    le.hidden = !eu;
+    var leh = eu ? '<div class="sesav">' + Avatar.coach('proud', 52) + '</div><p class="eyebrow">' + PART_NAME.learn + '</p><h3 class="ec-title">' + esc(eu.title) + '</h3>' + stepEnd(eu.id, 'learn', true, null) : '';
+    if (le._h !== leh) { le._h = leh; le.innerHTML = leh; }
     if (st.mode === 'lesson' && st.ls) {
       var L = st.ls, step = L.unit.lesson[L.i];
       lv.hidden = true; uv.hidden = false;
@@ -1724,17 +1801,40 @@
   function currentStage() { for (var i = firstStage(); i < RM.length; i++) if (!stageDone(RM[i])) return RM[i]; return RM[RM.length - 1]; }
   function nextAction(S) {
     var from = startPos(), us = UNITS.filter(function (u, i) { return i >= from && u.level === S.level && !unitDone(u); });
-    if (us.length) { var u = us[0], k = nextPart(u); return { label: PART_NAME[k] + ': ' + u.title, sub: partDesc(u, k), go: function () { st.unitOpen = u.id; startPart(u.id, k); } }; }
+    if (us.length) { var u = us[0], k = nextPart(u); return { info: { kind: 'lesson', unit: u, part: k }, label: PART_NAME[k] + ': ' + u.title, sub: partDesc(u, k), go: function () { st.unitOpen = u.id; startPart(u.id, k); } }; }
     var nx = nextUnit();
-    if (!plain() && prof.rating < S.target) return { label: 'Rated puzzles to reach ' + S.target, sub: 'Your rating is ' + Math.round(prof.rating) + '. Ten puzzles a day moves it fastest.', go: function () { trainStart('rated'); } };
-    if (bestWinLevel() < beatLevel(S)) return { label: plain() ? 'Beat Rani’s practice partner' : 'Beat the ' + OPP[S.beat].name + ' engine', sub: 'Play slowly, blunder-check every move, and review the game after.', go: function () { newGame(false, { level: beatLevel(S) }); } };
-    if (nx) { var k2 = nextPart(nx); return { label: PART_NAME[k2] + ': ' + nx.title, sub: partDesc(nx, k2), go: function () { st.unitOpen = nx.id; startPart(nx.id, k2); } }; }
-    return { label: 'Keep sharp: rated puzzles', sub: 'You’ve finished the roadmap. Keep playing stronger opponents.', go: function () { trainStart('rated'); } };
+    if (!plain() && prof.rating < S.target) return { info: { kind: 'puzzles', target: S.target }, label: 'Rated puzzles to reach ' + S.target, sub: 'Your rating is ' + Math.round(prof.rating) + '. Ten puzzles a day moves it fastest.', go: function () { trainStart('rated'); } };
+    if (bestWinLevel() < beatLevel(S)) return { info: { kind: 'beat', name: OPP[S.beat].name }, label: plain() ? 'Beat Rani’s practice partner' : 'Beat the ' + OPP[S.beat].name + ' engine', sub: 'Play slowly, blunder-check every move, and review the game after.', go: function () { newGame(false, { level: beatLevel(S) }); } };
+    if (nx) { var k2 = nextPart(nx); return { info: { kind: 'lesson', unit: nx, part: k2 }, label: PART_NAME[k2] + ': ' + nx.title, sub: partDesc(nx, k2), go: function () { st.unitOpen = nx.id; startPart(nx.id, k2); } }; }
+    return { info: { kind: 'sharp' }, label: 'Keep sharp: rated puzzles', sub: 'You’ve finished the roadmap. Keep playing stronger opponents.', go: function () { trainStart('rated'); } };
   }
   var _next = null;
   function goNext() { if (_next) _next.go(); }
+  /* ---------- F1 (F-D8, F-D10): the Continue card on Improver and Club Home. It follows today's Next step exactly:
+     the same nextAction result, shown as a card. Lessons count in the lesson's course level from the effective start (D29). ---------- */
+  function contCard() {
+    var a = nextAction(currentStage()), i = a.info; _next = a;
+    if (i.kind === 'lesson') {
+      var from = startPos(), us = UNITS.filter(function (x, j) { return j >= from && x.level === i.unit.level; });
+      i = { kind: 'lesson', unit: i.unit, part: i.part, title: i.unit.title, n: us.indexOf(i.unit) + 1, m: us.length, done: us.filter(unitDone).length, started: unitStarted(i.unit) };
+    }
+    var C = Flow.cont(i, gameOn()); C.unit = i.unit || null; C.part = i.part || null;
+    return C;
+  }
+  /* 'part' asks first for a lesson game over an unfinished game (D49); 'next' is today's Next step; 'back' opens the game. */
+  function contAttr(C) { return C.go === 'part' ? partAttr(C.unit.id, C.part) : C.go === 'back' ? 'data-act="close"' : 'data-go="next"'; }
+  function renderCont() {
+    var el = $('contCard'), C = contCard();
+    var html = '<div class="bh-row"><span class="bh-ic z-' + C.zone + '" aria-hidden="true">' + GLYPH[C.icon] + VS + '</span><div class="bh-tt"><p class="bh-kick">' + esc(C.kicker) + '</p><h3 class="bh-title" id="ccTitle">' + esc(C.title) + '</h3></div></div>' +
+      (C.bar ? '<div class="bh-bar" role="progressbar" aria-labelledby="ccTitle" aria-valuemin="0" aria-valuemax="' + C.bar.m + '" aria-valuenow="' + C.bar.done + '" aria-valuetext="' + esc(C.bar.text) + '"><i style="width:' + Math.round(100 * C.bar.done / Math.max(1, C.bar.m)) + '%"></i></div>' : '') +
+      '<button class="btn primary big bh-go" type="button" ' + contAttr(C) + '>' + esc(C.button) + '</button>';
+    if (el._k === html) return;
+    var keep = el.contains(document.activeElement);
+    el._k = html; el.innerHTML = html;
+    if (keep) { var f = el.querySelector('.bh-go'); if (f) try { f.focus({ preventScroll: true }); } catch (e) {} }
+  }
   /* ---------- S2b: Beginner Home (prototype A): Rani, one Continue card, a second button ---------- */
-  var HOME_CARDS = ['stageHero', 'today', 'stageCard', 'roadCard', 'lookCard', 'methodsCard'];
+  var HOME_CARDS = ['contCard', 'stageHero', 'today', 'stageCard', 'roadCard', 'lookCard', 'methodsCard'];
   /* D44: an unfinished game, the same test as Today's Play step */
   function gameOn() { return !!(G.history().length && !G.game_over()); }
   /* D46 / D39: same win test as D30 in stageMiles */
@@ -1743,13 +1843,16 @@
   function syncHomeMode() { var de = document.documentElement; if (plain() && st.tab === 'coach') de.dataset.bhome = '1'; else delete de.dataset.bhome; }
   /* The buttons reuse the app's actions: data-part (as Learn), recgame (a partner game for plain()), close (back to the game),
      data-train="rated" (as Train). Re-rendered only when something on it changes, so focus and Rani's canvas stay put. */
+  function bhAttr(s) {
+    var u = s.unit ? s.unit.id : '';
+    return { part: u ? 'data-part="' + s.part + '" data-u="' + u + '"' : '', ask: 'data-act="bhask" data-u="' + u + '"', game: 'data-act="recgame"', back: 'data-act="close"', puzzles: 'data-train="rated"' };
+  }
   function renderBHome() {
     var el = $('bhome'); if (!el || !plain()) return;
     var s = homeState(), coach = Coach3D.get(), L = Home.lines(s, coach, gameOn()), sk = Home.streak(streakDays());
     /* D50: "Back to my game" is exitMode(true), as today's Home button: an open lesson or puzzle set ends (the lesson starts
        again at step 1; puzzle results so far are already saved). D49: a lesson game with a game going asks first. */
-    var u = s.unit ? s.unit.id : '';
-    var act = { part: u ? 'data-part="' + s.part + '" data-u="' + u + '"' : '', ask: 'data-act="bhask" data-u="' + u + '"', game: 'data-act="recgame"', back: 'data-act="close"', puzzles: 'data-train="rated"' };
+    var act = bhAttr(s);
     var html = '<div class="bh-hero"><div class="bh-av">' + Avatar.coach(s.kind === 'lesson' ? 'happy' : 'proud', 112) + '</div>' +
       '<div class="bh-bub"><h2 class="bh-head">' + esc(L.head) + '</h2>' + (L.line ? '<p class="bh-line">' + esc(L.line) + '</p>' : '') + '</div>' +
       (sk ? '<p class="bh-streak" role="img" aria-label="' + esc(sk.label) + '"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3c2 4 5 5 5 10a5 5 0 0 1-10 0c0-3 2-4 2-7 2 1 3 2 3 4"/></svg>' + esc(sk.text) + '</p>' : '') + '</div>' +
@@ -1769,10 +1872,9 @@
     syncHomeMode();
     if (bh) { renderBHome(); return; }
     var S = currentStage(), miles = stageMiles(S), done = miles.filter(function (m) { return m.ok; }).length, pl = plain(), fs = RM[firstStage()].stage;
-    _next = nextAction(S);
+    renderCont(); /* F-D10: the Next step is the Continue card; the stage card keeps its text, bar and milestones */
     $('stageHero').innerHTML = '<div class="herorow">' + Avatar.coach(done ? 'happy' : 'neutral', 64) + '<div><p class="eyebrow">' + esc(Avatar.coachName()) + ' \u00B7 Stage ' + S.stage + ' of 6</p><h3>' + esc(S.name) + '</h3></div></div><p>' + esc(S.why) + '</p>' +
-      '<div class="mbar"><i style="width:' + Math.round(100 * done / miles.length) + '%"></i></div><div class="meta"><span>' + done + ' of ' + miles.length + ' milestones</span>' + (pl ? '' : '<span>Rating band ' + esc(S.band) + '</span>') + '</div>' +
-      '<button class="btn" type="button" data-go="next">Next step: ' + esc(_next.label) + ' ›</button><p style="margin-top:8px;font-size:13px;opacity:.85">' + esc(_next.sub) + '</p>';
+      '<div class="mbar"><i style="width:' + Math.round(100 * done / miles.length) + '%"></i></div><div class="meta"><span>' + done + ' of ' + miles.length + ' milestones</span>' + (pl ? '' : '<span>Rating band ' + esc(S.band) + '</span>') + '</div>';
     renderToday(); renderLook();
     var V = RM[(st.stageView || S.stage) - 1], vm = stageMiles(V), cur = V.stage === S.stage;
     var us = UNITS.filter(function (u) { return u.level === V.level; });
@@ -1804,9 +1906,10 @@
   }
   function trainStart(kind) {
     if (kind === 'rated') return startSession('puzzles', { title: plain() ? 'Puzzles at your level' : 'Rated puzzles', count: 10, rated: true, pick: ratedPick() });
-    if (kind === 'review') { var d = shuffle(dueList()).slice(0, 10); if (!d.length) return; return startSession('puzzles', { title: 'Review missed puzzles', count: d.length, items: d }); }
+    if (kind === 'review') { var d = shuffle(dueList()).slice(0, 10); if (!d.length) return; return startSession('puzzles', { title: 'Review missed puzzles', count: d.length, items: d, review: true }); }
     if (kind === 'safety') { var it = safetyItems(10, prof.rating > 1300); return startSession('safety', { title: 'Safe or blunder?', count: it.length, items: it }); }
   }
+  function themeStart(t) { var items = pickPuzzles([t], 0, 3000, 10); startSession('puzzles', { title: 'Theme: ' + (THEMES[t] || t), count: items.length, items: items, theme: t }); }
 
   /* ---------- Progress tab ---------- */
   function renderProgress() {
@@ -1989,7 +2092,7 @@
   document.addEventListener('keydown', function (e) {
     if (/input|select|textarea/i.test(e.target.tagName || '')) return;
     var ss = $('settingsSheet'); if ((ss && !ss.hidden) || Placement.isOpen()) return; /* arrow keys in a sheet must not move the lesson or review behind it */
-    if (st.mode === 'review') { if (e.key === 'ArrowLeft') { gotoPly(st.rv.ply - 1); e.preventDefault(); } if (e.key === 'ArrowRight') { gotoPly(st.rv.ply + 1); e.preventDefault(); } }
+    if (st.mode === 'review') { if (e.key === 'ArrowLeft') { navTo(st.rv.ply - 1); e.preventDefault(); } if (e.key === 'ArrowRight') { navTo(st.rv.ply + 1); e.preventDefault(); } }
     if (st.mode === 'lesson') { if (e.key === 'ArrowLeft') lessonNav(-1); if (e.key === 'ArrowRight') lessonNav(1); }
   });
 
@@ -2058,38 +2161,42 @@
   $('flipBtn').addEventListener('click', function () { st.flipped = !st.flipped; render(); if (st.mode === 'play') save(); });
   $('newBtn').addEventListener('click', function () { newGame(false); });
   $('reviewBtn').addEventListener('click', function () { if (G.history().length) enterReview(null); });
-  $('banner').addEventListener('click', function (e) { if (!e.target.closest('button')) { st.bannerOff = true; render(); } });
   $('modeExit').addEventListener('click', function () { if (st.mode === 'play') switchTab('train'); else exitMode(st.mode !== 'review' || !st.rv.past); });
-  $('navFirst').addEventListener('click', function () { if (st.mode === 'review') gotoPly(0); });
-  $('navPrev').addEventListener('click', function () { if (st.mode === 'review') gotoPly(st.rv.ply - 1); else if (st.mode === 'lesson') lessonNav(-1); });
-  $('navNext').addEventListener('click', function () { if (st.mode === 'review') gotoPly(st.rv.ply + 1); else if (st.mode === 'lesson') lessonNav(1); });
-  $('navLast').addEventListener('click', function () { if (st.mode === 'review') gotoPly(st.rv.sans.length); });
+  $('navFirst').addEventListener('click', function () { if (st.mode === 'review') navTo(0); });
+  $('navPrev').addEventListener('click', function () { if (st.mode === 'review') navTo(st.rv.ply - 1); else if (st.mode === 'lesson') lessonNav(-1); });
+  $('navNext').addEventListener('click', function () { if (st.mode === 'review') navTo(st.rv.ply + 1); else if (st.mode === 'lesson') lessonNav(1); });
+  $('navLast').addEventListener('click', function () { if (st.mode === 'review') navTo(st.rv.sans.length); });
   $('qSafe').addEventListener('click', function () { answerQuiz(false); });
   $('qBlunder').addEventListener('click', function () { answerQuiz(true); });
   $('moves').addEventListener('click', function (e) {
     var td = e.target.closest('td[data-ply]'); if (!td) return;
     if (st.mode !== 'review') enterReview(null);
-    gotoPly(+td.dataset.ply);
+    navTo(+td.dataset.ply);
   });
   document.querySelector('.tabs').addEventListener('click', function (e) { var b = e.target.closest('.tab'); if (b) switchTab(b.dataset.tab); });
   document.addEventListener('click', function (e) {
     if (e.target && e.target.id === 'settingsSheet') { closeSettings(); return; }
     var t = e.target.closest('button'); if (!t || t.closest('.tabs')) return;
     var d = t.dataset;
-    if (d.unit) { if (st.mode !== 'play' && st.mode !== 'review') { clearSession(); st.mode = 'play'; resetHints(); } st.unitOpen = d.unit; switchTab('path'); render(); return; }
+    if (d.unit) { if (st.mode !== 'play' && st.mode !== 'review') { clearSession(); st.mode = 'play'; resetHints(); } st.end = null; st.unitOpen = d.unit; switchTab('path'); render(); return; }
     if (d.part) { st.unitOpen = d.u; startPart(d.u, d.part); return; }
     if (d.zgo) { switchTab(d.zgo); return; }
     if (d.coach) { Coach3D.set(d.coach); $('coachAv').dataset.k = ''; $('coachStrip').dataset.k = ''; var sc = $('sessionCard'); if (sc) sc._h = ''; renderLook(); renderCoach(); render(); return; }
     if (d.act === 'units') { st.unitOpen = null; renderPath(); return; }
+    /* F1: end card buttons */
+    if (d.act === 'home') { exitMode('home'); if (!document.activeElement || document.activeElement === document.body) focusTab(); return; }
+    if (d.act === 'epart') { goPart(d.u, d.k); return; }
+    if (d.act === 'more') { var ms = st.ses; if (ms && ms.opts && ms.opts.theme) themeStart(ms.opts.theme); else trainStart('rated'); return; }
+    if (d.act === 'rvnew') { st.mode = 'play'; st.rv = null; resetHints(); newGame(false); render(); return; }
     if (d.act === 'recgame') { newGame(false, { level: plain() ? Profile.LEVELS.beginner.opp : recLevel() }); return; }
     if (d.act === 'review') { enterReview(null); return; }
     if (d.act === 'again') { st.bannerOff = true; newGame(true); return; }
     if (d.act === 'next') { nextItem(); return; }
     if (d.act === 'retry') { retryPuzzle(); return; }
     if (d.act === 'close') { exitMode(true); return; }
-    if (d.again) { var s = st.ses; if (s && s.unit && s.part) startPart(s.unit, s.part); else if (s && s.rated) trainStart('rated'); else if (s && s.kind === 'safety') trainStart('safety'); else exitMode(); return; }
+    if (d.again) { var s = st.ses; if (s && s.unit && s.part) startPart(s.unit, s.part); else if (s && s.rated) trainStart('rated'); else if (s && s.kind === 'safety') trainStart('safety'); else if (s && s.opts && s.opts.theme) themeStart(s.opts.theme); else if (s && s.kind === 'book' && s.opts) startSession('book', s.opts); else exitMode(); return; }
     if (d.train) { trainStart(d.train); return; }
-    if (d.theme) { var items = pickPuzzles([d.theme], 0, 3000, 10); startSession('puzzles', { title: 'Theme: ' + (THEMES[d.theme] || d.theme), count: items.length, items: items }); return; }
+    if (d.theme) { themeStart(d.theme); return; }
     if (d.book) { var line = COURSE.BOOK.filter(function (b) { return b.id === d.book; })[0]; startSession('book', { title: 'Opening drill', count: 1, items: [line] }); return; }
     if (d.drill) { var u = UNIT[d.drill]; if (u) startDrill(u.id, u.apply); return; }
     if (d.apply) { startPart(d.apply, 'apply'); return; }
@@ -2141,5 +2248,6 @@
   }
   if (window.claude && window.claude.hot && window.claude.hot.snapshot) { try { window.claude.hot.snapshot(snapshot); } catch (e) {} }
   window.claude && window.claude.hot && window.claude.hot.ready ? window.claude.hot.ready(start) : start((window.claude && window.claude.hot && window.claude.hot.data) || {});
-  window.__coach = { st: st, getProf: function () { return prof; }, PZ: PZ, startPart: startPart, trainStart: trainStart, openPlacement: openPlacement, nextUnit: nextUnit, hist: function () { return G.history(); }, openSettings: openSettings };
+  window.__coach = { st: st, getProf: function () { return prof; }, PZ: PZ, startPart: startPart, trainStart: trainStart, openPlacement: openPlacement, nextUnit: nextUnit, hist: function () { return G.history(); }, openSettings: openSettings,
+    nextLabel: function () { return nextAction(currentStage()).label; } /* today's Next step, for the e2e check that the Continue card follows it */ };
 })();

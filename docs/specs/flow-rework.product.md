@@ -36,7 +36,7 @@ Mockups: https://claude.ai/artifact/1w7FN46dmJuwkXAT9P551w (approved by Suresh, 
 | F-D9 | The game result moves from the box over the board into a card under the board, so the final position stays visible | Confirmed by Suresh (mockup screen 1) |
 | F-D10 | The Continue card for Improver and Club follows today's "Next step" rule exactly (same lesson, puzzle goal or game goal as today). The stage card loses its own "Next step" button | Confirmed by Suresh (mockup screen 3) |
 | F-D11 | Every end card has a small "Home" button | Confirmed by Suresh (mockup) |
-| F-D12 | The slot has one fixed height (76px or more), so the page never jumps. The tip is picked once per screen visit and does not change while the player looks at it | Delegated to Claude |
+| F-D12 | The slot has one minimum height (76px or more) and grows only if a tip needs it, so the page never jumps. The tip is picked once per screen visit and does not change while the player looks at it | Delegated to Claude |
 | F-D13 | Tips are split in two lists: Beginner (no notation, no jargon) and Improver/Club. A Beginner with Show everything on still gets Beginner tips | Delegated to Claude |
 | F-D14 | With Coach Gaja chosen, the slot label reads "Gaja’s tip" and shows Gaja | Delegated to Claude, same rule as D48 |
 | F-D15 | Beginner Home does not change, apart from the slot under its buttons | Confirmed by Suresh (mockup screen 3 notes) |
@@ -51,9 +51,13 @@ Mockups: https://claude.ai/artifact/1w7FN46dmJuwkXAT9P551w (approved by Suresh, 
 | F-D24 | The full result card (with buttons) shows on the Play tab only. On other tabs a finished game shows one line under the board (the result title, for example "Checkmate. You win!"), with no buttons | Confirmed by Suresh |
 | F-D25 | End cards always name the same next step as the Home the player sees. A Beginner with Show everything on follows the full Home's step (D40), on Home and on every end card. A Beginner with it off follows Beginner Home (D39) | Confirmed by Suresh |
 | F-D26 | A themed puzzle set ends with main "Go again" (same theme). "10 more puzzles" is only for mixed sets at the player's level | Confirmed by Suresh |
-| F-D27 | Desktop (board left, panel right, 860px and wider): the slot is one full-width strip below both columns, for every place of F-D3. It is never in a column beside the board. Phones are unchanged | Confirmed by Suresh |
+| F-D27 | Desktop (board left, panel right: wider than 860px): the slot is one full-width strip below both columns, for every place of F-D3. It is never in a column beside the board. Phones are unchanged | Confirmed by Suresh |
 | F-D28 | The Hint button has the primary (filled) style only while a game, puzzle, lesson or drill is in progress. On Home, and whenever an end card or the Continue card is the screen's main action, it is a plain outline button | Confirmed by Suresh |
 | F-D29 | The review-finished card shows the next step's name under "That’s the whole game." with the signed label where one exists ("Next lesson: <title>"); otherwise the Continue card's title | Delegated to Claude |
+| F-D30 | Goal passed mid-game with no lesson left to offer: the goal card shows only "Keep playing". The result card at the end of the game offers the next step. Hint keeps its filled style there, since the game is still the main action | Confirmed by Suresh |
+| F-D31 | "Try again" on a lesson game whose goal failed mid-game restarts that lesson game at once, with no "Finish it first?" question. D49's question stays for every other case | Confirmed by Suresh |
+| F-D32 | F-D17 applies to end cards too: a Learn or set end card shows no slot while a game is unfinished | Confirmed by Suresh (strict rule) |
+| F-D33 | When the review-finished card says "Next lesson: <title>", its button reads "Start next lesson", as on the other end cards | Delegated to Claude |
 
 ## End cards (F1)
 

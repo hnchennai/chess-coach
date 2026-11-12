@@ -19,6 +19,21 @@ const PARTNER = 'Rani’s practice partner';
 const ASK = 'You have a game going. Finish it first?';
 const OFFER_B = 'Ready for Improver? You finished every Foundations lesson. Next come forks, pins and other tactics.';
 const BEFORE = require('./s2b-home-before.json'); // Improver and Club Home text from the build before S2b (AC11, AC12)
+// F1 (F-D8, F-D10): the Continue card now comes first and the stage card lost its "Next step" button and sub line.
+// F2 (F-D3): the tip slot is new at the bottom. Everything else on Improver and Club Home is still the text from before S2b:
+// compare without those parts.
+const beforeText = (key) => BEFORE[key].replace(/\nNext step: [^\n]* ›\n\n[^\n]*/, '');
+async function homeText(page) {
+  assert.ok(/^Continue/.test((await page.locator('#contCard .bh-kick').textContent()).trim()), 'the Continue card has its kicker');
+  assert.equal(await page.locator('#contCard button').count(), 1, 'and one button');
+  // F2 (F-D3): the tip slot is new at the bottom of Home; it is a note with the coach's label, one tip and no button
+  const slot = page.locator('#homeSlot');
+  if (await slot.isVisible()) { assert.ok(/^(Rani|Gaja)’s tip: .+/.test(await slot.getAttribute('aria-label'))); assert.equal(await slot.locator('button, a').count(), 0); }
+  return page.evaluate(() => {
+    const c = document.getElementById('contCard'), s = document.getElementById('homeSlot'), sh = s.hidden; c.hidden = true; s.hidden = true;
+    const t = document.getElementById('panel-coach').innerText; c.hidden = false; s.hidden = sh; return t;
+  });
+}
 const HOME_CARDS = ['#stageHero', '#today', '#stageCard', '#roadCard', '#lookCard', '#methodsCard'];
 const FOUND = ['rules', 'special', 'board', 'values', 'mate', 'opening', 'blunder'];
 
@@ -162,7 +177,7 @@ async function layoutRules(page, vp, why) {
   const m = await page.evaluate(() => {
     const b = document.getElementById('bhome'), q = (s) => b.querySelector(s), box = (s) => q(s) ? q(s).getBoundingClientRect() : null, cs = (s) => getComputedStyle(q(s));
     const av = q('.bh-av').firstElementChild.getBoundingClientRect();
-    const prim = Array.from(document.querySelectorAll('#panel-coach .btn.primary')).filter((e) => e.offsetParent !== null).length;
+    const prim = Array.from(document.querySelectorAll('.btn.primary')).filter((e) => e.offsetParent !== null).length; // F-D28: counted on the whole screen, the board column included
     return { av: [av.width, av.height], head: [parseFloat(cs('.bh-head').fontSize), cs('.bh-head').fontWeight], lineColor: cs('.bh-line').color, muted: getComputedStyle(document.documentElement).getPropertyValue('--muted').trim(),
       radius: parseFloat(cs('.bh-card').borderTopLeftRadius), go: box('.bh-go'), alt: box('.bh-alt'), card: box('.bh-card'), blockW: b.getBoundingClientRect().width, prim,
       goPrimary: q('.bh-go').classList.contains('primary') && q('.bh-go').classList.contains('big'), altPrimary: q('.bh-alt') ? q('.bh-alt').classList.contains('primary') : false };
@@ -321,7 +336,9 @@ const cases = [
     assert.equal((await getProf(page)).level, 'improver');
     await page.locator('#tab-coach').click();
     await fullHome(page, vp, 'Improver after Yes');
-    assert.ok((await page.locator('#stageHero').innerText()).includes('Next step: Learn: Forks'));
+    // F1 (F-D10): the Next step is on the Continue card
+    assert.equal((await page.locator('#contCard .bh-title').innerText()).trim(), 'Forks');
+    assert.equal(await page.evaluate(() => window.__coach.nextLabel()), 'Learn: Forks');
     return page;
   }],
   ['S2b-7 / D40: Show everything shows the full Home with the board; off brings Rani’s Home back, no reload', async (vp) => {
@@ -332,7 +349,10 @@ const cases = [
     await page.keyboard.press('Escape');
     await fullHome(page, vp, 'Show everything');
     const hero = await page.locator('#stageHero').innerText();
-    assert.ok(/Stage 1 of 6/i.test(hero) && hero.includes('Next step: Learn: Special rules and draws'), 'full Home at the Beginner’s stage: ' + hero);
+    assert.ok(/Stage 1 of 6/i.test(hero), 'full Home at the Beginner’s stage: ' + hero);
+    // F1 (F-D10): the Next step is on the Continue card
+    assert.equal((await page.locator('#contCard .bh-title').innerText()).trim(), 'Special rules and draws');
+    assert.equal(await page.evaluate(() => window.__coach.nextLabel()), 'Learn: Special rules and draws');
     assert.ok(/Rating band/.test(hero), 'like an Improver at her stage: scores shown');
     assert.ok((await page.locator('#today h3').innerText()).length > 0);
     await shot(page, vp, 'beginner_showall_full_home');
@@ -369,7 +389,7 @@ const cases = [
       page = await seeded(vp, Object.assign({}, v4, { rating: r }));
       assert.equal((await getProf(page)).level, lvl);
       await page.locator('#tab-coach').click();
-      assert.equal(await page.locator('#panel-coach').innerText(), BEFORE[vp.width + ':' + key], key + ' Home text unchanged');
+      assert.equal(await homeText(page), beforeText(vp.width + ':' + key), key + ' Home text unchanged');
       await fullHome(page, vp, key);
       if (r === 1350) return page;
       await page.context().close();
@@ -449,7 +469,7 @@ const cases = [
     let page;
     for (const [key, p] of [['improver', prof({ level: 'improver', start: 'fork', rating: 1000 })], ['club', prof({ level: 'club', start: 'kq', rating: 1300 })]]) {
       page = await seeded(vp, p);
-      assert.equal(await page.locator('#panel-coach').innerText(), BEFORE[vp.width + ':' + key], key + ' Home text unchanged');
+      assert.equal(await homeText(page), beforeText(vp.width + ':' + key), key + ' Home text unchanged');
       await fullHome(page, vp, key);
       await shot(page, vp, key + '_home');
       if (key === 'club') return page;

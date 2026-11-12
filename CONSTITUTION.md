@@ -4,9 +4,9 @@ Non-negotiables for every change. Short on purpose. Amend only with Suresh's exp
 
 ## Product truths
 - Users: people learning chess, from "never played" to Expert (about 2000+). Many are complete beginners on a phone.
-- Suresh's Chess Coach will be sold as a paid game on Android (Play Store) and the web.
+- Suresh's Chess Coach is free on Android (Play Store) and the web, with ads and a one-time Remove ads purchase. The Play Store listing is for ages 13 and older.
 - A player's progress must never be lost: course progress, puzzle rating, games and settings survive app updates, restarts and going offline.
-- The app works fully offline. The network is only ever optional (cloud save, fonts).
+- The app works fully offline. The network is only ever optional (cloud save, fonts, ads). With no ad, the slot shows a tip from the coach.
 - Rani (the queen coach) is the voice of the app: warm, short, plain words.
 
 ## Hard rules
@@ -18,7 +18,7 @@ Non-negotiables for every change. Short on purpose. Amend only with Suresh's exp
 ## Security and privacy
 - Signing keys, passwords and tokens never go in git, chat or logs. CI reads them from GitHub secrets.
 - Collect the minimum personal data. Cloud save stores only game progress, keyed by the player's Play Games account.
-- No ads SDKs, trackers or analytics without Suresh's explicit yes.
+- Ads are allowed in the ad slot only: after an activity ends, and at the bottom of Home and Progress. Never on or beside the board, never during a lesson, game, puzzle or review, never full screen, never on a player's first day. Ads are non-personalised. No other trackers or analytics without Suresh's explicit yes. Adding or changing an ads SDK is a checkpoint.
 
 ## Data rules
 - Progress lives in one profile object (`prof`, versioned with `v`). Any shape change ships a `migrate()` step that keeps old saves working.

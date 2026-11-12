@@ -23,7 +23,6 @@
         <div class="board" id="board">
           <div class="grid" id="grid"></div>
           <svg class="arrow" id="arrow" viewBox="0 0 8 8" aria-hidden="true"></svg>
-          <div class="banner" id="banner" hidden><div><b id="bannerTitle"></b><span id="bannerText"></span><div class="bannerbtns" id="bannerBtns"></div></div></div>
         </div>
       </div>
       <div class="coachstrip" id="coachStrip" aria-live="polite"></div>
@@ -31,6 +30,8 @@
         <div class="who"><span class="swatch" id="youSwatch"></span>You</div>
         <div class="caps" id="youCaps"></div>
       </div>
+      <!-- F1 (F-D9, F-D24): the game result as a card under the board (on Play; one line on other tabs). Nothing sits over the board. -->
+      <div class="card endcard" id="gameEnd" hidden></div>
       <div class="controls" id="playControls">
         <button class="btn primary" id="hintBtn" type="button">Hint</button>
         <button class="btn" id="undoBtn" type="button">Take back</button>
@@ -48,6 +49,8 @@
         <button class="btn big safe" id="qSafe" type="button">Safe</button>
         <button class="btn big danger" id="qBlunder" type="button">Blunder</button>
       </div>
+      <!-- F1: the last move of a finished game's review. Under the Prev and Next controls, so they never move. -->
+      <div class="card endcard" id="reviewEnd" hidden></div>
       <p class="sync" id="sync" role="status">Connecting to your account…</p>
     </section>
 
@@ -65,17 +68,23 @@
       <div class="panel" id="panel-coach" role="tabpanel" aria-labelledby="tab-coach">
         <!-- S2b: Beginner Home (prototype A). Shown for a Beginner with Show everything off; the cards below are the full Home. -->
         <div class="bhome" id="bhome" hidden></div>
+        <!-- F1 (F-D8): the Continue card, first on Improver and Club Home (the Beginner card's look) -->
+        <div class="card bh-card" id="contCard"></div>
         <div class="card stagehero" id="stageHero"></div>
         <div class="card today" id="today"></div>
         <div class="card" id="stageCard"></div>
         <div class="card" id="roadCard"></div>
         <div class="card" id="lookCard"></div>
         <div class="card" id="methodsCard"></div>
+        <!-- F2 (F-D3): the tip slot at the bottom of Home, for every level (under Beginner Home's buttons) -->
+        <div class="tipslot" id="homeSlot" hidden></div>
       </div>
 
       <!-- LEARN -->
       <div class="panel" id="panel-path" role="tabpanel" aria-labelledby="tab-path" hidden>
         <div class="znote" id="znote-path" hidden></div>
+        <!-- F1: the end card after the Learn part of a lesson; the course stays open under it -->
+        <div class="card endcard" id="learnEnd" hidden></div>
         <div id="unitView" hidden></div>
         <div id="levels"></div>
       </div>
@@ -154,12 +163,18 @@
         <div class="card focus" id="focusCard"><p class="eyebrow">Your coach says</p><div id="focus"></div></div>
         <div class="card"><p class="eyebrow">Themes</p><div id="themeStats"></div></div>
         <div class="card"><p class="eyebrow">Recent games</p><div id="history"></div></div>
+        <!-- F2 (F-D3): the tip slot at the bottom of Progress, above the license credits -->
+        <div class="tipslot" id="progSlot" hidden></div>
         <!-- License credits stay for every level, Beginners too (constitution; D37 is the one exception to D23). -->
         <p class="credit">Analysis by Stockfish 19 (GPLv3, stockfishchess.org) via stockfish.js. Puzzles mined from engine games and verified by Stockfish.</p>
         <p class="credit">3D marble set and board: “A Beautiful Game” by the MaterialX Project (ASWF), glTF conversion by Ed Mackey, licensed <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener">CC BY 4.0</a>. Simplified and resized for this app. Three.js (MIT) draws the 3D view.</p>
       </div>
     </aside>
   </div>
+  <!-- F2 (F-D27): on desktop (board left, panel right) the tip slot is this one strip under both columns, for every place -->
+  <div class="tipslot slotstrip" id="slotStrip" hidden></div>
+  <!-- An end card that appears is read out here (title and lines), politely -->
+  <div class="sr" id="endLive" aria-live="polite"></div>
 </div>
 <div class="placement" id="placement" hidden></div>
 <div class="sheet" id="settingsSheet" hidden>

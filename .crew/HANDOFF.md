@@ -43,3 +43,9 @@ Spec: `docs/specs/beginner-flow.product.md` and `.tech.md` (approved by Suresh; 
 ## Working notes
 - Background helper agents in remote Claude sessions pause when the session is idle. Keep long builds and reviews inside an active turn, or run them locally in Claude Code.
 - Suresh likes short, crisp bullets, plain words, and no em dashes.
+
+## Flow rework (F1 + F2), 2026-11-12
+- Spec: docs/specs/flow-rework.product.md (F-D1 to F-D33). New pure modules: src/js/flow.js (which end card), src/js/tips.js (tips, first-day rule).
+- The only place a later slice may put an ad: `renderSlot(el, place, visit)` in src/js/app.js. No ads code or network call exists yet.
+- Tests: unit `node --test tests/*.test.js` (121). E2E `F1_VP=360|412|1280|915 node tests/e2e/f1.spec.js` (41 cases; 915 runs the landscape case only).
+

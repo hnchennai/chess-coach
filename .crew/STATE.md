@@ -5,7 +5,7 @@
 - Slices:
   - S1 level check, profile v5, Settings: merged (PR #1), Android v1.0.13, web artifact version 18. Monitor: escape check due 2026-11-15.
   - S2a level-based interface: merged 2026-11-08 (PR #3, squash 61042e2), Android release from main build #20 (v1.0.20); web artifact version 19. Three reviews safe to ship after 3 fix rounds; 21 more decisions (D17 to D37). Monitor: escape check due 2026-11-15.
-  - S2b beginner Home (prototype A): PR #5 open 2026-11-08, branch crew/s2b-beginner-home, merge is Suresh's call. 14 decisions (D38 to D51), 12 questions in 5 rounds, all recommended options. Long-time "Not yet" Beginner: Keep practising (D39). Two reviews (spec, UX) safe to ship after 1 fix round. Monitor: escape check due 2026-11-15.
+  - S2b beginner Home (prototype A): PR #5 open 2026-11-08, branch crew/s2b-beginner-home, merge is Suresh's call. 14 decisions (D38 to D51), 12 questions in 5 rounds, all recommended options. Long-time "Not yet" Beginner: Keep practising (D39). Two reviews (spec, UX) safe to ship after 1 fix round. CI green first time (runs 42493933967, 42493990368). Monitor: escape check due 2026-11-15.
   - S3 Play Games cloud save: parked until Suresh has a new Play Console account. Must plug into S2a's "cloud settled" check for the level-up offer.
 - Follow-ups (not done):
   - Course-text pass for later levels: endgame drills "Stockfish defends.", notation in opening drill names, Home methods card "about 2100" and "rated mixed puzzles", "Keep sharp: rated puzzles", checkpoint goals "(about 1000)".

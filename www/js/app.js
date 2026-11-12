@@ -960,6 +960,9 @@
     prof.games.unshift({ id: 'g' + Date.now(), d: Date.now(), r: r.r, user: st.user, level: st.level, acc: s.acc, counts: s.counts, tags: s.tags, sans: G.history(), ann: st.ann });
     prof.games = prof.games.slice(0, 30); dayRec().games++;
     st.think = null; saveProfile();
+    /* F-D19: the saved game must say it is recorded, or the next app start records it again (the player's own last move
+       was saved before this ran; an app start never saved it). The game's time stamp stays, so a merge still sees its real age. */
+    var snap = snapshot(); lsSet(STORE, snap); push('game', snap);
   }
   var WEAK = {
     hung: { title: 'Stop leaving pieces loose', short: 'leaving pieces undefended. Before you move, check what their pieces can take.', text: 'Most of your lost material came from pieces left where the engine could take them. Before every move ask: what does their last move attack, and is the square I’m moving to safe?', unit: 'blunder', themes: ['hanging', 'fork'] },

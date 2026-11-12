@@ -680,6 +680,28 @@ const cases = [
     await shot(page, vp, 'game-loss-dark', '#gameEnd');
     return page;
   }]  ,
+  ['F-D19: a game the player ends with their own move is recorded once, however often the app starts again', async (vp) => {
+    const page = await seeded(vp, improver(), { tab: 'play', game: MATE1({ level: 3 }) });
+    await mateInOne(page);
+    const today = (p) => { const d = new Date(), r = p.days[d.getFullYear() + '-' + (d.getMonth() + 1) + '-' + d.getDate()]; return r ? r.games : 0; };
+    const p1 = await getProf(page);
+    assert.equal(p1.games.length, 1); assert.equal(today(p1), 1);
+    for (let i = 0; i < 2; i++) {
+      await page.reload(); await page.waitForFunction(() => window.__coach && window.Placement); await page.waitForTimeout(400);
+      const p = await getProf(page);
+      assert.equal(p.games.length, 1, 'start ' + (i + 2) + ': the game is in the history once'); assert.equal(today(p), 1, 'start ' + (i + 2) + ': today’s game count stays');
+      assert.equal(p.games[0].id, p1.games[0].id, 'the same record');
+      assert.equal((await card(page, '#gameEnd')).title, 'Checkmate. You win!', 'the finished game is still on the board');
+    }
+    // a finished game saved by an older build (snapshot says not recorded, the history has no copy) is still recorded, once
+    await page.context().close();
+    const old = await seeded(vp, improver(), { tab: 'play', game: Object.assign({}, LOST, { recorded: false }) });
+    assert.equal((await getProf(old)).games.length, 1, 'recorded at the first start');
+    await old.reload(); await old.waitForFunction(() => window.__coach && window.Placement); await old.waitForTimeout(400);
+    assert.equal((await getProf(old)).games.length, 1, 'and not again');
+    return old;
+  }]
+  ,
   /* ---------- F2: the tip slot ---------- */
   ['F2-10 / Scenario 10 / AC7: no slot anywhere on the first day; from the next calendar day at the bottom of Home and Progress and on end cards', async (vp) => {
     // A new install: the level check, no slot

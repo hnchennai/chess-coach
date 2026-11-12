@@ -39,7 +39,7 @@ test('Game row 5: review finished: "That’s the whole game.", the Continue card
   const c = F.afterReview({ title: 'Pins and skewers', button: 'Continue', lesson: true });
   assert.equal(c.title, 'That’s the whole game.');
   assert.equal(c.line, 'Next lesson: Pins and skewers');
-  assert.deepEqual(c.main, { label: 'Continue', go: 'step' });
+  assert.deepEqual(c.main, { label: 'Start next lesson', go: 'step' });
   assert.deepEqual(labels(c.small), ['New game', 'Home']); assert.deepEqual(gos(c.small), ['newgame', 'home']);
 });
 
@@ -185,4 +185,9 @@ test('F-D29: the review-finished card labels the step: "Next lesson: <title>" fo
   assert.equal(F.afterReview({ title: 'Pins and skewers', button: 'Start lesson', lesson: true }).line, 'Next lesson: Pins and skewers');
   assert.equal(F.afterReview({ title: 'Puzzles to reach 1200', button: 'Start 10 puzzles', lesson: false }).line, 'Puzzles to reach 1200');
   assert.equal(F.afterReview({ title: 'Beat Rani’s practice partner', button: 'Play now' }).line, 'Beat Rani’s practice partner');
+});
+
+test('F-D33: the review card’s button reads "Start next lesson" when its line is "Next lesson: <title>"', () => {
+  for (const button of ['Start lesson', 'Continue']) assert.deepEqual(F.afterReview({ title: 'Forks', button, lesson: true }).main, { label: 'Start next lesson', go: 'step' });
+  assert.deepEqual(F.afterReview({ title: 'Puzzles to reach 1200', button: 'Start 10 puzzles', lesson: false }).main, { label: 'Start 10 puzzles', go: 'step' });
 });

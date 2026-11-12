@@ -480,7 +480,7 @@
   /* F-D28: Hint is the filled (main) button only while a game, puzzle or drill is in progress on its own tab. On Home, and
      when an end card or a decided lesson goal holds the screen's main button, it is a plain button. */
   function hintMain() {
-    if (st.mode === 'play') return st.tab === 'play' && !G.game_over() && !goalChoice();
+    if (st.mode === 'play') return st.tab === 'play' && !G.game_over() && !goalMain(); /* F-D30: a goal card with only "Keep playing" leaves Hint filled */
     return !!st.ses && !sesEnded() && st.tab === ZTAB[zoneOf()];
   }
   function renderHint() { $('hintBtn').classList.toggle('primary', hintMain()); }
@@ -666,9 +666,21 @@
     /* F-D18: the goal is decided and the game goes on: the next step (asks first, D49: this game is unfinished), or Keep playing */
     if (goalChoice()) {
       var n = unitNext(gl.unit, gl.status === 'done'), gc = Flow.goalCard({ goal: gl.status, nextPart: n.kind, next: n.nx });
-      h += ecButtons(gc, { tryagain: partAttr(gl.unit, 'apply'), part: n.np ? partAttr(gl.unit, n.np) : '', nextlesson: n.nx ? partAttr(n.nx.unit.id, n.nx.part) : '', keep: 'data-act="keep"' });
+      /* F-D31: "Try again" restarts this lesson game at once (no D49 question: the game it would drop is this one) */
+      h += ecButtons(gc, { tryagain: 'data-apply="' + gl.unit + '"', part: n.np ? partAttr(gl.unit, n.np) : '', nextlesson: n.nx ? partAttr(n.nx.unit.id, n.nx.part) : '', keep: 'data-act="keep"' });
     }
     if (c._h !== h) { c._h = h; c.innerHTML = h; }
+    /* T3: the moment the goal is decided, the card is brought into view (as the result card: only as far as the board
+       stays on screen) and read out, once, after the last move's check. Never when the app opens (the flag is saved). */
+    if (goalChoice() && !st.busy && !gl.told) {
+      gl.told = true;
+      if (booted) { revealEnd(c); var live = $('endLive'), say = (gl.status === 'done' ? 'Goal reached! ' : 'Not this time. ') + gl.text + (gc && gc.line ? ' ' + gc.line : ''); if (live) { live.textContent = ''; setTimeout(function () { live.textContent = say; }, 60); } }
+    }
+  }
+  function goalMain() {
+    if (!goalChoice()) return false;
+    var gl = st.goal, n = unitNext(gl.unit, gl.status === 'done'), gc = Flow.goalCard({ goal: gl.status, nextPart: n.kind, next: n.nx });
+    return !!(gc && gc.main);
   }
   /* A lesson game's goal is decided before the game ends, and the player has not chosen Keep playing yet. */
   function goalChoice() { var gl = st.goal; return !!(gl && st.mode === 'play' && gl.status !== 'active' && !gl.kept && !G.game_over()); }
@@ -711,7 +723,8 @@
   }
   function slotAllowed(place, visit) {
     if (!slotVisit(place, visit).day) return false;
-    return place === 'home' || place === 'progress' ? !activityOn() : true;
+    if (place === 'home' || place === 'progress') return !activityOn();
+    return !gameOn(); /* F-D32: an end card has no slot either while a game is unfinished */
   }
   function slotTip(place, visit) { var s = slotVisit(place, visit); return s.tip || (s.tip = Tips.pick(prof.level)); }
   /* F-D27: desktop = the board and the panel sit side by side. There the slot is one strip under both columns. */

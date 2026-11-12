@@ -46,7 +46,8 @@
   /* The last move of a finished game's review. step: the Continue card's { title, button, lesson } (F-D29: a lesson is
      named with its signed label). */
   function afterReview(step) {
-    return { title: COPY.whole, line: (step.lesson ? COPY.nextIs : '') + step.title, main: b(step.button, 'step'), small: [NEW, HOME] };
+    /* F-D33: with the "Next lesson: <title>" line, the button reads "Start next lesson", as on the other end cards */
+    return { title: COPY.whole, line: (step.lesson ? COPY.nextIs : '') + step.title, main: b(step.lesson ? COPY.nextLesson : step.button, 'step'), small: [NEW, HOME] };
   }
   /* After a lesson step or a puzzle set.
      c.unit: part of a lesson. c.from: 'learn' | 'session'. c.passed. c.nextPart: the lesson's next unfinished part

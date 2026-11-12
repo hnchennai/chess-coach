@@ -473,11 +473,11 @@ const cases = [
       const m = document.querySelector('#reviewEnd .ec-main').getBoundingClientRect(), hit = document.elementFromPoint(m.left + m.width / 2, m.top + m.height / 2);
       return { under: c.top >= n.bottom, hit: !!hit && !!hit.closest('#reviewEnd .ec-main'), clear: !fixed || m.bottom <= t.getBoundingClientRect().top + 0.5 }; });
     assert.equal(rg.under, true, 'R7: the card is under the controls'); assert.ok(rg.hit && rg.clear, 'R7: the fixed nav does not cover the main button');
-    assert.equal(c.title, 'That’s the whole game.'); assert.equal(c.line, 'Next lesson: Pins and skewers', 'F-D29'); assert.equal(c.main, 'Start lesson'); assert.deepEqual(c.small, ['New game', 'Home']);
+    assert.equal(c.title, 'That’s the whole game.'); assert.equal(c.line, 'Next lesson: Pins and skewers', 'F-D29'); assert.equal(c.main, 'Start next lesson', 'F-D33'); assert.deepEqual(c.small, ['New game', 'Home']);
     cardRules(c, vp, 'review finished');
     await page.locator('#tab-coach').click();
     const h = await cont(page);
-    assert.equal('Next lesson: ' + h.title, c.line); assert.equal(h.button, c.main, 'the same step Home’s Continue card names');
+    assert.equal('Next lesson: ' + h.title, c.line, 'the same step Home’s Continue card names'); assert.equal(h.button, 'Start lesson');
     await page.locator('#tab-play').click();
     await shot(page, vp, 'review-finished', '#reviewEnd');
     await page.locator('#navPrev').click();
@@ -935,7 +935,17 @@ const cases = [
     assert.ok(g.text.includes('Goal reached!'), g.text);
     assert.equal(g.line, 'Next lesson: Pins and skewers'); assert.deepEqual(g.main, ['Start next lesson']); assert.deepEqual(g.small, ['Keep playing']);
     assert.ok(!/Back to the course/.test(g.text), 'no "Back to the course"'); assert.ok(g.h.every((h) => h >= 44), 'buttons 44px: ' + g.h);
+    const hintOn = (pg) => pg.evaluate(() => document.getElementById('hintBtn').classList.contains('primary'));
+    assert.equal(await hintOn(page), false, 'the goal card holds the main button, Hint is plain'); await one(page, 'goal decided, next lesson');
     await shot(page, vp, 'goal-card-passed', '#goalCard');
+    { // F-D30: no lesson left to offer: only Keep playing, and Hint keeps its filled style
+      const p4 = await seeded(vp, improver({ course: done(...TACTICS) }), { tab: 'play', game: Object.assign({}, GAME_OPEN, { level: 3, goal: Object.assign(goal('win', 'check2'), { status: 'done' }) }) });
+      await p4.waitForFunction(() => !window.__coach.st.busy);
+      const g4 = await p4.evaluate(() => { const g = document.getElementById('goalCard'); return { main: g.querySelectorAll('.ec-main').length, small: Array.from(g.querySelectorAll('.ec-small')).map((b) => b.textContent.trim()) }; });
+      assert.equal(g4.main, 0); assert.deepEqual(g4.small, ['Keep playing']);
+      assert.equal(await hintOn(p4), true, 'F-D30: Hint keeps its filled style'); await one(p4, 'goal decided, nothing to start');
+      assert.deepEqual(p4.errors, []); await p4.context().close();
+    }
     await page.locator('#goalCard .ec-small').click();
     g = await goalBtns(page);
     assert.deepEqual(g.main.concat(g.small), [], 'Keep playing puts the buttons away'); assert.ok(g.text.includes('Goal reached!'));
@@ -947,15 +957,15 @@ const cases = [
     await page.waitForFunction(() => window.__coach.st.mode === 'lesson' && window.__coach.st.ls.unit.id === 'pin');
     assert.deepEqual(await page.evaluate(() => window.__coach.hist()), GAME_OPEN.sans, 'the game is kept');
     await page.context().close();
-    // failed: Try again (asks first, D49: this game is still going) and Keep playing
+    // failed: Try again (at once, F-D31) and Keep playing
     page = await seeded(vp, prof({ course: Object.assign(done('rules', 'special', 'board', 'values', 'mate', 'opening'), { blunder: { learn: 1, practice: 1 } }) }), { tab: 'play', game: Object.assign({}, GAME_OPEN, { level: 2, goal: Object.assign(goal('win', 'blunder'), { status: 'failed' }) }) });
     g = await goalBtns(page);
     assert.ok(g.text.includes('Not this time.'), g.text);
     assert.equal(g.line, null); assert.deepEqual(g.main, ['Try again']); assert.deepEqual(g.small, ['Keep playing']); assert.ok(!/Back to the course|Next lesson/.test(g.text));
     await page.locator('#goalCard .ec-main').click();
-    assert.equal(await noteText(page), ASK);
-    await page.locator('#raniNote [data-act="askgo"]').click();
     await page.waitForFunction(() => window.__coach.st.goal && window.__coach.st.goal.status === 'active' && window.__coach.hist().length <= 1);
+    assert.equal(await vis(page, '#raniNote'), false, 'F-D31: Try again restarts the lesson game at once, no question');
+    assert.equal(await page.evaluate(() => window.__coach.st.goal.unit), 'blunder');
     assert.equal((await goalBtns(page)).main.length, 0, 'an open goal has no buttons');
     return page;
   }],
@@ -1014,7 +1024,7 @@ const cases = [
     await page.locator('#sessionCard .ec-small', { hasText: 'Home' }).click();
     await page.locator('#tab-progress').click(); await page.locator('#history [data-review]').first().click(); await page.locator('#navLast').click();
     c = await card(page, '#reviewEnd');
-    assert.equal(c.line, 'Next lesson: Forks'); assert.equal(c.main, 'Start lesson');
+    assert.equal(c.line, 'Next lesson: Forks'); assert.equal(c.main, 'Start next lesson', 'F-D33');
     await page.locator('#reviewEnd .ec-main').click();
     await page.waitForFunction(() => window.__coach.st.mode === 'lesson' && window.__coach.st.ls.unit.id === 'fork');
     await page.context().close();
@@ -1218,9 +1228,12 @@ const cases = [
     assert.equal(wide, vp.width > 860);
     const places = [];
     let s = await slot(page, '#homeSlot'); slotRules(s, OTHER, 'Rani', 'Home'); places.push(s.h);
+    const geo = () => page.evaluate(() => { const R = (q) => document.querySelector(q).getBoundingClientRect(), s = R('#slotStrip'), a = R('.app'); return { top: s.top, cols: Math.max(R('.boardcol').bottom, R('.side').bottom), w: s.width, appW: a.width, left: s.left - a.left }; });
+    const strip = async (why) => { if (!wide) return; const g = await geo(); assert.ok(g.top >= g.cols, why + ': the strip’s top is at or below the bottom of both columns (' + g.top + ' vs ' + g.cols + ')'); assert.ok(Math.abs(g.w - g.appW) <= 1 && Math.abs(g.left) <= 1, why + ': the strip is as wide as the app content (' + g.w + ' vs ' + g.appW + ')'); };
+    await strip('Home');
     if (wide) await shot(page, vp, 'slot-strip-home', '#slotStrip');
-    await page.locator('#tab-progress').click(); s = await slot(page, '#progSlot'); slotRules(s, OTHER, 'Rani', 'Progress'); if (wide) await shot(page, vp, 'slot-strip-progress', '#slotStrip');
-    await page.locator('#tab-play').click(); s = await slot(page, '#gameEnd .tipslot'); slotRules(s, OTHER, 'Rani', 'game end'); if (wide) await shot(page, vp, 'slot-strip-game-end', '#slotStrip');
+    await page.locator('#tab-progress').click(); s = await slot(page, '#progSlot'); slotRules(s, OTHER, 'Rani', 'Progress'); await strip('Progress'); if (wide) await shot(page, vp, 'slot-strip-progress', '#slotStrip');
+    await page.locator('#tab-play').click(); s = await slot(page, '#gameEnd .tipslot'); slotRules(s, OTHER, 'Rani', 'game end'); await strip('game end'); if (wide) await shot(page, vp, 'slot-strip-game-end', '#slotStrip');
     await page.locator('#tab-path').click(); assert.equal(await anySlot(page), 0, 'Learn: no slot');
     await page.locator('#tab-train').click(); assert.equal(await anySlot(page), 0, 'Train: no slot');
     await page.locator('#ratedBtn').click(); await page.waitForFunction(() => window.__coach.st.ses && window.__coach.st.ses.rated);
@@ -1228,10 +1241,11 @@ const cases = [
     await jump(page, 9); await lastPuzzle(page);
     s = await slot(page, '#sessionCard .tipslot'); slotRules(s, OTHER, 'Rani', 'set end'); const t1 = s.text;
     await page.locator('#flipBtn').click(); assert.equal((await slot(page, '#sessionCard .tipslot')).text, t1, 'the same tip while the card is open');
+    await strip('set end');
     if (wide) await shot(page, vp, 'slot-strip-set-end', '#slotStrip');
     await page.evaluate(() => window.__coach.startPart('pin', 'learn')); await finishLesson(page);
     s = await slot(page, '#learnEnd .tipslot'); slotRules(s, OTHER, 'Rani', 'lesson step end');
-    assert.equal(await anySlot(page), 1, 'one slot on the screen');
+    assert.equal(await anySlot(page), 1, 'one slot on the screen'); await strip('lesson step end');
     if (wide) { // turning the window narrow moves the slot back into its place, and wide again into the strip
       await page.setViewportSize({ width: 500, height: 900 });
       await page.waitForFunction(() => { const e = document.querySelector('#learnEnd .tipslot'); return e && e.offsetParent !== null; });
@@ -1239,6 +1253,44 @@ const cases = [
       await page.setViewportSize(vp);
       await page.waitForFunction(() => document.getElementById('slotStrip').offsetParent !== null && !document.querySelector('#learnEnd .tipslot'));
     }
+    return page;
+  }]
+  ,
+  /* ---------- Fix round 2 ---------- */
+  ['T2 / F-D32: a Learn or set end card has no slot (and no desktop strip) while a game is unfinished', async (vp) => {
+    const page = await seeded(vp, improver(), { tab: 'coach', game: Object.assign({}, GAME_OPEN, { level: 3 }) });
+    await page.locator('#contCard .bh-go').click(); await finishLesson(page);
+    assert.equal((await card(page, '#learnEnd')).main, 'Start practice');
+    assert.equal(await anySlot(page), 0, 'Learn end card with a paused game: no slot');
+    await page.locator('#learnEnd .ec-main').click();
+    await page.waitForFunction(() => window.__coach.st.ses && window.__coach.st.ses.unit === 'fork');
+    await jump(page, 7); await lastPuzzle(page);
+    assert.equal((await card(page, '#sessionCard')).main, 'Start next lesson');
+    assert.equal(await anySlot(page), 0, 'set end card with a paused game: no slot');
+    assert.deepEqual(await page.evaluate(() => window.__coach.hist()), GAME_OPEN.sans);
+    return page;
+  }],
+  ['T3: a lesson game’s goal decided mid-game: the goal card is brought into view and announced, never when the app opens', async (vp) => {
+    // 11 quiet moves each; White's 12th move runs the "develop" task out of moves
+    const sans = ['a3', 'a6', 'b3', 'b6', 'c3', 'c6', 'd3', 'd6', 'e3', 'e6', 'f3', 'f6', 'g3', 'g6', 'h3', 'h6', 'Ra2', 'Ra7', 'Rb2', 'Rb7', 'Ra2', 'Ra7'];
+    const page = await seeded(vp, prof({ course: Object.assign(done('rules', 'special', 'board', 'values', 'mate'), { opening: { learn: 1 } }) }), { tab: 'play', game: Object.assign({}, GAME_OPEN, { sans, ann: {}, notes: {}, fb: null, goal: goal('develop', 'opening') }) });
+    await page.locator('#tab-play').click(); await page.waitForFunction(() => !window.__coach.st.busy);
+    assert.equal(await page.evaluate(() => window.__coach.st.goal.status), 'active');
+    assert.equal(await page.evaluate(() => document.getElementById('endLive').textContent), ''); const r0 = await page.evaluate(() => window.__coach.reveals());
+    await page.locator('#board .sq[data-sq="h3"]').click(); await page.locator('#board .sq[data-sq="h4"]').click();
+    await page.waitForFunction(() => window.__coach.st.goal.status === 'failed' && !window.__coach.st.busy, null, { timeout: 30000 });
+    await page.waitForFunction(() => document.getElementById('endLive').textContent.startsWith('Not this time.'));
+    assert.equal(await page.evaluate(() => document.querySelector('#goalCard .ec-main').textContent), 'Try again');
+    assert.equal((await page.evaluate(() => window.__coach.reveals())) - r0, 1, 'the goal card is brought into view once');
+    await page.waitForTimeout(500);
+    const m = await page.evaluate(() => { const b = document.getElementById('board').getBoundingClientRect(), g = document.querySelector('#goalCard .ec-main').getBoundingClientRect(), t = document.querySelector('.tabs'), fixed = getComputedStyle(t).position === 'fixed';
+      return { boardTop: b.top, y: window.scrollY, inView: g.bottom <= (fixed ? t.getBoundingClientRect().top : window.innerHeight) + 0.5 }; });
+    assert.ok(m.boardTop >= -0.5, 'the board stays on screen: ' + m.boardTop);
+    assert.ok(m.inView || m.boardTop <= 1, 'the page moved as far as the board allows: ' + JSON.stringify(m));
+    // the same goal after a restart: nothing scrolls, nothing is announced
+    await page.reload(); await page.waitForFunction(() => window.__coach && window.Placement); await page.waitForTimeout(600);
+    assert.equal(await page.evaluate(() => document.getElementById('endLive').textContent), '', 'not announced again'); assert.equal(await page.evaluate(() => window.__coach.reveals()), 0, 'no card is scrolled into view when the app opens');
+    assert.equal(await page.evaluate(() => document.querySelector('#goalCard .ec-main').textContent), 'Try again', 'the choice is still there');
     return page;
   }]
 ];

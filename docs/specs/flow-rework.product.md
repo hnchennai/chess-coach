@@ -40,6 +40,14 @@ Mockups: https://claude.ai/artifact/1w7FN46dmJuwkXAT9P551w (approved by Suresh, 
 | F-D13 | Tips are split in two lists: Beginner (no notation, no jargon) and Improver/Club. A Beginner with Show everything on still gets Beginner tips | Delegated to Claude |
 | F-D14 | With Coach Gaja chosen, the slot label reads "Gaja’s tip" and shows Gaja | Delegated to Claude, same rule as D48 |
 | F-D15 | Beginner Home does not change, apart from the slot under its buttons | Confirmed by Suresh (mockup screen 3 notes) |
+| F-D16 | "That’s the whole game." and its next-step button show only after the player steps to the last move of a review. A review of a just-finished game still opens on the last move, as today | Confirmed by Suresh |
+| F-D17 | The slot is hidden everywhere, Home and Progress included, while a game is unfinished or a lesson, puzzle set, drill, review or level check is open. The review-finished card has no slot | Confirmed by Suresh |
+| F-D18 | A lesson game's goal decided before the game ends: the goal card uses the next-step buttons. Passed: main "Start next lesson" (or the next step per the tables), small "Keep playing". Failed: main "Try again", small "Keep playing". "Back to the course" leaves this card too | Confirmed by Suresh |
+| F-D19 | Fix in this PR, as its own commit: a game the player ends with their own move was recorded again at every app start. New copies stop. Existing copies in history are left alone | Confirmed by Suresh |
+| F-D20 | The Continue card's "Lesson N of M" for a lesson above the player's level counts lessons in that lesson's own stage | Confirmed by Suresh |
+| F-D21 | Learn part finished, next part a game or drill: "Next: play it in a real game." / "Play the lesson game", or "Next: one more step." / "Continue", small "Home". Card heading: "Learn" and the lesson title | Confirmed by Suresh |
+| F-D22 | Train sets that are not puzzle sets (Safe or blunder?, opening drills) end with main "Go again". A themed puzzle set's "10 more puzzles" starts the same theme. An endgame drill follows the table: failed "Go again", passed the next step | Confirmed by Suresh |
+| F-D23 | A lesson part passed while another part of the same lesson is undone: the card names that part ("Next: practise it." / "Start practice", or the matching signed line), never "Next lesson: <same lesson>" | Confirmed by Suresh |
 
 ## End cards (F1)
 
@@ -111,7 +119,7 @@ Improver and Club:
 8. After every game, find the one move where it turned.
 
 ## New copy (signed off by Suresh)
-- Buttons: "Home", "Start practice", "Play the lesson game", "Start next lesson", "10 more puzzles", "Try again". Existing: "Review this game", "New game", "Go again", "Continue", "Start lesson", "Play now", "Start 10 puzzles", "Back to my game".
+- Buttons: "Home", "Keep playing", "Start practice", "Play the lesson game", "Start next lesson", "10 more puzzles", "Try again". Existing: "Review this game", "New game", "Go again", "Continue", "Start lesson", "Play now", "Start 10 puzzles", "Back to my game".
 - Lines: "Next: practise it." / "Next: play it in a real game." / "Next: one more step." / "Next lesson: <title>" / "That’s the whole game."
 - Continue card: "Continue · Lesson N of M", "Continue", "Puzzles to reach <target>".
 - Slot label: "Rani’s tip", "Gaja’s tip".
@@ -122,10 +130,10 @@ Improver and Club:
 - Product truths, the offline line gains: "(cloud save, fonts, ads). With no ad, the slot shows a tip from the coach."
 
 ## Scenarios
-1. Given Arjun is an Improver whose next step is "Pins and skewers" (2 of 8 Tactics lessons done), when he opens Home on a 412px phone, then the first card reads "Continue · Lesson 3 of 8" / "Pins and skewers" with a bar and "Continue" or "Start lesson". The stage card below has no "Next step" button. Today's steps, stage detail, roadmap, coach and pieces and methods follow in today's order.
+1. Given Arjun is an Improver whose next step is "Pins and skewers" (1 of 5 Tactics lessons done), when he opens Home on a 412px phone, then the first card reads "Continue · Lesson 2 of 5" / "Pins and skewers" with a bar and "Continue" or "Start lesson". The stage card below has no "Next step" button. Today's steps, stage detail, roadmap, coach and pieces and methods follow in today's order.
 2. Given Arjun finished every Tactics lesson and his rating is under the stage target, then the card reads "Continue" / "Puzzles to reach 1200" with "Start 10 puzzles".
 3. Given Meena plays a normal game and wins, when the game ends, then the board shows the final position with nothing over it, and a card under it reads "Checkmate. You win!" with the main button "Review this game" and small "New game" and "Home".
-4. Given Priya (Beginner) passes the practice of "Opening principles" with 8 of 10, then the end card reads "Session complete", "Next: play it in a real game." and the main button "Play the lesson game", with small "Go again" and "Home". Tapping the main button starts the lesson game against Rani’s practice partner.
+4. Given Priya (Beginner) passes the practice of "The blunder check" with 8 of 10, then the end card reads "Session complete", "Next: play it in a real game." and the main button "Play the lesson game", with small "Go again" and "Home". Tapping the main button starts the lesson game against Rani’s practice partner.
 5. Given Priya scores 4 of 10 where 7 are needed, then the main button is "Go again" and no next step is offered.
 6. Given Arjun finishes the last part of "Forks", then the end card reads "Next lesson: Pins and skewers" with "Start next lesson".
 7. Given Meena solves a set of 10 puzzles from Train, then the main button is "10 more puzzles" with small "Home".

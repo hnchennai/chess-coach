@@ -457,6 +457,7 @@
     renderStrip();
     if (st.v3d && window.Board3D) sync3d(g, last, targets, checkSq);
     renderArrows(); renderEval(); renderCaps(g); renderMode(); renderPlayPanel(); renderMoves(); renderBanner(); renderSession(); releaseOffer();
+    if (st.tab === 'coach' && plain()) renderBHome(); /* AC8: a game that starts or ends next to Home (desktop) shows at once */
     var u = viewUser(), pl = plain();
     $('oppLevel').textContent = pl ? '' : st.mode === 'play' ? OPP[st.level].name + ' · ' + (st.level === 8 ? 'max' : '~' + OPP[st.level].elo) : st.mode === 'review' && OPP[st.rv.level] ? OPP[st.rv.level].name : '';
     $('oppName').textContent = pl && (st.mode === 'play' || st.mode === 'review' || st.mode === 'drill') ? partnerName() : { play: 'Engine', review: 'Engine', puzzle: 'Puzzle', lesson: 'Lesson', drill: 'Stockfish', book: 'Opening book', squares: 'Board drill', quiz: 'Safe or blunder?', reach: 'Piece drill', placement: 'Level check' }[st.mode] || '';
@@ -1410,13 +1411,26 @@
     st.theme = id; lsSet('suresh-chess-coach.pieces', id); prof.theme = id; saveProfile(); decorateChips(true);
     render(); renderLook();
   }
+  /* D41: the same markup on Home's card (Improver, Club, Show everything) and in Settings (every level), with no container ids.
+     A re-render keeps focus on the same choice in its own container (keyboard users in the sheet). */
   function renderLook() {
-    var el = $('lookCard'); if (!el) return;
+    var base = lookHtml();
+    [['lookCard', 'lc-'], ['lookSet', 'ls-']].forEach(function (c) {
+      var el = $(c[0]); if (!el) return;
+      /* the piece previews' gradient ids get a prefix per container: no duplicate ids, and a preview never paints from a
+         gradient inside a hidden board or panel (D38 hides the board on Beginner Home) */
+      var html = base.replace(/(id="|url\(#)tk/g, '$1' + c[1] + 'tk');
+      var a = document.activeElement, keep = a && el.contains(a) && a.dataset ? (a.dataset.coach ? '[data-coach="' + a.dataset.coach + '"]' : a.dataset.set ? '[data-set="' + a.dataset.set + '"]' : null) : null;
+      if (el._h === html) return; el._h = html; el.innerHTML = html;
+      if (keep) { var f = el.querySelector(keep); if (f) try { f.focus({ preventScroll: true }); } catch (e) {} }
+    });
+  }
+  function lookHtml() {
     var groups = [], by = {};
     Object.keys(Avatar.SETS).forEach(function (id) { var gname = Avatar.SETS[id].group || 'More'; if (!by[gname]) { by[gname] = []; groups.push(gname); } by[gname].push(id); });
     var ORDER = ['Classic', 'Indian epics', 'Indian history', 'Fables', 'World myths', 'Fantasy']; groups.sort(function (x, y) { var i = ORDER.indexOf(x), j = ORDER.indexOf(y); return (i < 0 ? 99 : i) - (j < 0 ? 99 : j); });
     var cc = Coach3D.get();
-    el.innerHTML = '<p class="eyebrow">Choose your coach</p><div class="sets coachpick">' + [['rani', 'Queen Rani', '3D animated queen. Reacts to every move.'], ['gaja', 'Coach Gaja', 'Flat elephant drawing. Lighter on old phones.']].map(function (o) { return '<button class="setbtn' + (cc === o[0] ? ' on' : '') + '" type="button" data-coach="' + o[0] + '" aria-pressed="' + (cc === o[0]) + '"><b>' + o[1] + '</b><small>' + o[2] + '</small></button>'; }).join('') + '</div><p class="eyebrow" style="margin-top:14px">Choose your pieces</p>' + groups.map(function (gname) {
+    return '<p class="eyebrow">Choose your coach</p><div class="sets coachpick">' + [['rani', 'Queen Rani', '3D animated queen. Reacts to every move.'], ['gaja', 'Coach Gaja', 'Flat elephant drawing. Lighter on old phones.']].map(function (o) { return '<button class="setbtn' + (cc === o[0] ? ' on' : '') + '" type="button" data-coach="' + o[0] + '" aria-pressed="' + (cc === o[0]) + '"><b>' + o[1] + '</b><small>' + o[2] + '</small></button>'; }).join('') + '</div><p class="eyebrow" style="margin-top:14px">Choose your pieces</p>' + groups.map(function (gname) {
       return '<p class="setgrp">' + esc(gname) + '</p><div class="sets">' + by[gname].map(function (id) {
         var S = Avatar.SETS[id], pv = ['k', 'q', 'n'].map(function (t) { var tk = Avatar.piece(id, 'w', t); return '<span>' + (tk || GLYPH[t] + VS) + '</span>'; }).join('') + '<span>' + (Avatar.piece(id, 'b', 'k') || GLYPH.k + VS) + '</span>';
         return '<button class="setbtn' + (st.theme === id ? ' on' : '') + '" type="button" data-set="' + id + '" aria-pressed="' + (st.theme === id) + '"><div class="pv">' + pv + '</div><b>' + esc(S.name) + '</b><small>' + esc(S.note) + '</small></button>';
@@ -1433,7 +1447,7 @@
     var de = document.documentElement;
     if (prof.level) de.dataset.level = prof.level; else delete de.dataset.level;
     if (prof.showAll) de.dataset.showall = '1'; else delete de.dataset.showall;
-    applyTabs();
+    syncHomeMode(); applyTabs();
   }
   /* S2a tab unlock: a Beginner sees Home, Learn and Play until 3 units from the start point are fully done (or Show everything). */
   function tabsLocked() { return prof.level === 'beginner' && !Profile.unlockDone(prof, UNITS, unitDone); }
@@ -1451,7 +1465,7 @@
     applyLevel(); dropStaleOffers();
     $('coachStrip').dataset.k = ''; decorateChips(true); /* chips and the strip cache follow the level (D32) */
     render();
-    var sh = $('settingsSheet'); if (sh && !sh.hidden) renderLevelCard(); /* an open sheet shows the merged level and switch (R2-6) */
+    var sh = $('settingsSheet'); if (sh && !sh.hidden) { renderLevelCard(); renderLook(); } /* an open sheet shows the merged level and switch (R2-6) */
     if (st.tab === 'coach') renderCoach(); else if (st.tab === 'path') renderPath(); else if (st.tab === 'train') renderTrain(); else if (st.tab === 'progress') renderProgress();
   }
   /* A re-render after a cloud pull keeps the player's place: focus goes back to the same control, and the scroll stays. */
@@ -1542,7 +1556,7 @@
   var setOpener = null;
   function openSettings() {
     var sh = $('settingsSheet'); if (!sh || !sh.hidden) return;
-    setOpener = document.activeElement; renderLevelCard();
+    setOpener = document.activeElement; renderLevelCard(); renderLook();
     sh.hidden = false; document.documentElement.classList.add('sheet-open');
     var pn = sh.querySelector('.sheet-panel'); if (pn) pn.focus({ preventScroll: true });
   }
@@ -1586,18 +1600,19 @@
   function drawNote() {
     var el = $('raniNote'), n = noteCur; if (!el) return;
     if (!n) { el.hidden = true; el.innerHTML = ''; el.className = 'raninote'; return; }
-    var offer = n.kind === 'offer';
-    el.className = 'raninote' + (offer ? ' offer' : '');
-    el.innerHTML = '<div class="rn-av">' + Avatar.coach(offer ? 'proud' : 'happy', 46) + '</div><p>' + esc(n.text) + '</p>' +
+    var offer = n.kind === 'offer', ask = n.kind === 'ask';
+    el.className = 'raninote' + (offer || ask ? ' offer' : '');
+    el.innerHTML = '<div class="rn-av">' + Avatar.coach(offer ? 'proud' : ask ? 'think' : 'happy', 46) + '</div><p>' + esc(n.text) + '</p>' +
       (offer ? '<div class="rn-btns"><button class="btn sm primary" type="button" data-act="offeryes">Yes, move me up</button><button class="btn sm" type="button" data-act="offerno">Not yet</button></div>'
+        : ask ? '<div class="rn-btns"><button class="btn sm primary" type="button" data-act="askback">' + esc(Home.ASK.back) + '</button><button class="btn sm" type="button" data-act="askgo">' + esc(Home.ASK.go) + '</button></div>'
         : '<button class="btn sm" type="button" data-act="notedone">OK</button>');
     el.hidden = false;
-    if (offer) focusOffer();
+    if (offer || ask) focusOffer();
   }
   /* D35: a note that asks a question takes keyboard focus, unless Settings or the level check is open (then when it closes) */
   function focusOffer() {
-    var sh = $('settingsSheet'), b = $('raniNote').querySelector('[data-act="offeryes"]');
-    if (!b || !noteCur || noteCur.kind !== 'offer' || (sh && !sh.hidden) || Placement.isOpen()) return;
+    var sh = $('settingsSheet'), b = $('raniNote').querySelector('[data-act="offeryes"], [data-act="askback"]');
+    if (!b || !noteCur || (noteCur.kind !== 'offer' && noteCur.kind !== 'ask') || (sh && !sh.hidden) || Placement.isOpen()) return;
     try { b.focus({ preventScroll: true }); } catch (e) {}
   }
   /* D35: Esc closes Rani's note without saving anything (an offer comes back at the next app start); focus goes to the tab */
@@ -1613,6 +1628,15 @@
     if (had) { var b = noteCur && el.querySelector('button'); if (b) b.focus(); else focusTab(); }
   }
   function hideNote() { nextNote(); }
+  /* D49: Beginner Home's Continue on a lesson game while a game is going: Rani asks first (one question at a time, key 'ask').
+     Esc closes it (keydown above) and keeps the old game; nothing is saved. Learn's Start buttons do not ask. */
+  function askFirst(u) { if (UNIT[u]) queueNote({ kind: 'ask', key: 'ask', text: Home.ASK.text, u: u }); }
+  function answerAsk(go) {
+    var n = noteCur; if (!n || n.kind !== 'ask') return;
+    noteCur = null;
+    if (go) { st.unitOpen = n.u; startPart(n.u, 'apply'); } else exitMode(true);
+    nextNote();
+  }
 
   /* ---------- Level-up offer (D13, D20, D21): Rani asks; nothing changes without a tap ---------- */
   var NEXT_LEVEL = { beginner: 'improver', improver: 'club' }, offerChecked = false;
@@ -1709,7 +1733,41 @@
   }
   var _next = null;
   function goNext() { if (_next) _next.go(); }
+  /* ---------- S2b: Beginner Home (prototype A): Rani, one Continue card, a second button ---------- */
+  var HOME_CARDS = ['stageHero', 'today', 'stageCard', 'roadCard', 'lookCard', 'methodsCard'];
+  /* D44: an unfinished game, the same test as Today's Play step */
+  function gameOn() { return !!(G.history().length && !G.game_over()); }
+  /* D46 / D39: same win test as D30 in stageMiles */
+  function homeState() { return Home.state(prof, UNITS, unitDone, unitStarted, nextPart, bestWinLevel() >= Profile.LEVELS.beginner.opp); }
+  /* D38: on Beginner Home the board column hides in one-column layouts (CSS, up to 860px). State is never touched. */
+  function syncHomeMode() { var de = document.documentElement; if (plain() && st.tab === 'coach') de.dataset.bhome = '1'; else delete de.dataset.bhome; }
+  /* The buttons reuse the app's actions: data-part (as Learn), recgame (a partner game for plain()), close (back to the game),
+     data-train="rated" (as Train). Re-rendered only when something on it changes, so focus and Rani's canvas stay put. */
+  function renderBHome() {
+    var el = $('bhome'); if (!el || !plain()) return;
+    var s = homeState(), coach = Coach3D.get(), L = Home.lines(s, coach, gameOn()), sk = Home.streak(streakDays());
+    /* D50: "Back to my game" is exitMode(true), as today's Home button: an open lesson or puzzle set ends (the lesson starts
+       again at step 1; puzzle results so far are already saved). D49: a lesson game with a game going asks first. */
+    var u = s.unit ? s.unit.id : '';
+    var act = { part: u ? 'data-part="' + s.part + '" data-u="' + u + '"' : '', ask: 'data-act="bhask" data-u="' + u + '"', game: 'data-act="recgame"', back: 'data-act="close"', puzzles: 'data-train="rated"' };
+    var html = '<div class="bh-hero"><div class="bh-av">' + Avatar.coach(s.kind === 'lesson' ? 'happy' : 'proud', 112) + '</div>' +
+      '<div class="bh-bub"><h2 class="bh-head">' + esc(L.head) + '</h2>' + (L.line ? '<p class="bh-line">' + esc(L.line) + '</p>' : '') + '</div>' +
+      (sk ? '<p class="bh-streak" role="img" aria-label="' + esc(sk.label) + '"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3c2 4 5 5 5 10a5 5 0 0 1-10 0c0-3 2-4 2-7 2 1 3 2 3 4"/></svg>' + esc(sk.text) + '</p>' : '') + '</div>' +
+      '<div class="card bh-card"><div class="bh-row"><span class="bh-ic z-' + L.zone + '" aria-hidden="true">' + GLYPH[L.icon] + VS + '</span><div class="bh-tt"><p class="bh-kick">' + esc(L.kicker) + '</p><h3 class="bh-title" id="bhTitle">' + esc(L.title) + '</h3></div></div>' +
+      (L.bar ? '<div class="bh-bar" role="progressbar" aria-labelledby="bhTitle" aria-valuemin="0" aria-valuemax="' + L.bar.m + '" aria-valuenow="' + L.bar.done + '" aria-valuetext="' + esc(L.bar.text) + '"><i style="width:' + Math.round(100 * L.bar.done / Math.max(1, L.bar.m)) + '%"></i></div>' : '') +
+      '<button class="btn primary big bh-go" type="button" ' + act[L.go] + '>' + esc(L.button) + '</button></div>' +
+      (L.second ? '<button class="btn big bh-alt" type="button" ' + act[L.alt] + '>' + esc(L.second) + '</button>' : '');
+    var key = html + '|' + coach; if (el._k === key) return;
+    var a = document.activeElement, keep = a && el.contains(a) ? (a.classList.contains('bh-alt') ? '.bh-alt' : '.bh-go') : null;
+    el._k = key; el.innerHTML = html;
+    if (keep) { var f = el.querySelector(keep) || el.querySelector('.bh-go'); if (f) try { f.focus({ preventScroll: true }); } catch (e) {} }
+  }
   function renderCoach() {
+    /* D40: Beginner Home only for a Beginner with Show everything off; otherwise the full Home, as an Improver at their stage */
+    var bh = plain();
+    $('bhome').hidden = !bh; HOME_CARDS.forEach(function (id) { $(id).hidden = bh; });
+    syncHomeMode();
+    if (bh) { renderBHome(); return; }
     var S = currentStage(), miles = stageMiles(S), done = miles.filter(function (m) { return m.ok; }).length, pl = plain(), fs = RM[firstStage()].stage;
     _next = nextAction(S);
     $('stageHero').innerHTML = '<div class="herorow">' + Avatar.coach(done ? 'happy' : 'neutral', 64) + '<div><p class="eyebrow">' + esc(Avatar.coachName()) + ' \u00B7 Stage ' + S.stage + ' of 6</p><h3>' + esc(S.name) + '</h3></div></div><p>' + esc(S.why) + '</p>' +
@@ -1783,7 +1841,7 @@
   /* ---------- tabs ---------- */
   function switchTab(name) {
     if (!tabOpen(name) || !$('panel-' + name)) name = 'coach'; /* S2a: a Beginner's Train and Progress stay out of reach until unlocked */
-    st.tab = name;
+    st.tab = name; syncHomeMode();
     ['coach', 'path', 'play', 'train', 'progress'].forEach(function (t) { $('tab-' + t).setAttribute('aria-selected', t === name ? 'true' : 'false'); $('panel-' + t).hidden = t !== name; });
     if (name === 'progress') renderProgress();
     if (name === 'train') renderTrain();
@@ -2021,7 +2079,7 @@
     if (d.unit) { if (st.mode !== 'play' && st.mode !== 'review') { clearSession(); st.mode = 'play'; resetHints(); } st.unitOpen = d.unit; switchTab('path'); render(); return; }
     if (d.part) { st.unitOpen = d.u; startPart(d.u, d.part); return; }
     if (d.zgo) { switchTab(d.zgo); return; }
-    if (d.coach) { Coach3D.set(d.coach); $('coachAv').dataset.k = ''; $('coachStrip').dataset.k = ''; var sc = $('sessionCard'); if (sc) sc._h = ''; renderCoach(); render(); return; }
+    if (d.coach) { Coach3D.set(d.coach); $('coachAv').dataset.k = ''; $('coachStrip').dataset.k = ''; var sc = $('sessionCard'); if (sc) sc._h = ''; renderLook(); renderCoach(); render(); return; }
     if (d.act === 'units') { st.unitOpen = null; renderPath(); return; }
     if (d.act === 'recgame') { newGame(false, { level: plain() ? Profile.LEVELS.beginner.opp : recLevel() }); return; }
     if (d.act === 'review') { enterReview(null); return; }
@@ -2048,6 +2106,9 @@
     if (d.act === 'notedone') { hideNote(); return; }
     if (d.act === 'offeryes') { answerOffer(true); return; }
     if (d.act === 'offerno') { answerOffer(false); return; }
+    if (d.act === 'bhask') { askFirst(d.u); return; }
+    if (d.act === 'askback') { answerAsk(false); return; }
+    if (d.act === 'askgo') { answerAsk(true); return; }
   });
 
   /* ---------- boot ---------- */

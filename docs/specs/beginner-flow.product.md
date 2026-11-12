@@ -183,6 +183,71 @@ Show everything turns every "Hidden" above into "Shown" without changing the lev
 - Focus returns to a sensible place (not the page body) after the check closes.
 - Esc closes only the top layer (Settings), not a move tip behind it.
 
+## Slice S2b: Beginner Home (details)
+Status: approved by Suresh (2026-11-08). Applies to a Beginner with Show everything off. Improver and Club Home do not change. S2a's rules (D17 to D37) stay true.
+
+### Decisions
+| # | Decision | Source |
+|---|---|---|
+| D38 | Beginner Home hides the board where Home sits under it (one-column layout, up to 860px wide), so Rani, the Continue card and the second button fit on the first screen. Desktop keeps the board left and Home right. Learn and Play show the board as today | Confirmed by Suresh |
+| D39 | After Foundations, a Beginner who has beaten Rani's partner (said "Not yet", or has not answered the offer) gets "Keep practising": the Continue card offers 10 puzzles at their level. Home never sends a Beginner into Tactics lessons; they stay open in Learn. The weekly offer (D13, D21) is unchanged | Confirmed by Suresh |
+| D40 | With Show everything on, a Beginner sees the full Home (stage, Today's steps, stage detail, roadmap, coach and pieces, methods) with the board, like an Improver at their stage | Confirmed by Suresh |
+| D41 | Settings gets a "Coach and pieces" section for every level (same choices as Home's card today). Improver and Club Home keep their card; Beginner Home has none | Confirmed by Suresh |
+| D42 | Rani's lines on Beginner Home: copy below | Confirmed by Suresh |
+| D43 | Streak chip on Beginner Home from 1 day ("1 day", "3 days"); hidden at 0 | Confirmed by Suresh |
+| D44 | With an unfinished game, the second button reads "Back to my game" and opens it on Play; nothing is abandoned. With no game going, "Just play a game" starts a new game against Rani's practice partner on Play | Confirmed by Suresh |
+| D45 | The Continue card counts Foundations lessons from the player's start point: Karthik (start "Board and notation") sees "Lesson 1 of 5". The bar shows lessons done of that count | Confirmed by Suresh |
+| D46 | The Continue card follows the first unfinished Foundations lesson at or after the start point, then D30's "Beat Rani's practice partner", then Keep practising (D39). Button: "Start lesson" for a lesson not started yet, "Continue" for one already started; it opens the next part (learn, practice or game task) | Delegated to Claude; confirmed by Suresh in the scenarios |
+| D47 | "Beat Rani's practice partner" card: kicker "Next step", button "Play now" (or "Back to my game" with an unfinished game). No second button in this state, so there is one action | Delegated to Claude; confirmed by Suresh in the scenarios |
+| D48 | With Coach Gaja chosen, Gaja shows on Beginner Home and the lines say "Rani’s practice partner" where Rani's lines say "my practice partner" | Delegated to Claude; confirmed by Suresh in the scenarios |
+| D49 | With an unfinished game, a Continue card whose next part is a lesson game (Opening principles, The blunder check) asks first. Rani's note: "You have a game going. Finish it first?" with "Back to my game" and "Start the lesson game". The old game is dropped only on "Start the lesson game"; Esc closes the question and keeps the old game. Learn's Start buttons do not change | Confirmed by Suresh |
+| D50 | "Back to my game" on Beginner Home ends an open lesson or puzzle set, as today's Home button does: the lesson starts again at step 1 next time, puzzle results so far are kept | Confirmed by Suresh |
+| D51 | Beginner Home also hides the board on short screens (height 500px or less, a phone held sideways), with Rani, the card and both buttons in one column so Continue is on the first screen. Desktop and tablets keep the board | Confirmed by Suresh |
+
+### Beginner Home layout (prototype A)
+- Top: Rani (or Gaja), her speech bubble (headline + one line), streak chip from 1 day.
+- Continue card: piece icon, kicker, title, progress bar (lessons only), one primary button.
+- Second button (outline): "Just play a game" or "Back to my game". Hidden on the "Beat Rani's practice partner" card.
+- Nothing else: no stage hero, Today's steps, stage detail, roadmap, coach and pieces, or methods card.
+- Effect on S2a: D25's Today heading no longer shows on Beginner Home, because the Today card is gone (D10). D30's "Beat Rani's practice partner" next step lives on in the Continue card. With Show everything on, the full Home shows as for an Improver.
+
+| State | Rani headline / line | Card kicker | Card title | Button |
+|---|---|---|---|---|
+| Next Foundations lesson, not started | per lesson, below | Lesson N of M | lesson title | Start lesson |
+| Lesson started, practice next | Now let’s practise. / A few quick ones on the board. | Lesson N of M | lesson title | Continue |
+| Lesson started, game task next | Now try it in a real game. / You’ll play my practice partner. | Lesson N of M | lesson title | Continue |
+| Foundations done, partner not beaten | You finished every Foundations lesson! / Now beat my practice partner. | Next step | Beat Rani’s practice partner | Play now |
+| Foundations done, partner beaten | You know the basics now. / Keep practising, or move up to Improver any time in Settings. | Practice | Puzzles at your level | Start 10 puzzles |
+
+### New copy (signed off by Suresh)
+- New lesson (headline / line):
+  - How the pieces move: "Today you’ll learn how the pieces move." / "Each piece has its own way. I’ll show you every one."
+  - Special rules and draws: "Today: castling and other special moves." / "And the ways a game can end in a draw."
+  - Board and notation: "Today you’ll learn to find any square." / "Every square has a name. Soon you’ll know them all."
+  - Piece values and free pieces: "Today: what each piece is worth." / "Then you’ll spot free pieces and keep yours safe."
+  - Check and checkmate: "Today you’ll learn check and checkmate." / "Checkmate wins the game. Let’s spot it in one move."
+  - Opening principles: "Today: how to start a game well." / "Bring your pieces out and keep your king safe."
+  - The blunder check: "Today: one quick check before every move." / "It stops most lost pieces."
+- Lesson half done, after Foundations: as in the state table above.
+- Buttons: "Start lesson", "Continue", "Just play a game", "Back to my game", "Play now", "Start 10 puzzles". Streak chip: "1 day", "N days".
+- Ask-first note (D49): "You have a game going. Finish it first?" Buttons: "Back to my game", "Start the lesson game".
+
+### Scenarios
+1. Given Priya is a new Beginner on a 412px phone (start "How the pieces move", nothing done), when she opens Home, then she sees no board, Rani saying "Today you’ll learn how the pieces move.", a card "Lesson 1 of 7" / "How the pieces move" with an empty bar and "Start lesson", and "Just play a game" below it, with no streak chip and Home, Learn and Play fixed at the bottom. All of it fits on the first screen.
+2. Given Priya has done 3 lessons and the Learn part of "Piece values and free pieces", and played yesterday and today, then Rani says "Now let’s practise.", the card reads "Lesson 4 of 7" / "Piece values and free pieces" with the bar at 3 of 7 and "Continue", which opens the practice; the chip reads "2 days".
+3. Given Karthik started at "Board and notation" and finished it, then the card reads "Lesson 2 of 5" / "Piece values and free pieces".
+4. Given Priya has an unfinished game, then the second button reads "Back to my game" and opens that game on Play. With no game going, "Just play a game" starts a new game against Rani's practice partner on Play.
+5. Given Priya finished every Foundations lesson but has not beaten Rani's partner, then Rani says "You finished every Foundations lesson!", the card reads "Next step" / "Beat Rani’s practice partner" with "Play now", and there is no second button.
+6. Given Priya finished Foundations, beat Rani's partner and tapped "Not yet", then Rani says "You know the basics now.", the card reads "Practice" / "Puzzles at your level" with "Start 10 puzzles", "Just play a game" stays below, and Forks is still open in Learn. 7 days later the offer comes back at app start; "Yes, move me up" gives her the Improver Home.
+7. Given Priya turns on Show everything, then Home shows the full Home with the board, like an Improver at her stage. Turning it off brings back Rani's Home.
+8. Given Ravi is a Beginner updated from 1.0.7 (puzzle rating 700, "How the pieces move" done, all tabs open), then he gets the same Beginner Home: "Lesson 2 of 7" / "Special rules and draws".
+9. Given any player opens Settings, then "Coach and pieces" lets them pick Queen Rani or Coach Gaja and a piece set; the change shows at once. Improver and Club still see the card on Home.
+10. Given Priya is on a 1280px desktop, then the board stays left and Rani's Home sits on the right.
+11. Given Arjun is an Improver, then his Home is unchanged (Next step, Today's steps, roadmap).
+12. Given Priya changes her level from Improver to Beginner in Settings, then Home switches to Rani's Home at once (and back when she changes again).
+13. Given Priya has an unfinished game and her next step is the Opening principles game, when she taps Continue, then Rani asks "You have a game going. Finish it first?". "Back to my game" opens the old game; "Start the lesson game" starts the lesson game; Esc closes the question and keeps the old game.
+14. Given Priya holds her phone sideways (915x412), then Beginner Home has no board and the Continue button is on the first screen.
+
 ## Devil's advocate
 - The check can feel like an exam. Rani frames it as "let me see where to start", one puzzle per screen, Skip always visible, 6 puzzles max (7 with "Try Club?").
 - Play Games needs a Play Console account ($25, ID check that can take days). Sign-in only works for listed testers until the setup is published, and a public Play Store release for a new personal account needs a closed test (12 testers, 14 days). Cheapest path: ship the level check and new interface first (slices 1 and 2); add cloud save (slice 3) when Play Console is ready.

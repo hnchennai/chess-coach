@@ -48,6 +48,12 @@ Mockups: https://claude.ai/artifact/1w7FN46dmJuwkXAT9P551w (approved by Suresh, 
 | F-D21 | Learn part finished, next part a game or drill: "Next: play it in a real game." / "Play the lesson game", or "Next: one more step." / "Continue", small "Home". Card heading: "Learn" and the lesson title | Confirmed by Suresh |
 | F-D22 | Train sets that are not puzzle sets (Safe or blunder?, opening drills) end with main "Go again". A themed puzzle set's "10 more puzzles" starts the same theme. An endgame drill follows the table: failed "Go again", passed the next step | Confirmed by Suresh |
 | F-D23 | A lesson part passed while another part of the same lesson is undone: the card names that part ("Next: practise it." / "Start practice", or the matching signed line), never "Next lesson: <same lesson>" | Confirmed by Suresh |
+| F-D24 | The full result card (with buttons) shows on the Play tab only. On other tabs a finished game shows one line under the board (the result title, for example "Checkmate. You win!"), with no buttons | Confirmed by Suresh |
+| F-D25 | End cards always name the same next step as the Home the player sees. A Beginner with Show everything on follows the full Home's step (D40), on Home and on every end card. A Beginner with it off follows Beginner Home (D39) | Confirmed by Suresh |
+| F-D26 | A themed puzzle set ends with main "Go again" (same theme). "10 more puzzles" is only for mixed sets at the player's level | Confirmed by Suresh |
+| F-D27 | Desktop (board left, panel right, 860px and wider): the slot is one full-width strip below both columns, for every place of F-D3. It is never in a column beside the board. Phones are unchanged | Confirmed by Suresh |
+| F-D28 | The Hint button has the primary (filled) style only while a game, puzzle, lesson or drill is in progress. On Home, and whenever an end card or the Continue card is the screen's main action, it is a plain outline button | Confirmed by Suresh |
+| F-D29 | The review-finished card shows the next step's name under "That’s the whole game." with the signed label where one exists ("Next lesson: <title>"); otherwise the Continue card's title | Delegated to Claude |
 
 ## End cards (F1)
 

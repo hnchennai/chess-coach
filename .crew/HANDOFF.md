@@ -8,7 +8,7 @@ Start any new session with: "Use build-crew, continue from .crew/HANDOFF.md". Re
 - `www/` holds everything the app needs offline: `vendor/` (chess.js 0.10.3, Three.js r128, GLTFLoader), `sf/` (Stockfish 19 lite WASM), `models/` (marble set, CC BY 4.0).
 - Android: Capacitor 6. GitHub Actions (`.github/workflows/build-apk.yml`) builds and signs on every push. Pushes to `main` publish a GitHub Release `v1.0.<run>` with `.apk` and `.aab`. Suresh installs updates with Obtainium.
 - Signing: release key alias `chesscoach`, only in GitHub secrets `ANDROID_KEYSTORE_BASE64` and `ANDROID_KEY_PASSWORD`. Suresh holds the backup. Never commit a keystore.
-- Web version: a claude.ai artifact (https://claude.ai/artifact/9TP4qbQZzroJGhDtGWs67L), last published as version 19 with S2a (same files as Android v1.0.20), loading vendor/ files like Android. It can be republished from a Claude session that has the Artifact tool, using the files in `www/`. Later: host `www/` on GitHub Pages or Cloudflare Pages for selling.
+- Web version: a claude.ai artifact (https://claude.ai/artifact/9TP4qbQZzroJGhDtGWs67L), last published as version 21 with the flow rework (same files as Android v1.0.28), loading vendor/ files like Android. It can be republished from a Claude session that has the Artifact tool, using the files in `www/`. Later: host `www/` on GitHub Pages or Cloudflare Pages for selling.
 - Puzzle bank: `src/js/puzzles.js` is generated. To rebuild it: `npm i chess.js@0.10.3` in a scratch folder, then `node tools/mkbank.js <(cat data/mined*.jsonl) src/js/puzzles.js`. `tools/miner.js` mined the positions with Stockfish.
 
 ## Tests
@@ -48,4 +48,4 @@ Spec: `docs/specs/beginner-flow.product.md` and `.tech.md` (approved by Suresh; 
 - Spec: docs/specs/flow-rework.product.md (F-D1 to F-D33). New pure modules: src/js/flow.js (which end card), src/js/tips.js (tips, first-day rule).
 - The only place a later slice may put an ad: `renderSlot(el, place, visit)` in src/js/app.js. No ads code or network call exists yet.
 - Tests: unit `node --test tests/*.test.js` (121). E2E `F1_VP=360|412|1280|915 node tests/e2e/f1.spec.js` (41 cases; 915 runs the landscape case only).
-
+- Shipped: PR #6, Android v1.0.28, web artifact version 21. Next: F3 (Android target upgrade, ads SDK, consent), after a Stockfish GPLv3 licence check and an AdMob account.

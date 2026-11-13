@@ -1,6 +1,6 @@
 # Flow rework and tip slot (product spec)
 
-Size: L. Status: approved by Suresh (2026-11-12): scenarios, tips, new copy and the constitution wording.
+Size: L. Status: approved by Suresh (2026-11-12): scenarios, tips, new copy and the constitution wording. F1 and F2 shipped in PR #6 (Android v1.0.28).
 Mockups: https://claude.ai/artifact/1w7FN46dmJuwkXAT9P551w (approved by Suresh, 2026-11-12).
 
 ## Problem

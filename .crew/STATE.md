@@ -1,6 +1,6 @@
 # Crew state: beginner flow (size L)
 
-- Phase: S2b PR open, waiting for Suresh's merge
+- Phase: S1, S2a and S2b shipped. S3 parked.
 - Spec: docs/specs/beginner-flow.product.md + .tech.md, approved (D1 to D16); S2a details D17 to D37 and S2b details D38 to D51 approved
 - Slices:
   - S1 level check, profile v5, Settings: merged (PR #1), Android v1.0.13, web artifact version 18. Monitor: escape check due 2026-11-15.
@@ -17,10 +17,10 @@
   - CI: Gradle now comes from a signed-in download with a checksum check; still worth caching ~/.gradle/wrapper/dists and adding a package-lock.json.
   - Web artifact (claude.ai) republished as version 19 with S2a (index.html, js/app.js, course.js, profile.js, roadmap.js, words.js). After S2b merges it needs another republish, including the new js/home.js.
 - Working files kept as history: .crew/s2a-brief.md, s2a-review-briefs.md, s2a-fix-round-1/2/3.md; .crew/s2b-brief.md, s2b-review-briefs.md, s2b-fix-round-1.md.
-- Open questions for Suresh: merge the S2b PR; republish the web artifact after S2b?
+- S2b merged 2026-11-12 (PR #5, bc00c0a), Android v1.0.26, web artifact version 20.
 
 ## Flow rework and tip slot (size L), spec docs/specs/flow-rework.product.md
-- Phase: F1 + F2 PR open 2026-11-12 (branch crew/f1-flow), waiting for Suresh's merge.
+- Phase: F1 + F2 merged 2026-11-12 (PR #6, b4a0b2b), Android v1.0.28, web artifact version 21. Monitor: escape check due 2026-11-19.
 - Constitution changed (approved by Suresh): free with ads and a one-time Remove ads purchase, 13 and older, ads only in the ad slot.
 - F1 flow: Continue card on Improver and Club Home, result card under the board (Play only), end cards with a next step, review-finished card. F2: tip slot (no ads code), first-day rule, desktop strip below both columns. Also F-D19: a finished game is recorded once.
 - 33 decisions (F-D1 to F-D33), 21 questions in 7 rounds. Three reviews (spec, UX, data) safe to ship after 2 fix rounds.
@@ -31,4 +31,3 @@
   - First-day rule edge cases: level change on a later day with no other record hides the slot that day; clock forward or zone change on day one shows it.
   - Slot visit cache after a cloud merge; newGame does not clear st.busy; focus lost when a window crosses the 860px breakpoint with an end card open; coach picture in the strip can draw a frame late.
   - f1.spec.js fast-forwards sets with jump(); at 915 only the LAND case runs.
-  - Web artifact (claude.ai) is at version 20 (S2b). After this merges it needs a republish including js/flow.js and js/tips.js.

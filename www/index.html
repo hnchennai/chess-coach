@@ -45,7 +45,7 @@
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
 body { background: var(--bg); color: var(--ink); font-family: var(--f-body); font-size: 15px; line-height: 1.5; }
-.wrap { max-width: 1060px; margin: 0 auto; padding-inline: 16px; padding-block: 20px 40px; }
+.wrap { max-width: 1060px; margin: 0 auto; padding-inline: max(16px, env(safe-area-inset-left)) max(16px, env(safe-area-inset-right)); padding-block: calc(20px + env(safe-area-inset-top)) 40px; }
 header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 16px; margin-bottom: 18px; }
 h1 { font-family: var(--f-display); font-weight: 700; font-size: clamp(26px, 4vw, 36px); margin: 0; letter-spacing: -.01em; text-wrap: balance; }
 header p { margin: 0; color: var(--muted); }

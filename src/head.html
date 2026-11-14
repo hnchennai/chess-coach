@@ -461,7 +461,7 @@ canvas.q3d { display: block; border-radius: 50%; background: radial-gradient(cir
 /* phones: edge-to-edge board, thin eval strip on top, compact header */
 @media (max-width: 600px) {
   body { margin: 0; }
-  .wrap { padding-block: 10px 28px; }
+  .wrap { padding-block: calc(10px + env(safe-area-inset-top)) 28px; }
   header { flex-wrap: nowrap; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
   h1 { font-size: 21px; white-space: nowrap; }
   .engine-pill { padding: 3px 8px; font-size: 11px; white-space: nowrap; }

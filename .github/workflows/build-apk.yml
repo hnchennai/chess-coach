@@ -21,12 +21,12 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
 
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: 17
+          java-version: 21
 
       - name: Use the Android SDK already on the runner
         run: |
@@ -42,6 +42,9 @@ jobs:
           # GitHub release downloads (where Gradle now lives) can be slow; give the Gradle download 5 minutes, not 10 seconds
           sed -i 's/^networkTimeout=.*/networkTimeout=300000/' android/gradle/wrapper/gradle-wrapper.properties
           grep networkTimeout android/gradle/wrapper/gradle-wrapper.properties
+          # Play Store rule: new apps and updates must target Android 16 (API 36). Fail the build if the project targets less.
+          cat android/variables.gradle
+          grep -Eq 'targetSdkVersion *= *(3[6-9]|[4-9][0-9])' android/variables.gradle
 
       # Gradle distributions live on GitHub releases. Unsigned downloads can fail (GitHub incident, 2026-11-08),
       # so fetch it signed in with the build's own token, check Gradle's published SHA-256, and point the wrapper at the local file.

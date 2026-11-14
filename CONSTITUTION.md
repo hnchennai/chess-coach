@@ -29,7 +29,7 @@ Non-negotiables for every change. Short on purpose. Amend only with Suresh's exp
 ## Engineering rules
 - Plain HTML, CSS and JavaScript, no build step. Pinned libraries: chess.js 0.10.3, Three.js r128, Stockfish 19 lite (WASM worker).
 - Source of truth is `src/` in this repo. `sh scripts/build.sh` builds `www/`, which Capacitor packages and which also runs as an offline static site. Never edit built files in `www/` by hand.
-- Android: Capacitor 6, built and signed in GitHub Actions. Version is `1.0.<run number>`.
+- Android: Capacitor 8 (targets Android 16, API 36), built and signed in GitHub Actions. Version is `1.0.<run number>`.
 - Every slice is tested in headless Chromium with Playwright at phone size (412 x 915) and desktop (1280 x 900) before review. No console errors.
 - Mobile first: every screen must work one-handed at 360px wide.
 - Commits use explicit paths (never `git add -A` on mixed work) and end with the Claude co-author trailer. One PR per slice, squash merge.

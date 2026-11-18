@@ -1,8 +1,8 @@
 # Build Crew lessons: Chess Coach
 
 ## 2026-11-08 chess-coach beginner-flow slice 1 (size L)
-Numbers: slices 1, blockers 3 (spec 1, data 2; first two were the same bug), should-fix 17, overridden 0, fix rounds 3 (2 builder, 1 small orchestrator), CI reds 0, corrections after gate 0, escapes 0 so far
-Slice scores: S1 = 2 of 3 so far (spec held, CI green first time, first review not clean; escape check due 2026-11-15)
+Numbers: slices 1, blockers 3 (spec 1, data 2; first two were the same bug), should-fix 17, overridden 0, fix rounds 3 (2 builder, 1 small orchestrator), CI reds 0, corrections after gate 0, escapes 0 (checked 2026-11-17)
+Slice scores: S1 = 2 of 3 so far (spec held, CI green first time, first review not clean; escape check 2026-11-17: none)
 User verdict: Smooth.
 - L1 [win][Phase 4] Data reviewer caught a cloud wipe: a push could land before the session's first pull. The bug existed before; the new first-launch save made it likely. Rule: any slice that adds a write on first launch or sign-in gets a sync-race review with a slow, failing and late pull. Scope: crew. Confidence: high.
 - L2 [rework][Phase 4] A round-2 fix wrapped a cloud read in try/catch and treated "unreadable" as "empty", opening a new wipe path. Re-review caught it. Rule: sync error handling fails closed (retry, push nothing), never treats an error as empty data. Scope: crew. Confidence: high.
@@ -13,8 +13,8 @@ User verdict: Smooth.
 - L7 [friction][Phase 1] The Play Console account had been closed for inactivity, found only at setup time. Rule: Readiness checks third-party accounts are active before planning a slice on them. Scope: crew.
 
 ## 2026-11-08 chess-coach beginner-flow slice 2a (size L)
-Numbers: slices 1, blockers 0, should-fix 11, overridden 0, fix rounds 3 (third nits only), CI reds 5 (all GitHub release downloads: sharp 504, Gradle timeout x2, Gradle 503/504 x2; 3 CI fixes), questions to Suresh 20 in 9 rounds, corrections after gate 0, escapes 0 so far
-Slice scores: S2a = 1 of 3 so far (spec held; CI not green first time; first review not clean; escape check due 2026-11-15)
+Numbers: slices 1, blockers 0, should-fix 11, overridden 0, fix rounds 3 (third nits only), CI reds 5 (all GitHub release downloads: sharp 504, Gradle timeout x2, Gradle 503/504 x2; 3 CI fixes), questions to Suresh 20 in 9 rounds, corrections after gate 0, escapes 0 (checked 2026-11-17)
+Slice scores: S2a = 1 of 3 so far (spec held; CI not green first time; first review not clean; escape check 2026-11-17: none)
 - L8 [questions][Phase 0] Reviews raised 13 business questions after the build (engine words, notation in a quiz title, accuracy %, chip tips, migrated players' Home, a hidden rating goal, strip order, Esc, win banner, course text). Rule: for any "hide X from level Y" slice, grep every string that renders X (numbers, engine names, notation) in Phase 0 and ask about each class before building. Scope: crew. Confidence: high.
 - L9 [rework][Phase 3] Test fixtures only seeded players placed by the new check; every player migrated from v4 got a stage 1 Home. Rule: e2e seeds a migrated (derived) profile per level in every slice that reads level or start. Scope: crew. Confidence: high.
 - L10 [win][Phase 4] Reviewers worked in detached worktrees at the reviewed commit, so the data review ran during a fix round and nobody's build or tests collided. Rule: always give reviewers a frozen worktree. Scope: crew. Confidence: high.
@@ -22,8 +22,8 @@ Slice scores: S2a = 1 of 3 so far (spec held; CI not green first time; first rev
 - L12 [friction][Phase 5] The app's PR bar could not bind the PR, so CI had to be checked by hand. Scope: crew. Confidence: low.
 
 ## 2026-11-08 chess-coach beginner-flow slice 2b (size L slice)
-Numbers: slices 1, blockers 0, should-fix 2 (1 test guard, judged by design; 1 sideways layout, became D51), nits 9, overridden 0, fix rounds 1, CI reds 0, questions to Suresh 12 in 5 rounds (all recommended options), business questions after the gate 3 (D49 to D51), corrections after gate 0, escapes 0 so far
-Slice scores: S2b = 2 of 3 so far (spec held; CI green first time; first review not clean; escape check due 2026-11-15)
+Numbers: slices 1, blockers 0, should-fix 2 (1 test guard, judged by design; 1 sideways layout, became D51), nits 9, overridden 0, fix rounds 1, CI reds 0, questions to Suresh 12 in 5 rounds (all recommended options), business questions after the gate 3 (D49 to D51), corrections after gate 0, escapes 0 (checked 2026-11-17)
+Slice scores: S2b = 2 of 3 so far (spec held; CI green first time; first review not clean; escape check 2026-11-17: none)
 - L13 [win][Phase 0] Probing today's screens with seeded profiles before asking (Home starts 800px down under the board; a "Not yet" Beginner is sent to Forks, whose lessons show Nf7+ and "the Improver engine (about 1000)") made each question concrete. 11 Phase 0 answers took the recommendation, no rework. Rule: for UI slices, seed the edge profiles and screenshot today's screen before writing Phase 0 questions. Scope: crew. Confidence: medium.
 - L14 [questions][Phase 3] The builder found 2 business gaps about activities already in progress: a lesson-game Continue dropping an unfinished game, and "Back to my game" ending an open lesson. Rule: for every new button that starts or resumes an activity, ask in Phase 0 what happens to an activity already running (game, lesson, puzzle set). Extends L6. Scope: crew. Confidence: high.
 - L15 [questions][Phase 4] The UX review found the board pushing Continue below the fold on a sideways phone: a width-only rule (D38, up to 860px) met the letter of the decision but not its goal. Rule: write a layout decision's goal as the acceptance criterion ("Continue on the first screen") and test it at sideways phone sizes (915x412, 844x390) too. Scope: crew. Confidence: high.
@@ -31,8 +31,8 @@ Slice scores: S2b = 2 of 3 so far (spec held; CI green first time; first review 
 - Applied: L8 (jargon grep found the Tactics notation that framed the "Not yet" question), L9 (raw v4 seeds at 700/950/1350), L10 (two frozen reviewer worktrees, moved to the fix commit for the delta review), L11 (CI downloads listed in readiness, none changed).
 
 ## 2026-11-12 chess-coach flow rework F1 + F2 (size L)
-Numbers: slices 2 in one PR, blockers 0, should-fix 16 in the first review (spec 5, UX 7, data 3, plus 1 owner call), nits 13, overridden 0, fix rounds 2 (second small, 6 items), CI reds 0, questions to Suresh 21 in 7 rounds (all recommended options), business questions after the gate 13 (F-D16 to F-D33 less 5 delegated or confirmations), corrections after gate 0, escapes 0 so far
-Slice scores: F1 + F2 = 2 of 3 so far (spec held; CI green first time; first review not clean; escape check due 2026-11-19)
+Numbers: slices 2 in one PR, blockers 0, should-fix 16 in the first review (spec 5, UX 7, data 3, plus 1 owner call), nits 13, overridden 0, fix rounds 2 (second small, 6 items), CI reds 0, questions to Suresh 21 in 7 rounds (all recommended options), business questions after the gate 13 (F-D16 to F-D33 less 5 delegated or confirmations), corrections after gate 0, escapes 0 (checked 2026-11-17)
+Slice scores: F1 + F2 = 2 of 3 so far (spec held; CI green first time; first review not clean; escape check run early 2026-11-17: none so far)
 - L17 [win][Phase 0] A one-page phone mockup with the new wording marked, approved before the spec, settled layout and copy in one round. No screen was redrawn after the build. Rule: for a UI slice, publish mockups with every new string tagged before writing scenarios. Scope: crew. Confidence: medium.
 - L18 [questions][Phase 3/4] 13 business questions came after the gate. Most were "the same thing in another place": the board column shows on every tab, so the result card and the slot appeared beside Home; desktop puts the panel beside the board; a Beginner with Show everything on had two sources for the next step. Rule: for any new card or slot, list in Phase 0 every tab, width (phone, desktop two-column, sideways) and level state it can appear in, and ask about each. Extends L8 and L15. Scope: crew. Confidence: high.
 - L19 [rework][Phase 4] "One primary button per screen" was tested only inside the Home panel, so a second primary under the board passed. Rule: count rule-of-one checks across the whole visible screen, never inside one container. Scope: crew. Confidence: high.
@@ -42,3 +42,10 @@ Slice scores: F1 + F2 = 2 of 3 so far (spec held; CI green first time; first rev
 - L23 [friction][Phase 5] A notes-only push after CI went green restarted CI and blocked the S2b merge for a few minutes. Rule: after the last green run, push nothing to the PR branch; notes go in the retro PR. Scope: crew. Confidence: high.
 - Applied: L9 (v4 seeds), L14 (asked what happens to a running game; D49 reused, F-D31 added), L15 (a 915x412 case), L16 (S2b's Home fixture caught the removed Next step line), L12 (the PR bar bound PR 6 this time).
 
+
+## 2026-11-17 chess-coach F3a Android target + GPLv3 licence (size M)
+Numbers: slices 2 (PR 8, PR 9), blockers 0 in review, 1 fault found by the owner's phone test before merge, fix rounds 1, CI reds 0, corrections after gate 0, escapes 0 so far (check due 2026-11-24)
+- L24 [rework][Phase 5] The edge-to-edge inset was added to the base `.wrap` rule, but a phone-width rule lower in the file reset the padding, so the title drew under the status bar. Browser tests could not see it (the inset is 0 there). Rule: when adding a safe-area inset, grep every rule for the same selector and property across all media queries, and guard it with a source test; a platform upgrade always gets a phone test before merge. Scope: crew. Confidence: high.
+- L25 [friction][Phase 5] The first PR test build could not be installed: its version (CI run number) was lower than the release already on the phone. Rule: before asking for a phone test, push the branch so the build number is above the latest release, and give the direct artifact link. Scope: project. Confidence: high.
+- L26 [friction][Phase 5] "Tested, works fine" referred to the release, not the PR build. Rule: when asking for a device test, name the exact version to look for in the app and ask which version was tested before acting on the answer. Scope: crew. Confidence: medium.
+- L27 [questions][Phase 0] The owner asked "why did we make it public?" after the switch. The licence choice had been explained once, several steps earlier. Rule: at an irreversible checkpoint, restate in two lines why it is being done and what it exposes, right at the point of asking. Scope: crew. Confidence: medium.

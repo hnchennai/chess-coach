@@ -6,9 +6,9 @@ Start any new session with: "Use build-crew, continue from .crew/HANDOFF.md". Re
 - `src/` is the source of truth: `head.html` (CSS), `body.html` (markup), `js/*.js` (app.js is the main app). Plain JS, no bundler.
 - `sh scripts/build.sh` builds `www/` from `src/`. Never edit `www/js` or `www/index.html` by hand.
 - `www/` holds everything the app needs offline: `vendor/` (chess.js 0.10.3, Three.js r128, GLTFLoader), `sf/` (Stockfish 19 lite WASM), `models/` (marble set, CC BY 4.0).
-- Android: Capacitor 6. GitHub Actions (`.github/workflows/build-apk.yml`) builds and signs on every push. Pushes to `main` publish a GitHub Release `v1.0.<run>` with `.apk` and `.aab`. Suresh installs updates with Obtainium.
+- Android: Capacitor 8, target Android 16 (API 36); CI needs Node 22 and JDK 21 and fails if the target is below 36. GitHub Actions (`.github/workflows/build-apk.yml`) builds and signs on every push. Pushes to `main` publish a GitHub Release `v1.0.<run>` with `.apk` and `.aab`. Suresh installs updates with Obtainium.
 - Signing: release key alias `chesscoach`, only in GitHub secrets `ANDROID_KEYSTORE_BASE64` and `ANDROID_KEY_PASSWORD`. Suresh holds the backup. Never commit a keystore.
-- Web version: a claude.ai artifact (https://claude.ai/artifact/9TP4qbQZzroJGhDtGWs67L), last published as version 21 with the flow rework (same files as Android v1.0.28), loading vendor/ files like Android. It can be republished from a Claude session that has the Artifact tool, using the files in `www/`. Later: host `www/` on GitHub Pages or Cloudflare Pages for selling.
+- Web version: a claude.ai artifact (https://claude.ai/artifact/9TP4qbQZzroJGhDtGWs67L), last published as version 22 (same files as Android v1.0.33; one Android-only CSS change behind v1.0.36), loading vendor/ files like Android. It can be republished from a Claude session that has the Artifact tool, using the files in `www/`. Later: host `www/` on GitHub Pages or Cloudflare Pages for selling.
 - Puzzle bank: `src/js/puzzles.js` is generated. To rebuild it: `npm i chess.js@0.10.3` in a scratch folder, then `node tools/mkbank.js <(cat data/mined*.jsonl) src/js/puzzles.js`. `tools/miner.js` mined the positions with Stockfish.
 
 ## Tests
@@ -19,7 +19,7 @@ Start any new session with: "Use build-crew, continue from .crew/HANDOFF.md". Re
 ## Accounts
 | Service | Account | Resource | Notes |
 |---|---|---|---|
-| GitHub | hnchennai | hnchennai/chess-coach | Actions builds APK; secrets above |
+| GitHub | hnchennai | hnchennai/chess-coach (public since 2026-11-14, GPLv3) | Actions builds APK; secrets above |
 | Claude | Suresh | web artifact above | `db` + `user` capabilities for Claude-account sync |
 | Google Play Console | none active | | Old account closed for inactivity (Apr 2024). Suresh will register a new one later; cloud save (S3) waits for it |
 
@@ -27,7 +27,7 @@ Start any new session with: "Use build-crew, continue from .crew/HANDOFF.md". Re
 Spec: `docs/specs/beginner-flow.product.md` and `.tech.md` (approved by Suresh; decisions D1 to D16, S2a details D17 to D37, S2b details D38 to D51).
 - S1 level check, profile v5, Settings: shipped (PR #1, Android v1.0.13, web artifact version 18).
 - S2a level-based interface: shipped (PR #3, Android v1.0.20, web artifact version 19). Beginner hides scores, notation and engine words; plain move words; fixed bottom nav; tab unlock; level-up offer; Improver/Club Home at their level; level 1 course text says Rani's practice partner.
-- S2b beginner Home (prototype A): PR #5 open, waiting for Suresh's merge. Rani's line per Foundations lesson, one Continue card counted from the start point, "Just play a game" / "Back to my game", "Beat Rani's practice partner", then "Keep practising" (10 puzzles) for a Beginner who says "Not yet" (Home never sends a Beginner into Tactics lessons). Board hidden on Beginner Home on phones and sideways phones. "Coach and pieces" in Settings for every level. Pure logic and copy in `src/js/home.js`.
+- S2b beginner Home (prototype A): shipped (PR #5, Android v1.0.26, web artifact version 20). Rani's line per Foundations lesson, one Continue card counted from the start point, "Just play a game" / "Back to my game", "Beat Rani's practice partner", then "Keep practising" (10 puzzles) for a Beginner who says "Not yet" (Home never sends a Beginner into Tactics lessons). Board hidden on Beginner Home on phones and sideways phones. "Coach and pieces" in Settings for every level. Pure logic and copy in `src/js/home.js`.
 - S3 Play Games cloud save: parked until the new Play Console account exists. Setup steps for Suresh are in the tech spec. It must plug into S2a's "cloud settled" check before the level-up offer.
 - Follow-ups: see `.crew/STATE.md` (later-level course text, landscape board, small tap targets, keyboard order, CI install robustness, web republish).
 
@@ -47,5 +47,12 @@ Spec: `docs/specs/beginner-flow.product.md` and `.tech.md` (approved by Suresh; 
 ## Flow rework (F1 + F2), 2026-11-12
 - Spec: docs/specs/flow-rework.product.md (F-D1 to F-D33). New pure modules: src/js/flow.js (which end card), src/js/tips.js (tips, first-day rule).
 - The only place a later slice may put an ad: `renderSlot(el, place, visit)` in src/js/app.js. No ads code or network call exists yet.
-- Tests: unit `node --test tests/*.test.js` (121). E2E `F1_VP=360|412|1280|915 node tests/e2e/f1.spec.js` (41 cases; 915 runs the landscape case only).
+- Tests: unit `node --test tests/*.test.js` (122). E2E `F1_VP=360|412|1280|915 node tests/e2e/f1.spec.js` (41 cases; 915 runs the landscape case only).
 - Shipped: PR #6, Android v1.0.28, web artifact version 21. Next: F3 (Android target upgrade, ads SDK, consent), after a Stockfish GPLv3 licence check and an AdMob account.
+
+## Licence and Android target (F3a), 2026-11-17
+- The app's source is public under GPLv3 (constitution). Every release must match the public source; nothing private goes in the repo.
+- Shipped: PR #9 (licence, v1.0.33) and PR #8 (Capacitor 8, Android 16, status bar inset fix, v1.0.36).
+- The app draws edge to edge on Android 16: any rule that sets the page's top padding must add `env(safe-area-inset-top)` (tests/insets.test.js guards `.wrap`).
+- A PR test build installs over the phone's app only if its number is higher than the installed release. Version = CI run number, so push the branch again to get a fresh number.
+- Next: F3b ads SDK and consent. Waiting on Suresh: AdMob app ID and banner unit ID, Play Console account (closed test, 12 testers, 14 days), a website for the privacy policy and app-ads.txt. Adding the ads SDK is a checkpoint.

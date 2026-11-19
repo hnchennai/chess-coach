@@ -6,7 +6,7 @@ Non-negotiables for every change. Short on purpose. Amend only with Suresh's exp
 - Users: people learning chess, from "never played" to Expert (about 2000+). Many are complete beginners on a phone.
 - Suresh's Chess Coach is free on Android (Play Store) and the web, with ads and a one-time Remove ads purchase. The Play Store listing is for ages 13 and older.
 - A player's progress must never be lost: course progress, puzzle rating, games and settings survive app updates, restarts and going offline.
-- The app works fully offline. The network is only ever optional (cloud save, fonts, ads). With no ad, the slot shows a tip from the coach.
+- The app works fully offline. The network is only ever optional (cloud save, fonts, ads). The coach's tip always stays in the slot; the ad banner is separate.
 - Rani (the queen coach) is the voice of the app: warm, short, plain words.
 
 ## Hard rules
@@ -14,12 +14,13 @@ Non-negotiables for every change. Short on purpose. Amend only with Suresh's exp
 - Original designs only: no copyrighted characters, logos or artwork (no Harry Potter, Marvel, Game of Thrones and similar).
 - No em dashes in any user-facing copy. Short sentences, no chess jargon for beginners without a visual explanation.
 - The app's own source is published under GPLv3 (Suresh's decision, 2026-11-13), because it ships Stockfish. Every release must match the public source. Nothing private (keys, tokens, personal data) ever goes in the repo.
+- The app's own code carries an exception (`LICENSE-EXCEPTION`, Suresh's decision, 2026-11-19) that allows combining it with Google's Mobile Ads, User Messaging and Play Billing libraries. Stockfish is never modified and never linked with them.
 - Third-party assets keep their licenses and credits: Stockfish (GPLv3, source link in README), Three.js (MIT), chess.js (BSD-2), "A Beautiful Game" marble set (CC BY 4.0).
 
 ## Security and privacy
 - Signing keys, passwords and tokens never go in git, chat or logs. CI reads them from GitHub secrets.
 - Collect the minimum personal data. Cloud save stores only game progress, keyed by the player's Play Games account.
-- Ads are allowed in the ad slot only: after an activity ends, and at the bottom of Home and Progress. Never on or beside the board, never during a lesson, game, puzzle or review, never full screen, never on a player's first day. Ads are non-personalised. No other trackers or analytics without Suresh's explicit yes. Adding or changing an ads SDK is a checkpoint.
+- Ads are one banner strip at the bottom of the screen, above the tab bar, only on screens where the tip slot shows: after an activity ends, and on Home and Progress. Never over or beside the board, never during a lesson, game, puzzle or review, never full screen, never on a player's first day, never on the web version. Ads are non-personalised and rated PG or lower. Before the Play launch, builds show test ads only. No other trackers or analytics without Suresh's explicit yes. Adding or changing an ads SDK is a checkpoint.
 
 ## Data rules
 - Progress lives in one profile object (`prof`, versioned with `v`). Any shape change ships a `migrate()` step that keeps old saves working.

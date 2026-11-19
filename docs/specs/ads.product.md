@@ -1,6 +1,6 @@
 # Ads banner and consent, F3b (product spec)
 
-Size: M (touches money, privacy and the licence). Status: draft for Suresh's approval, 2026-11-19. No code yet.
+Size: M (touches money, privacy and the licence). Status: approved by Suresh (2026-11-19): decisions, scenarios, wording, the constitution change and the licence exception.
 Builds on: `docs/specs/flow-rework.product.md` (F-D1 to F-D33). Android only.
 
 ## Problem
@@ -43,7 +43,7 @@ Builds on: `docs/specs/flow-rework.product.md` (F-D1 to F-D33). Android only.
 - Settings row: "Privacy choices"
 - No other new text. The banner's own "Ad" mark comes from Google.
 
-## Constitution change (needs Suresh's yes)
+## Constitution change (approved)
 Security and privacy, the ads line.
 - Old: "Ads are allowed in the ad slot only: after an activity ends, and at the bottom of Home and Progress. Never on or beside the board, never during a lesson, game, puzzle or review, never full screen, never on a player's first day. Ads are non-personalised."
 - New: "Ads are one banner strip at the bottom of the screen, above the tab bar, only on screens where the tip slot shows: after an activity ends, and on Home and Progress. Never over or beside the board, never during a lesson, game, puzzle or review, never full screen, never on a player's first day, never on the web version. Ads are non-personalised and rated PG or lower. Before the Play launch, builds show test ads only."

@@ -13,6 +13,7 @@
     "@capacitor/cli": "8.6.2"
   },
   "overrides": {
-    "sharp": "0.33.5"
+    "sharp": "0.33.5",
+    "@webview-native-ui/engine": "1.0.11"
   }
 }

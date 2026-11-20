@@ -62,8 +62,10 @@ test('mayShow fails closed on a missing or odd state', () => {
 });
 
 test('criterion 2 / A-D11: the ads start-up may run only from day two, on the native platform, outside an activity', () => {
-  const S = { native: true, firstDay: false, level: 'beginner', activity: false, overlay: false };
+  const S = { boot: true, native: true, firstDay: false, level: 'beginner', activity: false, overlay: false };
   assert.equal(A.mayStart(S), true);
+  assert.equal(A.mayStart(Object.assign({}, S, { boot: false })), false, 'A-D7: asked at app start only, never at a later quiet moment');
+  assert.equal(A.mayStart(Object.assign({}, S, { boot: undefined })), false);
   assert.equal(A.mayStart(Object.assign({}, S, { firstDay: true })), false, 'day one: nothing ads-related runs');
   assert.equal(A.mayStart(Object.assign({}, S, { native: false })), false, 'web: nothing runs');
   assert.equal(A.mayStart(Object.assign({}, S, { level: null })), false, 'no level yet (the level check comes first)');
@@ -87,13 +89,20 @@ test('criterion 4: every banner request is non-personalised; the test unit unles
   assert.notEqual(o.adId, REAL);
 });
 
+test('criterion 10: no caller can turn the real unit on: bannerOptions takes no switch', () => {
+  [{ live: true }, { live: true, margin: 0 }, { adId: REAL }, { isTesting: false }, { unit: REAL, live: 'yes' }].forEach((x) => {
+    const b = A.bannerOptions(x);
+    assert.equal(b.adId, TEST, JSON.stringify(x)); assert.equal(b.isTesting, true); assert.equal(b.npa, true);
+  });
+  assert.equal(A.bannerOptions.length, 1);
+});
+
 test('criterion 10: the real unit is used only when the switch is on', () => {
   assert.equal(A.unitFor(false), TEST);
   assert.equal(A.unitFor(true), REAL);
   assert.equal(A.unitFor(undefined), TEST);
   assert.equal(A.unitFor('yes'), TEST, 'only the boolean true turns it on');
-  const live = A.bannerOptions({ margin: 0, live: true });
-  assert.equal(live.adId, REAL); assert.equal(live.isTesting, false); assert.equal(live.npa, true, 'non-personalised when live too');
+  assert.equal(A.unitFor(1), TEST);
 });
 
 test('criterion 4: the SDK starts with a PG ceiling and no test-device or child flags', () => {
@@ -102,20 +111,18 @@ test('criterion 4: the SDK starts with a PG ceiling and no test-device or child 
   assert.deepEqual(Object.keys(i), ['maxAdContentRating']);
 });
 
-test('criterion 6 / A-D15: an end card waits 1000ms; Home and Progress do not', () => {
-  assert.equal(A.END_DELAY, 1000);
-  ['game', 'learn', 'step'].forEach((p) => {
-    assert.equal(A.waitLeft(p, 5000, 5000), 1000, p);
-    assert.equal(A.waitLeft(p, 5000, 5400), 600);
-    assert.equal(A.waitLeft(p, 5000, 5999), 1);
-    assert.equal(A.waitLeft(p, 5000, 6000), 0);
-    assert.equal(A.waitLeft(p, 5000, 9000), 0);
-    assert.equal(A.waitLeft(p, 5000, 4000), 1000, 'a clock that went back never shortens the wait');
-    assert.equal(A.waitLeft(p, undefined, 6000), 1000, 'an unknown start waits in full');
-  });
-  assert.equal(A.waitLeft('home', 5000, 5000), 0);
-  assert.equal(A.waitLeft('progress', 5000, 5000), 0);
-  assert.equal(A.waitLeft('other', 5000, 5000), 1000, 'an unknown place is treated as an end card');
+test('criterion 6 / A-D15: every appearance of the banner waits 1000ms: Home, Progress and end cards alike', () => {
+  assert.equal(A.SHOW_DELAY, 1000);
+  assert.equal(A.waitLeft.length, 2, 'no place can be exempt');
+  assert.equal(A.waitLeft(5000, 5000), 1000);
+  assert.equal(A.waitLeft(5000, 5400), 600);
+  assert.equal(A.waitLeft(5000, 5999), 1);
+  assert.equal(A.waitLeft(5000, 6000), 0);
+  assert.equal(A.waitLeft(5000, 9000), 0);
+  assert.equal(A.waitLeft(5000, 4000), 1000, 'a clock that went back never shortens the wait');
+  assert.equal(A.waitLeft(undefined, 6000), 1000, 'an unknown start waits in full');
+  assert.equal(A.waitLeft(NaN, 6000), 1000);
+  assert.equal(A.waitLeft(null, 6000), 0, 'null is time zero, long ago');
 });
 
 test('criterion 8 / A-D7: the form is needed only when Google says so and has one', () => {
@@ -152,9 +159,16 @@ test('A-D17 and the wording: the two Settings rows, the policy address, no em da
 });
 
 test('A-D16: the banner sits above the fixed tab bar on phones, at the very bottom otherwise', () => {
-  assert.equal(A.TAB_BAR, 56);
-  assert.equal(A.marginFor(true), 56);
+  assert.equal(A.TAB_BAR, 56); assert.equal(A.GAP, 8);
+  assert.equal(A.marginFor(true), 64, 'the tab bar and an 8dp gap, so a tap on a tab cannot land on the ad');
   assert.equal(A.marginFor(false), 0);
+});
+
+test('A-D14: the page padding is the banner height, plus the gap on phones; none without a height', () => {
+  assert.equal(A.padFor(64, true), 72);
+  assert.equal(A.padFor(90, false), 90);
+  assert.equal(A.padFor(60.2, true), 69);
+  assert.equal(A.padFor(0, true), 0); assert.equal(A.padFor(undefined, true), 0); assert.equal(A.padFor(-5, false), 0);
 });
 
 test('the pure module makes no plugin, DOM or network reference', () => {
@@ -187,17 +201,126 @@ test('criterion 14: the in-app credit names the exception and the libraries, and
   assert.ok(!/[–—]/.test(credits), 'no dashes in the credits');
 });
 
-test('the build ships ads.js before app.js, and the plugin is pinned', () => {
-  const b = read('scripts/build.sh');
-  assert.match(b, /\btips ads app\b/);
-  assert.equal(require('../package.json').dependencies['@capacitor-community/admob'], '8.4.2');
+test('A-D9: the build loads ads.js only where the native bridge is, before app.js; the plugin is pinned', () => {
+  const b = read('scripts/build.sh'), html = read('www/index.html');
+  assert.ok(!/<script src="js\/ads\.js"><\/script>\s*$/m.test(html), 'no plain script tag for ads.js');
+  const line = `<script>if(window.Capacitor)document.write('<script src="js/ads.js"><\\/script>')</script>`;
+  assert.equal(html.split(line).length - 1, 1, 'the conditional loader, once');
+  assert.ok(html.indexOf('js/tips.js') < html.indexOf(line) && html.indexOf(line) < html.indexOf('js/app.js'), 'after tips, before app');
+  assert.equal(html.split('ads.js').length - 1, 1, 'ads.js is named nowhere else in the page');
+  assert.ok(b.includes('window.Capacitor'));
+  const pkg = require('../package.json');
+  assert.equal(pkg.dependencies['@capacitor-community/admob'], '8.4.2');
+  assert.equal(pkg.overrides['@webview-native-ui/engine'], PIN.engine, 'the engine the plugin pulls in is pinned for npm too');
 });
 
-test('CI: the app ID goes into the manifest after cap add, and the launch guard is there', () => {
+// ---- CI scripts, executed for real against temp copies ----
+const os = require('node:os');
+const { spawnSync } = require('node:child_process');
+const PIN = { ads: '25.4.0', ump: '4.0.0', engine: '1.0.11' };
+const ROOT = path.join(__dirname, '..');
+function tmpRepo() {
+  const d = fs.mkdtempSync(path.join(os.tmpdir(), 'ads-guard-'));
+  ['src/js', 'www/js', 'scripts'].forEach((x) => fs.mkdirSync(path.join(d, x), { recursive: true }));
+  fs.copyFileSync(path.join(ROOT, 'src/js/ads.js'), path.join(d, 'src/js/ads.js'));
+  fs.copyFileSync(path.join(ROOT, 'src/js/tips.js'), path.join(d, 'src/js/tips.js'));
+  fs.copyFileSync(path.join(ROOT, 'src/js/ads.js'), path.join(d, 'www/js/ads.js'));
+  fs.copyFileSync(path.join(ROOT, 'scripts/check-ads-switch.sh'), path.join(d, 'scripts/check-ads-switch.sh'));
+  return d;
+}
+function guard(d, env) {
+  const e = Object.assign({}, process.env); delete e.ADS_LIVE;
+  const r = spawnSync('sh', [path.join(d, 'scripts/check-ads-switch.sh')], { env: Object.assign(e, env || {}), encoding: 'utf8' });
+  return { code: r.status, out: r.stdout + r.stderr };
+}
+const edit = (d, f, fn) => fs.writeFileSync(path.join(d, f), fn(fs.readFileSync(path.join(d, f), 'utf8')));
+const liveOn = (d) => ['src/js/ads.js', 'www/js/ads.js'].forEach((f) => edit(d, f, (s) => s.replace(/^(\s*)live: false$/m, '$1live: true')));
+
+test('criterion 10, the guard script: passes with the switch off', () => {
+  const d = tmpRepo(), r = guard(d);
+  assert.equal(r.code, 0, r.out); assert.match(r.out, /test ads only/);
+  assert.equal(guard(d, { ADS_LIVE: 'yes' }).code, 0, 'the variable alone changes nothing');
+});
+test('criterion 10, the guard script: fails with the switch on and no ADS_LIVE', () => {
+  const d = tmpRepo(); liveOn(d);
+  assert.match(fs.readFileSync(path.join(d, 'src/js/ads.js'), 'utf8'), /^\s*live: true$/m, 'the test really turned it on');
+  const r = guard(d);
+  assert.notEqual(r.code, 0, r.out); assert.match(r.out, /ADS_LIVE/);
+  assert.notEqual(guard(d, { ADS_LIVE: 'true' }).code, 0, 'only the exact word yes counts');
+  assert.notEqual(guard(d, { ADS_LIVE: '' }).code, 0);
+});
+test('criterion 10, the guard script: passes with the switch on and ADS_LIVE=yes', () => {
+  const d = tmpRepo(); liveOn(d);
+  const r = guard(d, { ADS_LIVE: 'yes' });
+  assert.equal(r.code, 0, r.out); assert.match(r.out, /Real ads are ON/);
+});
+test('criterion 10, the guard script: fails when the real unit ID appears a second time under src/', () => {
+  let d = tmpRepo(); fs.writeFileSync(path.join(d, 'src/js/other.js'), "var u = '" + REAL + "';\n");
+  assert.notEqual(guard(d).code, 0, 'in another file');
+  d = tmpRepo(); edit(d, 'src/js/ads.js', (s) => s + "\n/* " + REAL + " */\n"); fs.copyFileSync(path.join(d, 'src/js/ads.js'), path.join(d, 'www/js/ads.js'));
+  assert.notEqual(guard(d).code, 0, 'twice in ads.js');
+  d = tmpRepo(); edit(d, 'src/js/ads.js', (s) => s.replace(REAL, 'ca-app-pub-0000000000000000/0000000000')); fs.copyFileSync(path.join(d, 'src/js/ads.js'), path.join(d, 'www/js/ads.js'));
+  assert.notEqual(guard(d).code, 0, 'missing from ads.js');
+});
+test('criterion 10, the guard script: fails on a second switch line, a stale www copy, or a side door to the real unit', () => {
+  let d = tmpRepo(); edit(d, 'src/js/ads.js', (s) => s.replace(/^(\s*)live: false$/m, '$1live: false,\n$1live: true')); fs.copyFileSync(path.join(d, 'src/js/ads.js'), path.join(d, 'www/js/ads.js'));
+  assert.notEqual(guard(d, { ADS_LIVE: '' }).code, 0, 'two switch lines');
+  d = tmpRepo(); edit(d, 'www/js/ads.js', (s) => s.replace(/^(\s*)live: false$/m, '$1live: true'));
+  assert.notEqual(guard(d).code, 0, 'www differs from src');
+  d = tmpRepo(); fs.writeFileSync(path.join(d, 'src/js/other.js'), 'var u = Ads.unitFor(true);\n');
+  assert.notEqual(guard(d).code, 0, 'unitFor called outside ads.js');
+  d = tmpRepo(); fs.writeFileSync(path.join(d, 'src/js/other.js'), 'var u = Ads.CONFIG.unit;\n');
+  assert.notEqual(guard(d).code, 0, 'CONFIG.unit read outside ads.js');
+});
+test('criterion 10: the real unit ID is in src/ exactly once, in ads.js (this repo, now)', () => {
+  const r = guard(ROOT, { ADS_SKIP_BUILD: '1' });
+  assert.equal(r.code, 0, r.out);
+});
+
+const MANIFEST = '<?xml version="1.0" encoding="utf-8"?>\n<manifest xmlns:android="http://schemas.android.com/apk/res/android">\n    <application\n        android:label="@string/app_name">\n        <activity android:name=".MainActivity" />\n    </application>\n    <uses-permission android:name="android.permission.INTERNET" />\n</manifest>\n';
+const VARS = "ext {\n    minSdkVersion = 24\n    compileSdkVersion = 36\n    targetSdkVersion = 36\n    androidxAppCompatVersion = '1.7.1'\n}\n";
+function tmpAndroid(manifest, vars) {
+  const d = fs.mkdtempSync(path.join(os.tmpdir(), 'ads-android-'));
+  fs.mkdirSync(path.join(d, 'app/src/main'), { recursive: true });
+  if (manifest != null) fs.writeFileSync(path.join(d, 'app/src/main/AndroidManifest.xml'), manifest);
+  if (vars != null) fs.writeFileSync(path.join(d, 'variables.gradle'), vars);
+  return d;
+}
+const setup = (d) => { const r = spawnSync('sh', [path.join(ROOT, 'scripts/android-ads.sh'), d], { encoding: 'utf8' }); return { code: r.status, out: r.stdout + r.stderr }; };
+const count = (s, x) => s.split(x).length - 1;
+
+test('CI, the Android set-up script: app ID and delayed measurement in the manifest, exact library versions pinned; safe to run twice', () => {
+  const d = tmpAndroid(MANIFEST, VARS);
+  for (let i = 0; i < 2; i++) {
+    const r = setup(d); assert.equal(r.code, 0, r.out);
+    const m = fs.readFileSync(path.join(d, 'app/src/main/AndroidManifest.xml'), 'utf8'), v = fs.readFileSync(path.join(d, 'variables.gradle'), 'utf8');
+    assert.equal(count(m, '<meta-data android:name="com.google.android.gms.ads.APPLICATION_ID" android:value="' + A.CONFIG.appId + '" />'), 1);
+    assert.equal(count(m, '<meta-data android:name="com.google.android.gms.ads.DELAY_APP_MEASUREMENT_INIT" android:value="true" />'), 1, 'A-D11: day one is quiet natively too');
+    assert.ok(m.indexOf('<application') < m.indexOf('APPLICATION_ID') && m.indexOf('DELAY_APP_MEASUREMENT_INIT') < m.indexOf('</application>'), 'inside <application>');
+    assert.equal(count(v, "playServicesAdsVersion = '" + PIN.ads + "'"), 1);
+    assert.equal(count(v, "userMessagingPlatformVersion = '" + PIN.ump + "'"), 1);
+    assert.equal(count(v, "nativeUIEngineVersion = '" + PIN.engine + "'"), 1);
+    assert.ok(v.trim().endsWith('}') && v.indexOf('nativeUIEngineVersion') < v.lastIndexOf('}'), 'inside the ext block');
+    assert.ok(!/[+\[\(]/.test(v.split('\n').filter((l) => /Ads|Messaging|Engine/.test(l)).join('')), 'exact versions, no ranges');
+  }
+});
+test('CI, the Android set-up script: fails loudly when it cannot do its job', () => {
+  assert.notEqual(setup(tmpAndroid(MANIFEST.replace('</application>', ''), VARS)).code, 0, 'no </application> to insert before');
+  assert.notEqual(setup(tmpAndroid(MANIFEST, null)).code, 0, 'no variables.gradle');
+  assert.notEqual(setup(tmpAndroid(MANIFEST, 'buildscript { }\n// nothing here')).code, 0, 'no ext block');
+  assert.notEqual(setup(tmpAndroid(MANIFEST, VARS.replace('}', "    playServicesAdsVersion = '25.4.+'\n}"))).code, 0, 'a different version is already set');
+  assert.notEqual(setup(tmpAndroid(null, VARS)).code, 0, 'no manifest');
+});
+
+test('CI: the workflow calls both scripts in the right places and checks what Gradle resolved', () => {
   const w = read('.github/workflows/build-apk.yml');
-  assert.ok(w.indexOf('npx cap add android') < w.indexOf('com.google.android.gms.ads.APPLICATION_ID'));
-  assert.ok(w.includes(A.CONFIG.appId));
   assert.ok(w.includes('vars.ADS_LIVE'));
-  assert.ok(w.indexOf('vars.ADS_LIVE') < w.indexOf('npm install'), 'the guard runs before anything is built');
+  assert.ok(w.indexOf('sh scripts/check-ads-switch.sh') > 0 && w.indexOf('sh scripts/check-ads-switch.sh') < w.indexOf('npm install'), 'the guard runs before anything is built');
+  assert.ok(w.indexOf('npx cap add android') < w.indexOf('sh scripts/android-ads.sh android') && w.indexOf('sh scripts/android-ads.sh android') < w.indexOf('npx cap sync android'));
   assert.ok(!w.includes(REAL), 'the real unit lives in src/js/ads.js only');
+  ['play-services-ads:' + PIN.ads, 'user-messaging-platform:' + PIN.ump, 'io.github.webview-native-ui:engine:' + PIN.engine].forEach((x) => assert.ok(w.includes(x.replace(/\./g, '\\.')) || w.includes(x), 'resolved version checked: ' + x));
+  const s = read('scripts/android-ads.sh');
+  assert.ok(s.includes(A.CONFIG.appId) && !s.includes(REAL));
+  const r = read('README.md');
+  [PIN.ads, PIN.ump, PIN.engine, '@capacitor-community/admob', 'webview-native-ui'].forEach((x) => assert.ok(r.slice(r.indexOf('## Credits')).includes(x), 'README credits: ' + x));
 });

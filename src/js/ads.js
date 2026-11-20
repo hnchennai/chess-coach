@@ -15,8 +15,9 @@
     live: false
   });
   var MIN_HEIGHT = 500;  /* A-D4: no banner on a screen shorter than this (a phone held sideways) */
-  var END_DELAY = 1000;  /* A-D15: an end card's banner comes this long after the card, in ms */
+  var SHOW_DELAY = 1000; /* A-D15 and AdMob's accidental-tap rule: the banner comes this long after the screen that allows it, in ms */
   var TAB_BAR = 56;      /* the fixed bottom tab bar on phones, in dp (DESIGN.md); the system bar below it is added natively */
+  var GAP = 8;           /* clear space between the banner and the tab bar on phones, in dp, so a tap on a tab cannot land on an ad */
   var POLICY_URL = 'https://hnchennai.github.io/privacy.html';
   var COPY = { policy: 'Privacy policy', choices: 'Privacy choices' }; /* all the new wording (spec) */
 
@@ -29,39 +30,40 @@
     return s.slot === true && s.native === true && s.firstDay === false && s.activity === false && s.overlay === false &&
       typeof s.height === 'number' && s.height >= MIN_HEIGHT;
   }
-  /* A-D11, A-D7: when the ads start-up (consent check, then the SDK) may begin. Never on the first day, never before a level
-     is set, never during an activity or under a sheet. Until this says yes the app makes no plugin call at all.
-     s: { native, firstDay, level, activity, overlay } */
+  /* A-D11, A-D7: whether the ads start-up (consent check, then the SDK) runs for this app session. It is asked once, at app
+     start (boot), and never again: not on the first day, not before a level is set, not if an activity (for example a resumed
+     unfinished game) or a sheet is open at that moment. A no means no plugin call at all until the next app start.
+     s: { boot, native, firstDay, level, activity, overlay } */
   function mayStart(s) {
     if (!s || typeof s !== 'object') return false;
-    return s.native === true && s.firstDay === false && !!s.level && s.activity === false && s.overlay === false;
+    return s.boot === true && s.native === true && s.firstDay === false && !!s.level && s.activity === false && s.overlay === false;
   }
-  function unitFor(live) { return live === true ? CONFIG.unit : CONFIG.testUnit; }
+  function unitFor(on) { return on === true ? CONFIG.unit : CONFIG.testUnit; }
   /* A-D5: the SDK's start options. PG is the highest ad content rating. The names are the plugin's. */
   function initOptions() { return { maxAdContentRating: 'ParentalGuidance' }; }
-  /* A-D5, A-D8, A-D16: one banner request. Always non-personalised (npa). The test unit unless the switch is on.
-     o: { margin (dp above the bottom edge), live (tests only; the app passes none and gets CONFIG.live) } */
+  /* A-D5, A-D8, A-D16: one banner request. Always non-personalised (npa). The test unit unless the switch is on; the switch
+     is read here and nowhere else, and no caller can override it. o: { margin (dp above the bottom edge) } */
   function bannerOptions(o) {
-    o = o || {};
-    var live = (o.live === undefined ? CONFIG.live : o.live) === true, m = Math.round(+o.margin);
-    return { adId: unitFor(live), adSize: 'ADAPTIVE_BANNER', position: 'BOTTOM_CENTER', margin: m > 0 ? m : 0, npa: true, isTesting: !live };
+    var real = CONFIG.live === true, m = Math.round(+(o && o.margin));
+    return { adId: unitFor(CONFIG.live), adSize: 'ADAPTIVE_BANNER', position: 'BOTTOM_CENTER', margin: m > 0 ? m : 0, npa: true, isTesting: !real };
   }
-  /* A-D16: above the tab bar when it is fixed to the bottom (phones), at the very bottom of the screen otherwise. */
-  function marginFor(fixedTabs) { return fixedTabs ? TAB_BAR : 0; }
-  /* A-D15: how long an end card's banner must still wait, in ms. since: when the card came on screen. Home and Progress
-     do not wait. */
-  function waitLeft(place, since, now) {
-    if (place === 'home' || place === 'progress') return 0;
+  /* A-D16: above the tab bar, with a small gap, when it is fixed to the bottom (phones); at the very bottom of the screen otherwise. */
+  function marginFor(fixedTabs) { return fixedTabs ? TAB_BAR + GAP : 0; }
+  /* A-D14: the page's bottom padding for a banner of the reported height: the banner, and on phones the gap under it. */
+  function padFor(height, fixedTabs) { var h = Math.ceil(+height); return h > 0 ? h + (fixedTabs ? GAP : 0) : 0; }
+  /* A-D15: how long the banner must still wait, in ms. since: when the screen or card that allows it was drawn, or when the
+     sheet or note over it closed. It holds for every appearance: Home, Progress and end cards. */
+  function waitLeft(since, now) {
     var d = +now - +since;
-    if (!(d >= 0)) return END_DELAY;
-    return d >= END_DELAY ? 0 : END_DELAY - d;
+    if (!(d >= 0)) return SHOW_DELAY;
+    return d >= SHOW_DELAY ? 0 : SHOW_DELAY - d;
   }
   /* A-D7: Google's answers (the plugin's consent info). */
   function needsForm(info) { return !!info && info.status === 'REQUIRED' && info.isConsentFormAvailable === true; }
   function canRequest(info) { return !!info && info.canRequestAds === true; }
   function hasChoice(info) { return !!info && info.privacyOptionsRequirementStatus === 'REQUIRED'; }
 
-  return { CONFIG: CONFIG, MIN_HEIGHT: MIN_HEIGHT, END_DELAY: END_DELAY, TAB_BAR: TAB_BAR, POLICY_URL: POLICY_URL, COPY: COPY,
-    mayShow: mayShow, mayStart: mayStart, unitFor: unitFor, initOptions: initOptions, bannerOptions: bannerOptions, marginFor: marginFor,
+  return { CONFIG: CONFIG, MIN_HEIGHT: MIN_HEIGHT, SHOW_DELAY: SHOW_DELAY, TAB_BAR: TAB_BAR, GAP: GAP, POLICY_URL: POLICY_URL, COPY: COPY,
+    mayShow: mayShow, mayStart: mayStart, unitFor: unitFor, initOptions: initOptions, bannerOptions: bannerOptions, marginFor: marginFor, padFor: padFor,
     waitLeft: waitLeft, needsForm: needsForm, canRequest: canRequest, hasChoice: hasChoice };
 });

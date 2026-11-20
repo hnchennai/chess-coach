@@ -12,7 +12,13 @@ cp $S/js/*.js $O/js/
   cat $S/head.html $S/body.html
   echo '<script src="vendor/chess.js"></script>'
   for f in engine tactics brain course roadmap avatar themes board3d coach3d ramayana3d puzzles profile placement words home flow tips ads app; do
-    echo "<script src=\"js/$f.js\"></script>"
+    if [ "$f" = ads ]; then
+      # A-D9: the web version loads no ads code. ads.js is fetched only inside the Android app, where Capacitor's bridge exists
+      # before any page script runs. Without it app.js finds no window.Ads and does no ads work at all.
+      printf '%s\n' "<script>if(window.Capacitor)document.write('<script src=\"js/ads.js\"><\\/script>')</script>"
+    else
+      echo "<script src=\"js/$f.js\"></script>"
+    fi
   done
 } > $O/index.html
 echo "Built $O/index.html and $O/js/ from $S/"

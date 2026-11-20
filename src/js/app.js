@@ -757,10 +757,125 @@
     if (st.tab === 'coach') renderSlot($('homeSlot'), w ? null : 'home', visits.coach);
     if (st.tab === 'progress') renderSlot($('progSlot'), w ? null : 'progress', visits.progress);
     renderSlot($('slotStrip'), p && p[0], p && p[1]);
+    adSync(); /* F3b: the banner follows the slot, in the same step */
   }
   /* When the window turns from phone to desktop layout or back, the slot moves between its place and the strip. */
   var wasWide = null;
   window.addEventListener('resize', function () { var w = wide(); if (w === wasWide) return; wasWide = w; if (!booted) return; render(); if (st.end) renderPath(); });
+
+  /* ---------- ADS GLUE (F3b, docs/specs/ads.product.md). The only code that talks to the native ads plugin. The rules are in
+     ads.js (pure); this reads the screen's facts, asks Ads.mayShow / Ads.mayStart, and shows or hides one native banner strip.
+     - Android app only: without window.Capacitor.Plugins.AdMob (the web version) the state is 'off' and nothing below runs (A-D9).
+     - Day one: Ads.mayStart says no, so there is no plugin call and no network request at all (A-D11).
+     - From day two, at the first quiet moment (no activity, no sheet): the consent check, Google's form only if required,
+       then the SDK, then the banner. No ad is requested until Google says ads can be requested (A-D7).
+     - Hide first, show late: adSync runs inside renderSlots and wherever a sheet, a note or the level check opens or closes, so
+       the banner is told to hide in the same step that changes the screen. An end card's banner waits 1 second (A-D15).
+     - Any failure (offline, no ad, a plugin error) leaves the screen as it is without ads: no strip, no gap, nothing logged (A-D13).
+     States: off | idle | consent | formwait | form | init | ready | noads | failed. Banner: none | shown | hidden. ---------- */
+  var AD = (function () {
+    try { var C = window.Capacitor; if (!C || !C.Plugins || !C.Plugins.AdMob) return null; if (typeof C.isNativePlatform === 'function' && !C.isNativePlatform()) return null; return C.Plugins.AdMob; } catch (e) { return null; }
+  })();
+  var ad = { state: AD ? 'idle' : 'off', banner: 'none', margin: 0, h: 0, place: null, visit: null, since: 0, timer: null, info: null, form: false, listening: false, inited: false, retryAt: 0 };
+  function adNow() { return window.performance && performance.now ? performance.now() : Date.now(); }
+  function adNoop() {}
+  /* One plugin call. Always a promise; a throw becomes a rejection, so no caller can leak an error. */
+  function adCall(m, a) { try { var r = a === undefined ? AD[m]() : AD[m](a); return r && typeof r.then === 'function' ? r : Promise.resolve(r); } catch (e) { return Promise.reject(e); } }
+  /* A-D12: a sheet, a dialog or an offer is open: Settings, the level check, any of Rani's notes, or one of Google's forms */
+  function adOverlay() { var sh = $('settingsSheet'); return !!((sh && !sh.hidden) || Placement.isOpen() || noteCur || ad.form); }
+  /* Criterion 1: the slot rule's own answer for the screen the player is on (the place stripPlace names, on phones too). */
+  var AD_CARD = { game: 'gameEnd', learn: 'learnEnd', step: 'sessionCard' };
+  function adFacts() {
+    var p = stripPlace();
+    /* an end card counts once it is on screen (the state changes a moment before the card is drawn; A-D15's second starts at the card) */
+    if (p && AD_CARD[p[0]]) { var c = $(AD_CARD[p[0]]); if (!c || c.hidden) p = null; }
+    return { place: p ? p[0] : null, visit: p ? p[1] : null, slot: !!p && slotAllowed(p[0], p[1]), native: !!AD, firstDay: Tips.firstDay(prof, Date.now()), level: prof.level || null,
+      activity: activityOn(), overlay: adOverlay(), height: window.innerHeight };
+  }
+  /* A-D14: the page's bottom padding while the banner is on screen: an empty box, the last thing in the page. */
+  function adPad(h) { var el = $('adPad'); if (!el) return; if (h > 0) { el.style.height = h + 'px'; el.hidden = false; } else if (!el.hidden) el.hidden = true; }
+  function adTabsFixed() { var t = document.querySelector('.tabs'); return !!t && getComputedStyle(t).position === 'fixed'; }
+  function adHide() {
+    adPad(0);
+    if (ad.banner === 'shown') { ad.banner = 'hidden'; adCall('hideBanner').catch(adNoop); }
+  }
+  /* The banner could not be shown or loaded: nothing on screen, no gap, and no new request for a minute. */
+  function adLost() { ad.banner = 'none'; ad.h = 0; adPad(0); ad.retryAt = adNow() + 60000; }
+  function adShow() {
+    var m = Ads.marginFor(adTabsFixed());
+    if (ad.banner === 'shown' && ad.margin === m) return;
+    if (ad.banner === 'hidden' && ad.margin === m) { ad.banner = 'shown'; adCall('resumeBanner').catch(adLost); return; }
+    if (ad.banner === 'none' && adNow() < ad.retryAt) return;
+    /* a new banner, or the same one moved (the layout changed between phone and wide): the plugin keeps the ad and moves it */
+    var moved = ad.banner !== 'none';
+    ad.margin = m; ad.banner = 'shown';
+    var r = adCall('showBanner', Ads.bannerOptions({ margin: m }));
+    (moved ? r.then(function () { return ad.banner === 'shown' ? adCall('resumeBanner') : null; }) : r).catch(adLost);
+  }
+  function adSync() {
+    if (!AD || !booted || ad.state === 'off') return;
+    var f = adFacts(), now = adNow();
+    /* A screen's clock starts at the first frame after it comes on (when the player can see it), never before it is drawn. */
+    if (f.place !== ad.place || f.visit !== ad.visit) {
+      ad.place = f.place; ad.visit = f.visit; ad.since = NaN;
+      var pl = f.place, vi = f.visit;
+      requestAnimationFrame(function () { if (ad.place === pl && ad.visit === vi && isNaN(ad.since)) { ad.since = adNow(); adSync(); } });
+    }
+    var want = ad.state === 'ready' && Ads.mayShow(f), wait = want ? Ads.waitLeft(f.place, ad.since, now) : 0;
+    clearTimeout(ad.timer); ad.timer = null;
+    if (want && wait > 0) { want = false; if (!isNaN(ad.since)) ad.timer = setTimeout(adSync, wait); } /* no clock yet: the frame above calls back */
+    if (want) adShow(); else adHide();
+    if (ad.state === 'idle' && Ads.mayStart(f)) adStart();
+    else if (ad.state === 'formwait' && Ads.mayStart(f)) adConsent();
+  }
+  function adFail() { ad.form = false; ad.state = 'failed'; adHide(); }
+  function adChoice() { var b = $('privChoices'); if (b) b.hidden = !Ads.hasChoice(ad.info); } /* A-D17 */
+  function adStart() {
+    ad.state = 'consent';
+    adCall('requestConsentInfo').then(function (info) { ad.info = info || null; adChoice(); adConsent(); }).catch(adFail);
+  }
+  /* Google's form, only if required, and never over an activity: if one began while Google was answering, it waits (formwait). */
+  function adConsent() {
+    if (!Ads.needsForm(ad.info)) { adReady(); return; }
+    if (!Ads.mayStart(adFacts())) { ad.state = 'formwait'; return; }
+    ad.state = 'form'; ad.form = true; adHide();
+    adCall('showConsentForm').then(function (info) {
+      ad.form = false;
+      if (info) ad.info = { status: info.status, isConsentFormAvailable: false, canRequestAds: info.canRequestAds, privacyOptionsRequirementStatus: info.privacyOptionsRequirementStatus };
+      adChoice(); adReady();
+    }).catch(adFail);
+  }
+  function adListen() {
+    if (ad.listening) return; ad.listening = true;
+    function on(name, fn) { try { var r = AD.addListener(name, fn); if (r && typeof r.catch === 'function') r.catch(adNoop); } catch (e) {} }
+    /* the height the plugin reports is the padding (0 when the banner is hidden, removed or has no ad) */
+    on('bannerAdSizeChanged', function (s) { var h = s && +s.height > 0 ? Math.ceil(+s.height) : 0; ad.h = h; adPad(ad.banner === 'shown' ? h : 0); });
+    on('bannerAdLoaded', function () { if (ad.banner === 'hidden') adCall('hideBanner').catch(adNoop); });
+    on('bannerAdFailedToLoad', adLost);
+  }
+  function adReady() {
+    if (!Ads.canRequest(ad.info)) { ad.state = 'noads'; adHide(); return; }
+    if (ad.inited) { ad.state = 'ready'; adSync(); return; }
+    ad.state = 'init'; adListen();
+    adCall('initialize', Ads.initOptions()).then(function () { ad.inited = true; ad.state = 'ready'; adSync(); }).catch(adFail);
+  }
+  /* A-D17: "Privacy choices" reopens Google's form; afterwards Google is asked again whether ads can be requested. */
+  function adChoices() {
+    if (!AD || !Ads.hasChoice(ad.info) || ad.form) return;
+    ad.form = true; adSync();
+    adCall('showPrivacyOptionsForm').catch(adNoop).then(function () { return adCall('requestConsentInfo'); }).then(function (info) {
+      ad.form = false; ad.info = info || ad.info; adChoice();
+      if (Ads.canRequest(ad.info)) { if (ad.state === 'noads') adReady(); else adSync(); return; }
+      if (ad.banner !== 'none') { ad.banner = 'none'; ad.h = 0; adCall('removeBanner').catch(adNoop); }
+      if (ad.state === 'ready') ad.state = 'noads';
+      adSync();
+    }).catch(function () { ad.form = false; adSync(); });
+  }
+  /* A-D4: a turned phone or a resized window decides again at once. Back online, or back in the app: a failed start-up tries again. */
+  window.addEventListener('resize', adSync);
+  window.addEventListener('orientationchange', adSync);
+  function adRetry() { if (ad.state === 'failed') ad.state = 'idle'; adSync(); }
+  if (AD) { window.addEventListener('online', adRetry); document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'visible') adRetry(); }); }
 
   /* ---------- F1: end cards. One main button (the next step), small buttons for the other choices, always a Home button.
      Flow (flow.js) decides which card; this wires each button to an action the app already has. ---------- */
@@ -1775,18 +1890,18 @@
   function openSettings() {
     var sh = $('settingsSheet'); if (!sh || !sh.hidden) return;
     setOpener = document.activeElement; renderLevelCard(); renderLook();
-    sh.hidden = false; document.documentElement.classList.add('sheet-open');
+    sh.hidden = false; document.documentElement.classList.add('sheet-open'); adSync(); /* A-D12 */
     var pn = sh.querySelector('.sheet-panel'); if (pn) pn.focus({ preventScroll: true });
   }
   function closeSettings(noFocus) {
     var sh = $('settingsSheet'); if (!sh || sh.hidden) return;
-    sh.hidden = true; document.documentElement.classList.remove('sheet-open');
+    sh.hidden = true; document.documentElement.classList.remove('sheet-open'); adSync();
     var back = setOpener && setOpener.isConnected && setOpener.offsetParent !== null ? setOpener : $('settingsBtn');
     if (!noFocus && back) back.focus(); setOpener = null;
     if (!noFocus) focusOffer();
   }
   function trapTab(box, e) {
-    var f = Array.prototype.filter.call(box.querySelectorAll('button:not([disabled]), [tabindex="0"], select, input'), function (x) { return x.offsetParent !== null; });
+    var f = Array.prototype.filter.call(box.querySelectorAll('button:not([disabled]), a[href], [tabindex="0"], select, input'), function (x) { return x.offsetParent !== null; });
     if (!f.length) return;
     var first = f[0], last = f[f.length - 1];
     if (e.shiftKey && (document.activeElement === first || !box.contains(document.activeElement))) { e.preventDefault(); last.focus(); }
@@ -1817,6 +1932,7 @@
   }
   function drawNote() {
     var el = $('raniNote'), n = noteCur; if (!el) return;
+    adSync(); /* A-D12: no banner under a note or an offer */
     if (!n) { el.hidden = true; el.innerHTML = ''; el.className = 'raninote'; return; }
     var offer = n.kind === 'offer', ask = n.kind === 'ask';
     el.className = 'raninote' + (offer || ask ? ' offer' : '');
@@ -2353,6 +2469,7 @@
     if (d.act === 'showall') { prof.showAll = !prof.showAll; saveProfile(); refreshUI(); renderLevelCard('[data-act="showall"]'); return; }
     if (d.act === 'settings') { openSettings(); return; }
     if (d.act === 'settingsclose') { closeSettings(); return; }
+    if (d.act === 'privchoices') { adChoices(); return; }
     if (d.act === 'notedone') { hideNote(); return; }
     if (d.act === 'offeryes') { answerOffer(true); return; }
     if (d.act === 'offerno') { answerOffer(false); return; }
@@ -2398,11 +2515,13 @@
     if (lsGet(K3D) === true) set3d(true, true);
     if (Profile.needsCheck(prof)) openPlacement(false);
     booted = true;
+    adSync(); /* F3b: from day two, the ads start-up at the first quiet moment; on day one and on the web, nothing */
     initCloud();
   }
   if (window.claude && window.claude.hot && window.claude.hot.snapshot) { try { window.claude.hot.snapshot(snapshot); } catch (e) {} }
   window.claude && window.claude.hot && window.claude.hot.ready ? window.claude.hot.ready(start) : start((window.claude && window.claude.hot && window.claude.hot.data) || {});
   window.__coach = { st: st, getProf: function () { return prof; }, PZ: PZ, startPart: startPart, trainStart: trainStart, openPlacement: openPlacement, nextUnit: nextUnit, hist: function () { return G.history(); }, openSettings: openSettings,
+    ads: function () { return { state: ad.state, banner: ad.banner, h: ad.h }; }, /* the ads glue's state (e2e) */
     reveals: function () { return revealN; }, /* how often an end card was scrolled into view (e2e) */
     nextLabel: function () { return nextAction(currentStage()).label; } /* today's Next step, for the e2e check that the Continue card follows it */ };
 })();

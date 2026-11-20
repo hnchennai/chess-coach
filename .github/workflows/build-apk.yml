@@ -19,6 +19,22 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Ads (F3b, A-D8): real ads are a checkpoint. The build fails if the launch switch in src/js/ads.js is on,
+      # unless the repository variable ADS_LIVE is set to yes on purpose (Settings > Secrets and variables > Actions > Variables).
+      - name: Ads launch switch guard
+        env:
+          ADS_LIVE: ${{ vars.ADS_LIVE }}
+        run: |
+          cmp src/js/ads.js www/js/ads.js || { echo "::error::www/js/ads.js does not match src/js/ads.js. Run sh scripts/build.sh and commit www/."; exit 1; }
+          N=$(grep -cE '^[[:space:]]*live:[[:space:]]*(true|false)[[:space:]]*,?[[:space:]]*$' src/js/ads.js || true)
+          [ "$N" = 1 ] || { echo "::error::src/js/ads.js must have exactly one 'live: true' or 'live: false' line (found $N)."; exit 1; }
+          if grep -qE '^[[:space:]]*live:[[:space:]]*true' src/js/ads.js; then
+            [ "$ADS_LIVE" = yes ] || { echo "::error::The ads launch switch is on (live: true in src/js/ads.js) but the repository variable ADS_LIVE is not yes. Real ads are a checkpoint."; exit 1; }
+            echo "::warning::Real ads are ON for this build (ADS_LIVE=yes)."
+          else
+            echo "Ads launch switch is off: this build shows Google's test ads only."
+          fi
+
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -45,6 +61,15 @@ jobs:
           # Play Store rule: new apps and updates must target Android 16 (API 36). Fail the build if the project targets less.
           cat android/variables.gradle
           grep -Eq 'targetSdkVersion *= *(3[6-9]|[4-9][0-9])' android/variables.gradle
+          # Ads (F3b): Google's ads library stops the app at launch unless the AdMob app ID is in the manifest.
+          # The Android project is created fresh on every build, so add it here. Fail if it did not go in exactly once.
+          M=android/app/src/main/AndroidManifest.xml
+          ADMOB_APP_ID='ca-app-pub-1437334216467981~3972482016'
+          grep -q "appId: '$ADMOB_APP_ID'" src/js/ads.js
+          grep -q 'com.google.android.gms.ads.APPLICATION_ID' $M || ADMOB_APP_ID="$ADMOB_APP_ID" perl -0pi -e 's#</application>#    <meta-data android:name="com.google.android.gms.ads.APPLICATION_ID" android:value="$ENV{ADMOB_APP_ID}" />\n    </application>#' $M
+          [ "$(grep -c 'com.google.android.gms.ads.APPLICATION_ID' $M)" = 1 ]
+          grep -q "android:name=\"com.google.android.gms.ads.APPLICATION_ID\" android:value=\"$ADMOB_APP_ID\"" $M
+          cat $M
 
       # Gradle distributions live on GitHub releases. Unsigned downloads can fail (GitHub incident, 2026-11-08),
       # so fetch it signed in with the build's own token, check Gradle's published SHA-256, and point the wrapper at the local file.

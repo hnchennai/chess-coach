@@ -18,6 +18,7 @@ The whole app works offline: Stockfish, the 3D board, puzzles and lessons are in
 ## Licence and source
 - Chess Coach is free software under the GNU General Public License, version 3 (see `LICENSE`). You may use, study, change and share it under those terms. It comes with no warranty.
 - This repository is the complete source for every released build: the web app in `src/` (built into `www/` by `sh scripts/build.sh`), the Android wrapper settings, and the build workflow in `.github/workflows/`.
+- Exception (see `LICENSE-EXCEPTION`): "Additional permission under GNU GPL version 3 section 7: if you modify this program, or any covered work, by linking or combining it with the Google Mobile Ads SDK, the Google User Messaging Platform SDK or the Google Play Billing Library (or modified versions of those libraries), the copyright holder of Chess Coach grants you permission to convey the resulting work. This permission covers the Chess Coach code only. Stockfish is a separate program under plain GPL version 3." The Android app shows ads through those Google libraries, which are not free software. Stockfish is never modified and never linked with them: the app talks to the engine by messages.
 - The app includes Stockfish, which is also GPLv3. The engine files in `www/sf/` are the unmodified Stockfish.js 19 build. Source: https://github.com/nmrugg/stockfish.js, based on https://github.com/official-stockfish/Stockfish.
 - The names "Chess Coach", "Queen Rani" and "Coach Gaja" identify this app. If you publish a changed version, please give it a different name.
 

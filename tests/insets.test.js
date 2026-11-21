@@ -12,3 +12,15 @@ test('every .wrap padding-block rule keeps the top safe-area inset', () => {
   assert.ok(tops.length >= 2, 'expected the base rule and the phone rule');
   for (const r of tops) assert.match(r, /env\(safe-area-inset-top\)/, r);
 });
+
+// G2a: the sticky Close bar of the board screen sits at the very top of the page, so it carries the status bar inset itself.
+test('the Close bar rule keeps the top safe-area inset and has a solid background', () => {
+  const css = fs.readFileSync(path.join(__dirname, '..', 'src', 'head.html'), 'utf8');
+  const rules = css.match(/\.actbar\s*\{[^}]*\}/g) || [];
+  assert.ok(rules.length >= 1, 'expected a .actbar rule');
+  const main = rules.find(r => /position\s*:\s*sticky/.test(r));
+  assert.ok(main, 'the bar is sticky');
+  assert.match(main, /padding(-top)?\s*:[^;]*env\(safe-area-inset-top\)/);
+  assert.match(main, /background\s*:\s*var\(--bg\)/);
+  assert.match(main, /top\s*:\s*0/);
+});

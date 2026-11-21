@@ -121,8 +121,33 @@ async function newPage(vp, p, o) {
   await page.goto(URL);
   try { await page.waitForFunction(() => window.__coach && window.Placement); }
   catch (e) { throw new Error('app did not start: ' + e.message.split('\n')[0] + ' | page errors: ' + JSON.stringify(page.errors)); }
+  // G2a (G-D25): a phone always opens on Home. A test that starts on Train or Progress goes there as a player does.
+  if (vp.width <= 860 && (o.tab === 'train' || o.tab === 'progress')) await page.evaluate((t) => document.getElementById('tab-' + t).click(), o.tab);
   return page;
 }
+// G2a: up to 860px wide (one column) the tabs are pages with no board, and the app always opens on Home. A game is opened
+// as a player does: the Play tab, then "Resume game" (when a game is unfinished).
+const col1 = (vp) => vp.width <= 860;
+const openGame = (page) => page.evaluate(() => {
+  document.getElementById('tab-play').click();
+  const r = document.querySelector('#resumePlay .rs-go');
+  if (r && r.getClientRects().length) r.click();
+});
+const closeX = (page) => page.locator('#actClose').click();
+// Going to a tab. On a phone's board screen the bottom tabs are hidden (G-D3), so the player taps Close first (twice from a
+// review opened in the middle of a game: the first Close goes back to the game). A tap on the tab that is already selected
+// did nothing before G2 and does nothing here: the board screen of that tab stays open.
+const goTab = async (page, t) => {
+  for (let i = 0; i < 3; i++) {
+    const s = await page.evaluate(() => { const b = document.getElementById('actClose'); return { open: !!b && b.getClientRects().length > 0, tabs: document.querySelector('.tabs').getClientRects().length > 0, tab: window.__coach.st.tab }; });
+    if (!s.open) break;        // a tab page (or a wide screen): tap the tab
+    if (s.tab === t) return;   // already on that tab, with its board screen open
+    if (s.tabs) break;         // an end card is up, so the tabs are back (G-D8): tap one
+    await page.locator('#actClose').click();
+  }
+  await page.locator('#tab-' + t).click();
+};
+const GEAR = '#settingsBtn:visible, #actGear:visible';
 const st = (page, k) => page.evaluate((key) => window.__coach.st[key], k);
 const vis = (page, sel) => page.locator(sel).first().isVisible();
 const calls = (page) => page.evaluate(() => window.__ad.calls);
@@ -250,8 +275,8 @@ const cases = [
   ['S1 / criterion 2: on the first day the app makes no ads plugin call and no network request, all day, and none after midnight until the next app start', async (vp) => {
     const page = await newPage(vp, improver(dayOne({ unlockAll: true })), { ads: { status: 'REQUIRED', form: true, can: false, privacy: 'REQUIRED' } });
     await page.waitForTimeout(600);
-    await page.locator('#tab-progress').click(); await page.locator('#tab-path').click(); await page.locator('#tab-coach').click();
-    await page.locator('#settingsBtn').click();
+    await goTab(page, 'progress'); await goTab(page, 'path'); await goTab(page, 'coach');
+    await page.locator(GEAR).click();
     assert.equal(await vis(page, '#settingsSheet [data-act="privacy"]'), true, '"Privacy policy" is there on day one');
     assert.equal(await vis(page, '#settingsSheet [data-act="privchoices"]'), false, 'no "Privacy choices": nothing was asked of Google');
     await page.locator('[data-act="settingsclose"]').click();
@@ -264,7 +289,7 @@ const cases = [
     assert.deepEqual(await names(page, true), [], 'zero plugin calls after a restart on day one');
     // the app stays open over midnight: the tip may come, the ads start-up does not (A-D7: it runs at app start only)
     await page.evaluate((d) => { const N = Date.now.bind(Date); Date.now = () => N() + d; }, DAY);
-    await page.locator('#tab-progress').click(); await page.locator('#tab-coach').click();
+    await goTab(page, 'progress'); await goTab(page, 'coach');
     await page.evaluate(() => { window.dispatchEvent(new Event('online')); document.dispatchEvent(new Event('visibilitychange')); });
     await page.waitForTimeout(1500);
     assert.equal(await page.evaluate(() => window.__coach.getProf().level), 'improver');
@@ -335,11 +360,18 @@ const cases = [
     return page;
   }],
   ['S4, S5 / criterion 6: a finished game’s end card shows at once and the banner at least 1 second later, clear of the board; a new game hides it straight away', async (vp) => {
-    const page = await newPage(vp, club({ games: [] }), { game: MATE_DONE, tab: 'progress' }); // A-D19: Club Home is the board screen, so the banner starts on Progress
+    // Wide: the finished game's card is on Play when the app starts (A-D19: Club Home has the board, so the banner starts on Progress).
+    // Phones (G2a): a finished game is not shown again after a restart, so the game is finished here: one move from mate.
+    const page = await newPage(vp, club({ games: [] }), { game: col1(vp) ? MATE1 : MATE_DONE, tab: 'progress' });
     await ready(page);
-    const r = await frameAfter(page, () => document.getElementById('tab-play').click());
-    hiddenInAFrame(r, 'going to the end card');
-    await page.waitForFunction(() => window.__ad.cards.some((c) => c.id === 'gameEnd'));
+    const r = await frameAfter(page, col1(vp) ? () => { document.getElementById('tab-play').click(); document.querySelector('#resumePlay .rs-go').click(); } : () => document.getElementById('tab-play').click());
+    hiddenInAFrame(r, col1(vp) ? 'opening the game' : 'going to the end card');
+    if (col1(vp)) {
+      await page.waitForFunction(() => !window.__coach.st.busy);
+      await staysAway(page, 'while the game is on the board screen');
+      await page.locator('#board .sq[data-sq="h5"]').click(); await page.locator('#board .sq[data-sq="f7"]').click();
+    }
+    await page.waitForFunction(() => window.__ad.cards.some((c) => c.id === 'gameEnd'), null, { timeout: 30000 });
     assert.equal(await shown(page), false, 'the card shows at once, without the banner');
     await page.waitForTimeout(500); assert.equal(await shown(page), false, 'not yet at half a second');
     const card = (await page.evaluate(() => window.__ad.cards)).filter((c) => c.id === 'gameEnd').pop(), n0 = (await calls(page)).findIndex((c) => c.t >= r.t0);
@@ -355,7 +387,12 @@ const cases = [
     return page;
   }],
   ['F-D17: the review of a finished game has no banner, and neither has its last card', async (vp) => {
-    const page = await newPage(vp, club({ games: [] }), { game: MATE_DONE, tab: 'play' });
+    const page = await newPage(vp, club({ games: [] }), { game: col1(vp) ? MATE1 : MATE_DONE, tab: 'play' });
+    if (col1(vp)) { // G2a: a phone opens on Home; the game is opened and finished here, and its end card gets the banner
+      await openGame(page); await page.waitForFunction(() => !window.__coach.st.busy);
+      await page.locator('#board .sq[data-sq="h5"]').click(); await page.locator('#board .sq[data-sq="f7"]').click();
+      await page.waitForFunction(() => window.__ad.cards.some((c) => c.id === 'gameEnd'), null, { timeout: 30000 });
+    }
     await ready(page);
     hiddenInAFrame(await frameAfter(page, () => document.querySelector('#gameEnd [data-act="review"]').click()), 'opening the review');
     assert.equal(await st(page, 'mode'), 'review');
@@ -378,8 +415,32 @@ const cases = [
     assert.deepEqual(during.map((c) => c.m), [], 'nothing showed the banner during the set');
     await backAfterDelay(page, n0, card.t, 'the set’s end card');
     await nothingCovered(page, 'puzzle set end card');
+    if (col1(vp)) {
+      // G-D11 (phones) replaces F-D32: a saved game the player has closed no longer hides the tip or the banner on an end card
+      await page.locator('#sessionCard [data-act="home"]').click(); await goTab(page, 'play');
+      await page.locator('#newBtn').click();
+      await page.locator('#board .sq[data-sq="e2"]').click(); await page.locator('#board .sq[data-sq="e4"]').click();
+      await page.waitForFunction(() => window.__coach.hist().length >= 1);
+      await staysAway(page, 'while the game is on the board screen');
+      n0 = (await calls(page)).length;
+      await playSet(page);
+      await page.waitForFunction(() => window.__ad.cards.filter((c) => c.id === 'sessionCard').length >= 2);
+      assert.equal(await page.evaluate(() => window.__coach.hist().length >= 1), true, 'the game is still going');
+      card = (await page.evaluate(() => window.__ad.cards)).filter((c) => c.id === 'sessionCard').pop();
+      await backAfterDelay(page, n0, card.t, 'a set’s end card with a game saved');
+      await nothingCovered(page, 'set end card with a game saved');
+      hiddenInAFrame(await frameAfter(page, () => window.__coach.startPart('fork', 'learn')), 'a lesson opens');
+      n0 = (await calls(page)).length;
+      await finishLesson(page);
+      await page.waitForFunction(() => window.__ad.cards.some((c) => c.id === 'learnEnd'));
+      card = (await page.evaluate(() => window.__ad.cards)).filter((c) => c.id === 'learnEnd').pop();
+      await backAfterDelay(page, n0, card.t, 'a Learn end card with a game saved');
+      assert.equal(await vis(page, '#learnEnd .tipslot'), true, 'and the tip is on the card: the banner follows the slot');
+      requestRules(await calls(page), 'G-D11');
+      return page;
+    }
     // 2. a game is going (one move played): no banner on a set's end card
-    await page.locator('#sessionCard [data-act="home"]').click(); await page.locator('#tab-play').click();
+    await page.locator('#sessionCard [data-act="home"]').click(); await goTab(page, 'play');
     await page.locator('#board .sq[data-sq="e2"]').click(); await page.locator('#board .sq[data-sq="e4"]').click();
     await page.waitForFunction(() => window.__coach.hist().length >= 1);
     await playSet(page);
@@ -402,7 +463,7 @@ const cases = [
     assert.equal(await shown(page), false); assert.equal(await padNow(page), 0, 'no reserved space');
     assert.equal(await vis(page, await slotSel(page, '#homeSlot')), true, 'the tip is there');
     const h0 = await page.evaluate(() => document.documentElement.scrollHeight);
-    await page.locator('#tab-path').click(); await page.locator('#tab-coach').click();
+    await goTab(page, 'path'); await goTab(page, 'coach');
     // back online in the same session: fail closed, the next app start asks again
     await page.evaluate(() => { window.__ad.cfg.offline = false; window.dispatchEvent(new Event('online')); document.dispatchEvent(new Event('visibilitychange')); });
     await page.waitForTimeout(1500);
@@ -422,7 +483,7 @@ const cases = [
     await page.waitForTimeout(1500);
     assert.equal(await count(page, 'showBanner'), 1, 'no second request right away');
     // leaving the screen clears the retry: a minute on Learn asks for nothing
-    await page.locator('#tab-path').click();
+    await goTab(page, 'path');
     await page.clock.fastForward(61000); await page.waitForTimeout(200);
     assert.equal(await count(page, 'showBanner'), 1, 'no request away from a slot screen');
     // back on the slot screen (the minute has passed): after the usual second, one new request; it fails again
@@ -445,7 +506,7 @@ const cases = [
     const page = await newPage(vp, improver({ unlockAll: true }), { ads: { slow: true }, tab: 'progress' });
     await page.waitForFunction(() => window.__ad.calls.some((c) => c.m === 'showBanner')); await page.waitForTimeout(200);
     assert.equal(await padNow(page), 0, 'no ad yet, no padding');
-    await page.locator('#settingsBtn').click(); await page.keyboard.press('Escape');
+    await page.locator(GEAR).click(); await page.keyboard.press('Escape');
     await page.waitForFunction(() => window.__ad.calls.some((c) => c.m === 'resumeBanner')); await page.waitForTimeout(300);
     assert.equal(await page.evaluate(() => window.__ad.visible && !window.__ad.loaded), true, 'the empty banner is back on screen and reported its size');
     assert.equal(await padNow(page), 0, 'still no padding over an empty strip');
@@ -453,7 +514,7 @@ const cases = [
     await ready(page);
     // 6: resumeBanner fails. The app removes the banner and does not pretend it is there.
     await page.evaluate(() => { window.__ad.cfg.resumeFails = true; });
-    await page.locator('#settingsBtn').click(); await page.keyboard.press('Escape');
+    await page.locator(GEAR).click(); await page.keyboard.press('Escape');
     await page.waitForFunction(() => window.__ad.calls.some((c) => c.m === 'removeBanner'));
     await page.waitForTimeout(300);
     assert.equal(await page.evaluate(() => window.__coach.ads().banner), 'none'); assert.equal(await page.evaluate(() => window.__ad.view), false, 'gone natively too');
@@ -472,7 +533,7 @@ const cases = [
     assert.deepEqual(cs.map((c) => c.m).filter((m) => m !== 'addListener'), ['requestConsentInfo', 'showConsentForm', 'initialize', 'showBanner']);
     requestRules(cs, 'Europe');
     // S8: "Privacy choices" is in Settings and reopens Google's form
-    await page.locator('#settingsBtn').click();
+    await page.locator(GEAR).click();
     assert.equal(await vis(page, '#settingsSheet [data-act="privchoices"]'), true);
     assert.equal((await page.locator('#settingsSheet [data-act="privchoices"]').innerText()).trim(), 'Privacy choices');
     assert.equal((await page.locator('#settingsSheet [data-act="privacy"]').innerText()).trim(), 'Privacy policy');
@@ -488,12 +549,15 @@ const cases = [
     assert.deepEqual(await names(page, true), ['requestConsentInfo', 'showConsentForm'], 'no SDK start and no ad request');
     assert.equal(await padNow(page), 0); assert.equal(await vis(page, await slotSel(page, '#homeSlot')), true, 'the tip is there');
     await page.locator('#bhome .bh-go').click(); await page.waitForFunction(() => window.__coach.st.mode === 'lesson');
-    await page.locator('#settingsBtn').click();
+    await page.locator(GEAR).click();
     assert.equal(await vis(page, '#settingsSheet [data-act="privchoices"]'), true, 'he can change his mind in Settings');
     return page;
   }],
   ['C8a / A-D7: the app starts in an unfinished game on day two, outside Europe: one consent check, no form, and the banner comes on the end card after the game', async (vp) => {
-    const page = await newPage(vp, club({ games: [] }), { game: MATE1, tab: 'play' });
+    // Phones (G2a, G-D25): the app opens on Home, never in the game. The same rule is checked with the game opened before
+    // Google's answer arrives (the answer is held until then).
+    const page = await newPage(vp, club({ games: [] }), { game: MATE1, tab: 'play', ads: col1(vp) ? { holdConsent: true } : {} });
+    if (col1(vp)) { await openGame(page); await page.evaluate(() => window.__ad.release.consent()); }
     await page.waitForFunction(() => !window.__coach.st.busy); await page.waitForTimeout(1500);
     assert.deepEqual(await names(page), ['requestConsentInfo', 'initialize'], 'the consent check at app start; no form; no ad request while the game is going');
     assert.equal(await shown(page), false); assert.equal(await padNow(page), 0);
@@ -518,12 +582,12 @@ const cases = [
     await finishLesson(page);
     await page.waitForFunction(() => window.__ad.cards.some((c) => c.id === 'learnEnd'));
     await page.waitForTimeout(1600);
-    await page.locator('#learnEnd [data-act="home"]').click(); await page.locator('#tab-coach').click();
+    await page.locator('#learnEnd [data-act="home"]').click(); await goTab(page, 'coach');
     await page.evaluate(() => { window.dispatchEvent(new Event('online')); document.dispatchEvent(new Event('visibilitychange')); window.dispatchEvent(new Event('resize')); });
     await page.waitForTimeout(1600);
     assert.deepEqual(await names(page, true), ['requestConsentInfo'], 'the form is never shown later in the session; no SDK start, no ad request');
     assert.equal(await padNow(page), 0); assert.equal(await vis(page, await slotSel(page, '#homeSlot')), true, 'the tip is there as usual');
-    await page.locator('#settingsBtn').click();
+    await page.locator(GEAR).click();
     assert.equal(await vis(page, '#settingsSheet [data-act="privchoices"]'), true, 'Google says a choice applies, so the row is there');
     await page.locator('[data-act="settingsclose"]').click();
     // the next app start, nothing open: the form comes first
@@ -531,15 +595,16 @@ const cases = [
     await page.reload(); await page.waitForFunction(() => window.__coach && window.Placement);
     await page.waitForFunction(() => window.__ad.release.consent); await page.evaluate(() => window.__ad.release.consent());
     await page.waitForFunction(() => window.__ad.calls.some((c) => c.m === 'showConsentForm'));
-    if (W(vp)) await page.locator('#tab-progress').click(); // A-D19: wide Home has the board
+    if (W(vp)) await goTab(page, 'progress'); // A-D19: wide Home has the board
     await ready(page); requestRules(await calls(page), 'next start');
     return page;
   }],
   ['C8c / A-D17: Europe, consent given earlier, the app starts in an unfinished game: "Privacy choices" is there, no form, and the banner comes after the game', async (vp) => {
-    const page = await newPage(vp, club({ games: [] }), { game: MATE1, tab: 'play', ads: { status: 'OBTAINED', form: true, can: true, privacy: 'REQUIRED' } });
+    const page = await newPage(vp, club({ games: [] }), { game: MATE1, tab: 'play', ads: Object.assign({ status: 'OBTAINED', form: true, can: true, privacy: 'REQUIRED' }, col1(vp) ? { holdConsent: true } : {}) });
+    if (col1(vp)) { await openGame(page); await page.evaluate(() => window.__ad.release.consent()); } // phones open on Home: the answer comes with the game open
     await page.waitForFunction(() => !window.__coach.st.busy); await page.waitForTimeout(1500);
     assert.deepEqual(await names(page), ['requestConsentInfo', 'initialize'], 'no form: consent is already there');
-    await page.locator('#settingsBtn').click();
+    await page.locator(GEAR).click();
     assert.equal(await vis(page, '#settingsSheet [data-act="privchoices"]'), true, 'the row is there in a session that started in a game');
     await page.locator('[data-act="settingsclose"]').click();
     assert.equal(await shown(page), false, 'no banner while the game is going');
@@ -552,7 +617,8 @@ const cases = [
     return page;
   }],
   ['C8d / criterion 8: Europe, a form is required, and the app starts in an unfinished game: the check runs, no form, no ads this session, the row is there', async (vp) => {
-    const page = await newPage(vp, club({ games: [] }), { game: MATE1, tab: 'play', ads: { status: 'REQUIRED', form: true, can: false, privacy: 'REQUIRED' } });
+    const page = await newPage(vp, club({ games: [] }), { game: MATE1, tab: 'play', ads: Object.assign({ status: 'REQUIRED', form: true, can: false, privacy: 'REQUIRED' }, col1(vp) ? { holdConsent: true } : {}) });
+    if (col1(vp)) { await openGame(page); await page.evaluate(() => window.__ad.release.consent()); } // phones open on Home: the answer comes with the game open
     await page.waitForFunction(() => !window.__coach.st.busy); await page.waitForTimeout(1200);
     assert.deepEqual(await names(page, true), ['requestConsentInfo'], 'the check, and nothing else: no form over the game');
     await page.locator('#board .sq[data-sq="h5"]').click(); await page.locator('#board .sq[data-sq="f7"]').click();
@@ -561,7 +627,7 @@ const cases = [
     await page.locator('#gameEnd [data-act="home"]').click(); await page.waitForTimeout(1500);
     assert.deepEqual(await names(page, true), ['requestConsentInfo'], 'no form later, no SDK start, no ad request');
     assert.equal(await padNow(page), 0);
-    await page.locator('#settingsBtn').click();
+    await page.locator(GEAR).click();
     assert.equal(await vis(page, '#settingsSheet [data-act="privchoices"]'), true);
     return page;
   }],
@@ -622,6 +688,26 @@ const cases = [
     assert.ok(credit.join(' ').includes('LICENSE-EXCEPTION'), 'criterion 14: the credit names the exception');
     assert.ok(credit.join(' ').includes('Analysis by Stockfish 19'), 'the Stockfish credit stays');
     await shot(page, vp, 'progress_banner');
+    if (col1(vp)) {
+      // G-D12 (phones): Home has no board, so the banner shows there for every level, a second after the tab opens.
+      let m0 = (await calls(page)).length, s0 = await now(page);
+      await goTab(page, 'coach');
+      assert.equal(await page.evaluate(() => document.querySelector('.boardcol').getClientRects().length > 0), false, 'no board on a phone’s Home');
+      await backAfterDelay(page, m0, s0, 'Progress to Home');
+      assert.equal(await vis(page, '#homeSlot'), true, 'the tip is on Home too');
+      await nothingCovered(page, 'Improver Home');
+      // A-D19 still holds: a fresh board with no move gets no banner, and no tip.
+      hiddenInAFrame(await frameAfter(page, () => { document.getElementById('tab-play').click(); document.getElementById('newBtn').click(); }), 'Home to a fresh board');
+      assert.equal(await page.evaluate(() => window.__coach.hist().length), 0, 'no move has been made');
+      assert.equal(await page.evaluate(() => document.querySelector('.boardcol').getClientRects().length > 0), true, 'the board is on screen');
+      await staysAway(page, 'the board screen with a fresh board');
+      assert.equal(await page.evaluate(() => [...document.querySelectorAll('.tipslot')].some((e) => e.getClientRects().length > 0)), false, 'no tip on the board screen');
+      m0 = (await calls(page)).length; s0 = await now(page);
+      await goTab(page, 'progress');
+      await backAfterDelay(page, m0, s0, 'back on Progress');
+      requestRules(await calls(page), 'Progress');
+      return page;
+    }
     // A-D19: Improver Home is the board screen. A fresh board with no move still gets no banner; Rani's tip stays.
     hiddenInAFrame(await frameAfter(page, () => document.getElementById('tab-coach').click()), 'Progress to Home');
     assert.equal(await page.evaluate(() => window.__coach.hist().length), 0, 'no move has been made');
@@ -630,7 +716,7 @@ const cases = [
     assert.equal(await vis(page, await slotSel(page, '#homeSlot')), true, 'the tip is still on Home');
     // back to Progress: a new screen under the finger, so the banner comes back a second later
     const n0 = (await calls(page)).length, t0 = await now(page);
-    await page.locator('#tab-progress').click();
+    await goTab(page, 'progress');
     await backAfterDelay(page, n0, t0, 'back on Progress');
     requestRules(await calls(page), 'Progress');
     return page;
@@ -695,7 +781,7 @@ const cases = [
     assert.equal(await padNow(page), 0); assert.equal(await vis(page, await slotSel(page, '#homeSlot')), true, 'the tip, as today');
     await page.locator('#bhome .bh-go').click(); await finishLesson(page); await page.waitForTimeout(1300);
     assert.equal(await padNow(page), 0);
-    await page.locator('#settingsBtn').click();
+    await page.locator(GEAR).click();
     assert.equal(await vis(page, '#settingsSheet [data-act="privacy"]'), true, '"Privacy policy" is for everyone');
     assert.equal(await vis(page, '#settingsSheet [data-act="privchoices"]'), false);
     await page.locator('[data-act="settingsclose"]').click();

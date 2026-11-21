@@ -106,6 +106,8 @@ const tags3d = (page) => page.evaluate(() => window.Board3D.debug.tags());
 const pieces = (page) => page.evaluate(() => { const g = new window.Chess(); window.__coach.hist().forEach((m) => g.move(m)); const out = []; g.SQUARES.forEach((s) => { const p = g.get(s); if (p) out.push({ sq: s, color: p.color, type: p.type }); }); return out; });
 // How far a tag's middle is from a box on screen (0 inside it).
 const near = (t, b) => Math.hypot(Math.max(b.l - t.sx, 0, t.sx - b.r), Math.max(b.t - t.sy, 0, t.sy - b.b));
+// The whole tag (its box on screen), not just its middle, is inside the 3D canvas.
+const inside = (t) => t.sx - t.sr >= t.rect.left - 0.5 && t.sx + t.sr <= t.rect.right + 0.5 && t.sy - t.sr >= t.rect.top - 0.5 && t.sy + t.sr <= t.rect.bottom + 0.5;
 const byColor = (list, c) => list.filter((t) => t.color === c);
 function sixRoles(list, why) {
   for (const c of ['w', 'b']) assert.deepEqual([...new Set(byColor(list, c).map((t) => t.role))].sort(), ROLES.slice().sort(), why + ': six different tags for ' + c);
@@ -272,10 +274,12 @@ const cases = [
         assert.ok(Math.hypot(t.x - t.px, t.z - t.pz) < 0.5 && t.y > t.py, why + ' ' + t.sq + ': over its own square');
         // the piece's box is measured here, from its meshes without the tag (not from what the tag was placed by)
         assert.ok(near(t, t.box) <= t.sr * 1.2, why + ' ' + t.sq + ': touching its own piece on screen ' + JSON.stringify([t.sx, t.sy, t.box]));
-        assert.ok(t.sx > (t.box.l + t.box.r) / 2, why + ' ' + t.sq + ': on the right of its piece');
+        // on the right shoulder, or on the left one where the right one would leave the picture
+        if (t.side < 0) { assert.ok(t.sx < (t.box.l + t.box.r) / 2, why + ' ' + t.sq + ': on the left of its piece'); assert.ok(t.box.r + 2.4 * t.sr > t.rect.right, why + ' ' + t.sq + ': on the left only at the right edge ' + JSON.stringify([t.sx, t.sr, t.box, t.rect.right])); }
+        else assert.ok(t.sx > (t.box.l + t.box.r) / 2, why + ' ' + t.sq + ': on the right of its piece');
         if (curPol === 0.6) assert.ok(t.sy < (t.box.t + t.box.b) / 2, why + ' ' + t.sq + ': at the upper right shoulder (from the opening height)');
         assert.ok(t.depth < t.pdepth, why + ' ' + t.sq + ': in front of its own piece');
-        assert.ok(t.sx > t.rect.left && t.sx < t.rect.right && t.sy > t.rect.top && t.sy < t.rect.bottom, why + ' ' + t.sq + ': on screen');
+        assert.ok(inside(t), why + ' ' + t.sq + ': the whole tag is inside the 3D picture ' + JSON.stringify([Math.round(t.sx), Math.round(t.sy), Math.round(t.sr), t.rect]));
       }
       return list;
     };
@@ -375,14 +379,22 @@ const cases = [
     assert.deepEqual(await page.evaluate(() => window.__coach.hist()), [], 'no move was played');
     assert.equal(await sel(), 'e2', 'the pawn is still the picked piece');
     // tags off: nothing invisible takes the tap. The same spots now pick whatever is behind them, so not always the tag's piece.
-    await page.evaluate(() => { window.Board3D.debug.view(0, 0.6); window.Board3D.debug.show(false); });
-    const hidden = (await tags3d(page)).filter((x) => x.color === 'w'), got = [];
-    assert.ok(hidden.every((x) => !x.visible));
-    for (const h of hidden) { await clear(); await page.mouse.click(h.sx + h.sr * 0.6, h.sy - h.sr * 0.6); await page.waitForTimeout(40); got.push(h.sq + '>' + (await sel())); }
+    // tags off: nothing invisible takes the tap. Somewhere a tag hangs over another square or piece, and a tap there
+    // now picks that one instead.
+    const got = [];
+    await page.evaluate(() => { window.__coach.getProf().pieceTags = false; }); // the switch, off (the next draw applies it)
+    await clear();
+    for (const [az, pol] of [[0, 0.28], [0, 0.6], [0, 1.12]]) {
+      await page.evaluate(([a, p]) => window.Board3D.debug.view(a, p), [az, pol]);
+      const hidden = (await tags3d(page)).filter((x) => x.color === 'w');
+      assert.ok(hidden.every((x) => !x.visible));
+      for (const h of hidden) for (const [dx, dy] of [[0.9, 0], [0, -0.9], [0.65, -0.65]]) { await clear(); await page.mouse.click(h.sx + h.side * dx * h.sr, h.sy + dy * h.sr); await page.waitForTimeout(30); got.push(h.sq + '>' + (await sel())); }
+    }
     assert.ok(got.some((x) => x.slice(0, 2) !== x.slice(3)), 'tags off: a hidden tag does not take the tap: ' + got.join(' '));
     await clear();
     // a tap on the piece itself still works
-    await page.evaluate(() => window.Board3D.debug.show(true));
+    await page.evaluate(() => { window.__coach.getProf().pieceTags = true; window.Board3D.debug.view(0, 1.12); });
+    await clear();
     const t2 = (await tags3d(page)).find((x) => x.sq === 'e2');
     await page.mouse.click(t2.baseSx, t2.baseSy);
     await page.waitForFunction(() => window.__coach.st.sel === 'e2');
@@ -394,47 +406,62 @@ const cases = [
     const ITALIAN = ['e4', 'e5', 'Nf3', 'Nc6', 'Bc4', 'Bc5', 'd3', 'd6', 'Nc3', 'Nf6'];
     // How much of rectangle b the disc (x, y, r) covers, by sampling.
     const cover = (x, y, r, b) => { let n = 0, all = 0; for (let i = 0; i < 24; i++) for (let j = 0; j < 24; j++) { const px = b.l + (i + 0.5) * (b.r - b.l) / 24, py = b.t + (j + 0.5) * (b.b - b.t) / 24; all++; if (Math.hypot(px - x, py - y) <= r) n++; } return n / all; };
-    // The limits. The emblem box is the box on screen of the emblem's own meshes (for the figure sets, of the whole figure),
-    // measured fresh from the scene. From the opening height a tag is about as big on screen as a small emblem, so "a corner"
-    // is: under a fifth of a neighbour's box (the emblem sets measure 0 to 2%, the figures up to 19% of the whole figure
-    // with its base), under a third of its own (measured 12 to 30%), and two tags may overlap by at most 30% of their radii
-    // (measured 9%). Before the fix the same position measured 74% of a neighbour and tags stacked by 94%.
-    const NEIGHBOUR = 0.2, OWN = 0.33, STACK = 0.3, bad = [], per = [];
-    let worst = { n: 0, own: 0, tagOnTag: 0 }, page;
+    // What is measured. The emblem box is the box on screen of the emblem's own meshes (for the figure sets, of the figure
+    // without its base), measured fresh from the scene, not from what the tag was placed by.
+    // The limits, by kind of view. Measured at 360, 412 and 1280 (the shares are the same at every size):
+    //  - straight on (the board not turned; opening, lowest and highest camera): a tag covers at most 15% of the emblem of a
+    //    piece behind it (Hero League 0 to 2%, the Ramayana figures up to 15%). Limit: a fifth.
+    //  - turned (0.6 and 1.2 either way, at two heights): the piece on the next diagonal square stands behind the right
+    //    shoulder, and a tag is as wide as the gap between two files, so more is covered: up to 26% (Ramayana f6 over f7),
+    //    23% for Hero League. Limit: a third. This is a separate, weaker promise than straight on, not the same one raised.
+    //  - its own emblem: up to 27% for an emblem set. A figure seen from straight above is smaller on screen than the tag
+    //    that must stay touching it: up to 47%. Limits: 35% and 55%.
+    //  - two tags overlap by at most 10% of their radii (a left shoulder tag beside a right shoulder one). Limit: 15%.
+    //  - size at 360: 14.2px or more from the opening height, 12.1px at the lowest camera, 10.1px turned and low.
+    //    Limits: 14, 12 and 10px.
+    // Before the fixes the same position measured 74% of a neighbour, tags stacked by 94%, and the h1 tag was half off the edge.
+    const LIMIT = { straight: { neighbour: 0.2, stack: 0.15, px: 12 }, turned: { neighbour: 0.33, stack: 0.15, px: 10 } }, OWN = { heroes: 0.35, ramayana: 0.55 };
+    const STRAIGHT = [['default', 0, 0.6], ['low', 0, 1.12], ['high', 0, 0.28]];
+    const TURNED = [['turned 0.6 mid', 0.6, 0.85], ['turned -0.6 mid', -0.6, 0.85], ['turned 1.2 mid', 1.2, 0.85], ['turned -1.2 mid', -1.2, 0.85],
+      ['turned 0.6 low', 0.6, 1.12], ['turned -0.6 low', -0.6, 1.12], ['turned 1.2 low', 1.2, 1.12], ['turned -1.2 low', -1.2, 1.12]];
+    const bad = [], per = [], worst = { straight: { n: 0, own: 0, tt: 0, min: 99 }, turned: { n: 0, own: 0, tt: 0, min: 99 } }, K = 360 / vp.width; // the px limits are for a 360 wide phone
+    let page;
     for (const set of ['heroes', 'ramayana']) {
       if (page) { assert.deepEqual(page.errors, [], 'console errors or warnings (' + set + ')'); await page.context().close(); }
       page = await newPage(vp, club(), { set, v3d: true, game: Object.assign({}, GAME0, { sans: ITALIAN }) });
       await page.waitForFunction(() => !window.__coach.st.busy);
       for (const flip of [false, true]) {
-        if (flip) { await page.locator('#flipBtn').click(); await idle3d(page); }
-        for (const [name, az, pol] of [['default', 0, 0.6], ['low', 0, 1.12], ['high', 0, 0.28]]) {
+        if (flip) { await page.evaluate(() => window.Board3D.debug.view(0, 0.6)); await page.locator('#flipBtn').click(); await idle3d(page); }
+        for (const [name, az, pol] of STRAIGHT.concat(TURNED)) {
           await page.evaluate(([a, p]) => window.Board3D.debug.view(a, p), [az, pol]);
-          const list = await tags3d(page), why = set + (flip ? ' flipped ' : ' ') + name;
+          const list = await tags3d(page), why = set + (flip ? ' flipped ' : ' ') + name, kind = az === 0 ? 'straight' : 'turned', L = LIMIT[kind];
           assert.equal(list.length, 32);
-          const W = { n: 0, own: 0, tt: 0, min: 99 };
+          const W = { n: 0, own: 0, tt: 0, min: 99, out: 0 };
           for (const t of list) {
             W.min = Math.min(W.min, 2 * t.sr);
-            if (name === 'default' && 2 * t.sr < 14) bad.push(why + ' ' + t.sq + ': under 14px across (' + (2 * t.sr).toFixed(1) + ')');
+            if (2 * t.sr * (vp.width > 860 ? 1 : K) < (name === 'default' ? 14 : L.px)) bad.push(why + ' ' + t.sq + ': only ' + (2 * t.sr).toFixed(1) + 'px across');
+            if (!inside(t)) { W.out++; bad.push(why + ' ' + t.sq + ': the tag is not fully inside the 3D picture'); }
             if (!(near(t, t.box) <= t.sr * 1.2)) bad.push(why + ' ' + t.sq + ': not touching its own piece');
             const own = cover(t.sx, t.sy, t.sr, t.emb);
-            worst.own = Math.max(worst.own, own); W.own = Math.max(W.own, own);
-            if (own > OWN) bad.push(why + ' ' + t.sq + ': covers ' + (own * 100).toFixed(0) + '% of its own emblem');
+            W.own = Math.max(W.own, own);
+            if (own > OWN[set]) bad.push(why + ' ' + t.sq + ': covers ' + (own * 100).toFixed(0) + '% of its own emblem');
             for (const o of list) {
               if (o === t) continue;
               // only a piece further from the camera can be covered: a nearer one is drawn over the tag
-              if (o.pdepth > t.depth) { const c = cover(t.sx, t.sy, t.sr, o.emb); worst.n = Math.max(worst.n, c); W.n = Math.max(W.n, c); if (c > NEIGHBOUR) bad.push(why + ': the ' + t.sq + ' tag covers ' + (c * 100).toFixed(0) + '% of the emblem on ' + o.sq); }
-              const d = Math.hypot(t.sx - o.sx, t.sy - o.sy), ov = 1 - d / (t.sr + o.sr); worst.tagOnTag = Math.max(worst.tagOnTag, ov); W.tt = Math.max(W.tt, ov);
-              if (ov > STACK) bad.push(why + ': the tags on ' + t.sq + ' and ' + o.sq + ' stack (' + (ov * 100).toFixed(0) + '%)');
+              if (o.pdepth > t.depth) { const c = cover(t.sx, t.sy, t.sr, o.emb); W.n = Math.max(W.n, c); if (c > L.neighbour) bad.push(why + ': the ' + t.sq + ' tag covers ' + (c * 100).toFixed(0) + '% of the emblem on ' + o.sq); }
+              const d = Math.hypot(t.sx - o.sx, t.sy - o.sy), ov = 1 - d / (t.sr + o.sr); W.tt = Math.max(W.tt, ov);
+              if (ov > L.stack) bad.push(why + ': the tags on ' + t.sq + ' and ' + o.sq + ' stack (' + (ov * 100).toFixed(0) + '%)');
             }
           }
-          per.push(why + ': neighbour ' + (W.n * 100).toFixed(0) + '%, own ' + (W.own * 100).toFixed(0) + '%, tag on tag ' + (Math.max(0, W.tt) * 100).toFixed(0) + '%, smallest ' + W.min.toFixed(1) + 'px');
-          await shot(page, vp, 'crowd-' + set + (flip ? '-flipped' : '') + '-' + name);
+          const w = worst[kind]; w.n = Math.max(w.n, W.n); w.own = Math.max(w.own, W.own); w.tt = Math.max(w.tt, W.tt); w.min = Math.min(w.min, W.min);
+          per.push(why + ': neighbour ' + (W.n * 100).toFixed(0) + '%, own ' + (W.own * 100).toFixed(0) + '%, tag on tag ' + (Math.max(0, W.tt) * 100).toFixed(0) + '%, smallest ' + W.min.toFixed(1) + 'px, cut off ' + W.out);
+          if (az === 0 || name === 'turned 0.6 mid' || name === 'turned -1.2 low') await shot(page, vp, 'crowd-' + set + (flip ? '-flipped' : '') + '-' + name.replace(/ /g, '_'));
         }
       }
     }
     if (process.env.G1_COVER) notes.push(...per);
     assert.deepEqual(bad.slice(0, 12), [], bad.length + ' tags cover too much');
-    notes.push(vp.width + ': crowded position, worst cover of a neighbour’s emblem ' + (worst.n * 100).toFixed(1) + '%, of its own ' + (worst.own * 100).toFixed(1) + '%, worst tag on tag overlap ' + (Math.max(0, worst.tagOnTag) * 100).toFixed(0) + '% of the two radii');
+    for (const k of ['straight', 'turned']) notes.push(vp.width + ': crowded position, ' + k + ' views: worst cover of a neighbour’s emblem ' + (worst[k].n * 100).toFixed(1) + '%, of its own ' + (worst[k].own * 100).toFixed(1) + '%, tag on tag ' + (Math.max(0, worst[k].tt) * 100).toFixed(0) + '%, smallest tag ' + worst[k].min.toFixed(1) + 'px');
     return page;
   }],
 

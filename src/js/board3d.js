@@ -264,7 +264,7 @@ var Board3D = (function () {
     if (!c) { g.updateMatrixWorld(true); c = tagTop[key] = new T.Box3().setFromObject(g.userData.emb || g).max.clone(); c.y = new T.Box3().setFromObject(g).max.y; }
     top = c.y;
     var m = new T.Mesh(tagGeo || (tagGeo = new T.CircleGeometry(TAG_R, 28)), tagMat(set, color, type));
-    m.position.set(Math.min(c.x + TAG_DX, TAG_XMAX), top + TAG_DY, TAG_Z); m.userData.y0 = m.position.y; m.renderOrder = 5; m.visible = tagsOn;
+    m.position.set(Math.min(c.x + TAG_DX, TAG_XMAX), top + TAG_DY, TAG_Z); m.userData.x0 = m.position.x; m.userData.y0 = m.position.y; m.renderOrder = 5; m.visible = tagsOn;
     m.raycast = tagRay;
     m.userData.role = type; m.userData.color = color;
     g.add(m); g.userData.tag = m; g.userData.top = top;
@@ -293,9 +293,9 @@ var Board3D = (function () {
     var G = geoCache[key], g = new T.Group(), w = color === 'w';
     var pedM = mat('ped' + color, function () { return std(w ? '#efe3c8' : '#2b211b', 0.4, 0.05); }), trimM = mat('pedtrim', function () { return std('#d9ab48', 0.28, 0.9); });
     function add(geo, m) { var me = new T.Mesh(geo, m); me.castShadow = true; me.receiveShadow = true; g.add(me); }
-    add(G.ped, pedM); add(G.trim, trimM);
+    add(G.ped, pedM); add(G.trim, trimM); g.children[0].userData.base = g.children[1].userData.base = true;
     G.parts.forEach(function (pt) { add(pt.geo, mat('fig' + pt.key + pt.color + pt.rough, function () { return std(pt.color, pt.rough, pt.metal); })); });
-    var pl = new T.Mesh(plaqueGeo || (plaqueGeo = new T.CircleGeometry(0.075, 24)), plaqueMat(set, color, type)); pl.scale.setScalar(0.85); pl.position.set(0, 0.06, G.R + 0.02); pl.rotation.x = -0.5; g.add(pl);
+    var pl = new T.Mesh(plaqueGeo || (plaqueGeo = new T.CircleGeometry(0.075, 24)), plaqueMat(set, color, type)); pl.scale.setScalar(0.85); pl.userData.plaque = true; pl.position.set(0, 0.06, G.R + 0.02); pl.rotation.x = -0.5; g.add(pl);
     g.userData.bill = true;
     return g;
   }
@@ -456,10 +456,21 @@ var Board3D = (function () {
     var low = clamp((pol - POL0) / (POL1 - POL0), 0, 1);
     pcGroup.children.forEach(function (o) {
       if (o.userData.bill) { o.rotation.y = ry; if (o.userData.emb) o.userData.emb.rotation.x = tilt; }
-      var tg = o.userData.tag; if (tg && tg.visible) { tg.quaternion.copy(o.quaternion).invert().multiply(cam.quaternion); tg.position.y = tg.userData.y0 + (TAG_LOW - tg.userData.y0) * low; } /* G-D13: the tag faces the player */
+      var tg = o.userData.tag; if (tg && tg.visible) { tg.quaternion.copy(o.quaternion).invert().multiply(cam.quaternion); tg.position.y = tg.userData.y0 + (TAG_LOW - tg.userData.y0) * low;
+        /* the right shoulder, unless the tag would hang off the right edge of the picture: then the left shoulder */
+        var x0 = tg.userData.x0, side = tagEdge(o, ry, x0 + TAG_R, tg.position.y) > TAG_EDGE && tagEdge(o, ry, -x0 - TAG_R, tg.position.y) > -TAG_EDGE ? -1 : 1;
+        tg.position.x = side * x0; tg.position.z = side < 0 ? TAG_ZL : TAG_Z; tg.userData.side = side;
+      } /* G-D13: the tag faces the player */
     });
   }
 
+  /* Where a point beside a piece (lx to the player's right of it, ly up) is across the picture: -1 the left edge, 1 the right. */
+  /* TAG_ZL: a tag on the left shoulder stands a little further back, clear of the right shoulder tag of the piece beside it. */
+  var TAG_EDGE = 0.985, TAG_ZL = -0.2;
+  function tagEdge(o, ry, lx, ly) {
+    var c = Math.cos(ry), s = Math.sin(ry);
+    return vv.set(o.position.x + c * lx + s * TAG_Z, o.position.y + ly * o.scale.y, o.position.z - s * lx + c * TAG_Z).project(cam).x;
+  }
   /* ---------- input ---------- */
   var ptrs = {}, drag = null, pinch0 = 0, ray = null;
   function pick(ev) {
@@ -629,10 +640,10 @@ var Board3D = (function () {
       placeCam(); scene.updateMatrixWorld(true); cam.getWorldDirection(cd); up.set(0, 1, 0).applyQuaternion(cam.quaternion);
       function scr(x, y, z) { v.set(x, y, z).project(cam); return { x: r.left + (v.x + 1) / 2 * r.width, y: r.top + (1 - v.y) / 2 * r.height }; }
       /* the box on screen of every mesh under root except the tag, measured now from the meshes themselves */
-      function rect(root, skip) {
+      function rect(root, skip, noBase) {
         var b = { l: Infinity, t: Infinity, r: -Infinity, b: -Infinity }, c = new T.Vector3();
         root.traverse(function (m) {
-          if (!m.isMesh || m === skip) return;
+          if (!m.isMesh || m === skip || (noBase && (m.userData.base || m.userData.plaque))) return;
           if (!m.geometry.boundingBox) m.geometry.computeBoundingBox();
           var bb = m.geometry.boundingBox;
           for (var i = 0; i < 8; i++) {
@@ -650,7 +661,7 @@ var Board3D = (function () {
         out.push({ sq: o.userData.sq, role: t.userData.role, color: t.userData.color, visible: t.visible, gone: !!o.userData.gone, facing: -n.dot(cd),
           x: w.x, y: w.y, z: w.z, px: o.position.x, py: o.position.y, pz: o.position.z, top: o.userData.top, r: TAG_R,
           sx: s.x, sy: s.y, sr: Math.hypot(e.x - s.x, e.y - s.y), topSx: tp.x, topSy: tp.y, baseSx: bs.x, baseSy: bs.y,
-          box: rect(o, t), emb: rect(o.userData.emb || o, t), depth: w.distanceTo(cam.position), pdepth: o.position.distanceTo(cam.position),
+          box: rect(o, t), emb: rect(o.userData.emb || o, t, true), side: t.userData.side || 1, depth: w.distanceTo(cam.position), pdepth: o.position.distanceTo(cam.position),
           rect: { left: r.left, top: r.top, right: r.right, bottom: r.bottom } });
       });
       return out;

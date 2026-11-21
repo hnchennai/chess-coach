@@ -493,6 +493,7 @@
   /* How long it stays: until any move by either side, a new game or another activity, a tap on an empty square, or
      5 seconds after the tap. A new tap on a piece starts the 5 seconds again. */
   var NAME_MS = 5000, nameTimer = 0;
+  /* The position the line was asked in. Worked out at the tap, and after that only while a line is showing. */
   function nameKey() { return st.mode + '|' + viewGame().fen(); }
   function clearName() { clearTimeout(nameTimer); nameTimer = 0; st.nm = null; renderName(); }
   function namePiece(s) {

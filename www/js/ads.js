@@ -24,10 +24,11 @@
   /* THE BANNER RULE (criterion 1). s.slot is the tip slot's own answer for the screen the player is on (app.js slotAllowed
      for the place stripPlace names), so the banner can never show where the slot rule refuses a slot. The other facts can
      only take the banner away. Every fact must be known: a missing one means no banner.
-     s: { slot, firstDay, activity, overlay, height, native } */
+     s: { slot, firstDay, activity, overlay, board, height, native }
+     A-D19: board = the place is Home and the board is on screen (moved or not). Unknown fails closed. */
   function mayShow(s) {
     if (!s || typeof s !== 'object') return false;
-    return s.slot === true && s.native === true && s.firstDay === false && s.activity === false && s.overlay === false &&
+    return s.slot === true && s.native === true && s.firstDay === false && s.activity === false && s.overlay === false && s.board === false &&
       typeof s.height === 'number' && s.height >= MIN_HEIGHT;
   }
   /* A-D11, A-D7: whether the consent check (Google is asked, nothing is shown) runs for this app session. It is asked once,
@@ -75,7 +76,7 @@
     var i = d.info, f = d.facts, e = String(d.err || '').slice(0, 200);
     return 'Ads test: state ' + (d.state || 'unknown') + '; banner ' + (d.banner || 'unknown') + '; ' + (d.loaded ? 'ad loaded (' + (+d.h || 0) + ')' : 'no ad loaded') +
       '; consent ' + (i ? (i.status || 'unknown') + ', can request ' + yn(i.canRequestAds) : 'unknown') +
-      (f ? '; slot ' + yn(f.slot) + '; first day ' + yn(f.firstDay) + '; activity ' + yn(f.activity) + '; sheet ' + yn(f.overlay) + '; height ' + (+f.height || 0) : '') +
+      (f ? '; slot ' + yn(f.slot) + '; first day ' + yn(f.firstDay) + '; activity ' + yn(f.activity) + '; sheet ' + yn(f.overlay) + '; board ' + yn(f.board) + '; height ' + (+f.height || 0) : '') +
       '; ' + (e || 'no error');
   }
 

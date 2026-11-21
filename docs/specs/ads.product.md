@@ -36,6 +36,7 @@ Builds on: `docs/specs/flow-rework.product.md` (F-D1 to F-D33). Android only.
 | A-D15 | Every time the banner appears (Home, Progress, end cards, after a sheet or note closes, after a tab change) it waits at least 1 second, so a tap meant for something else cannot land on an ad | Delegated to Claude (AdMob accidental-click rule, lesson L20); widened from end cards only after review, 2026-11-21 |
 | A-D16 | Wide screens (tablet, board and panel side by side): the banner is still one strip at the bottom of the screen, never in a column beside the board (F-D27) | Delegated to Claude |
 | A-D17 | Settings gains "Privacy policy" (opens https://hnchennai.github.io/privacy.html) for everyone, and "Privacy choices" (reopens Google's form) only where Google says a choice applies | Delegated to Claude (Google requires the second where consent applies) |
+| A-D19 | On Home the banner never shows while the board is on screen, whether or not a move has been made. Improver and Club players (Home is the board screen) see the banner on Progress and end cards only. Beginner Home has no board and keeps it. Rani's tip is unchanged | Suresh, 2026-11-21 (found on the phone test: the banner sat under a fresh board) |
 | A-D18 | No "Remove ads" button or wording yet. That is F5 | Scope |
 
 ## New wording (all of it)
@@ -69,7 +70,7 @@ Hard rules, the licence line gains:
 12. Given the web version, then nothing changes and the ads rules file is never loaded.
 
 ## Acceptance criteria
-1. The banner can show only when the tip slot rule allows a slot on the current screen. One function decides both.
+1. The banner can show only when the tip slot rule allows a slot on the current screen. One function decides both. The banner has one extra limit the tip does not: none on Home while the board is on screen (A-D19).
 2. First day: zero calls to the ads plugin and zero network requests from the app.
 3. Banner hidden within one frame of an activity starting, a sheet or dialog opening, the screen becoming shorter than 500px, or leaving a slot screen.
 4. Every ad request is non-personalised with a PG ceiling. Test: the request options are asserted in a unit test.

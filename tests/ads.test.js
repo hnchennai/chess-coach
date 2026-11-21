@@ -9,7 +9,7 @@ const A = require('../www/js/ads.js');
 const REAL = 'ca-app-pub-1437334216467981/6215501975';
 const TEST = 'ca-app-pub-3940256099942544/9214589741';
 // A second-day player on Home, online, in the Android app, phone upright: the banner may show.
-const OK = { slot: true, firstDay: false, activity: false, overlay: false, height: 915, native: true };
+const OK = { slot: true, firstDay: false, activity: false, overlay: false, board: false, height: 915, native: true };
 const but = (o) => Object.assign({}, OK, o);
 
 test('config: the app ID, both units, and the launch switch is off (A-D8, criterion 10)', () => {
@@ -36,6 +36,12 @@ test('criterion 1: the banner may show only when the slot rule allows a slot on 
 test('A-D3: none on the first day, none during an activity', () => {
   assert.equal(A.mayShow(but({ firstDay: true })), false);
   assert.equal(A.mayShow(but({ activity: true })), false);
+});
+
+test('A-D19: none on Home while the board is on screen, moved or not', () => {
+  assert.equal(A.mayShow(but({ board: true })), false);
+  assert.equal(A.mayShow(but({ board: undefined })), false, 'an unknown board fact fails closed');
+  assert.equal(A.mayShow(but({ board: false })), true);
 });
 
 test('A-D12: none while a sheet, dialog or offer is open', () => {

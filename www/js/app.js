@@ -805,12 +805,14 @@
   function adOverlay() { var sh = $('settingsSheet'); return !!((sh && !sh.hidden) || Placement.isOpen() || noteCur || ad.form); }
   /* Criterion 1: the slot rule's own answer for the screen the player is on (the place stripPlace names, on phones too). */
   var AD_CARD = { game: 'gameEnd', learn: 'learnEnd', step: 'sessionCard' };
+  /* A-D19: on Home the banner never shares the screen with the board, moved or not. The board column is hidden on Beginner Home. */
+  function adBoard(place) { if (place !== 'home') return false; var b = document.querySelector('.boardcol'); return !b || b.getClientRects().length > 0; }
   function adFacts() {
     var p = stripPlace();
     /* an end card counts once it is on screen (the state changes a moment before the card is drawn) */
     if (p && AD_CARD[p[0]]) { var c = $(AD_CARD[p[0]]); if (!c || c.hidden) p = null; }
     return { place: p ? p[0] : null, visit: p ? p[1] : null, slot: !!p && slotAllowed(p[0], p[1]), native: !!AD, firstDay: Tips.firstDay(prof, Date.now()), level: prof.level || null,
-      activity: activityOn(), overlay: adOverlay(), height: window.innerHeight };
+      activity: activityOn(), overlay: adOverlay(), board: adBoard(p ? p[0] : null), height: window.innerHeight };
   }
   function adTabsFixed() { var t = document.querySelector('.tabs'); return !!t && getComputedStyle(t).position === 'fixed'; }
   /* A-D14: the page's bottom padding: an empty box, the last thing in the page. Only while the banner is on screen WITH an ad

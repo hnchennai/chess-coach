@@ -191,3 +191,117 @@ test('F-D33: the review card’s button reads "Start next lesson" when its line 
   for (const button of ['Start lesson', 'Continue']) assert.deepEqual(F.afterReview({ title: 'Forks', button, lesson: true }).main, { label: 'Start next lesson', go: 'step' });
   assert.deepEqual(F.afterReview({ title: 'Puzzles to reach 1200', button: 'Start 10 puzzles', lesson: false }).main, { label: 'Start 10 puzzles', go: 'step' });
 });
+
+/* ---------- G2a: the board screen on phones (docs/specs/board-screens.product.md, G-D1 to G-D12, G-D21 to G-D26) ---------- */
+test('G2a: the board screen is open only on phones, and only when the screen state says so (G-D2, G-D10)', () => {
+  assert.equal(F.actOpen({ wide: false, scr: 'act' }), true);
+  assert.equal(F.actOpen({ wide: false, scr: 'tabs' }), false);
+  assert.equal(F.actOpen({ wide: true, scr: 'act' }), false, 'wide screens never have a board screen');
+  assert.equal(F.actOpen({ wide: true, scr: 'tabs' }), false);
+  assert.equal(F.actOpen({}), false);
+  assert.equal(F.actOpen(), false);
+});
+
+test('G2a: the tabs are hidden while the board screen is open, and back whenever an end card is up (G-D3, G-D8)', () => {
+  assert.equal(F.tabsHidden({ wide: false, scr: 'act', end: false }), true);
+  assert.equal(F.tabsHidden({ wide: false, scr: 'act', end: true }), false);
+  assert.equal(F.tabsHidden({ wide: false, scr: 'tabs', end: false }), false);
+  assert.equal(F.tabsHidden({ wide: false, scr: 'tabs', end: true }), false);
+  for (const scr of ['act', 'tabs']) for (const end of [true, false]) assert.equal(F.tabsHidden({ wide: true, scr, end }), false, 'wide: never hidden');
+});
+
+test('G2a: the board screen stays open only on its activity’s own tab, or under a Learn end card (no dead end)', () => {
+  assert.equal(F.keepsScreen({ tab: 'play', zoneTab: 'play', learnEnd: false }), true);
+  assert.equal(F.keepsScreen({ tab: 'train', zoneTab: 'train', learnEnd: false }), true);
+  assert.equal(F.keepsScreen({ tab: 'path', zoneTab: 'path', learnEnd: false }), true);
+  assert.equal(F.keepsScreen({ tab: 'path', zoneTab: 'play', learnEnd: true }), true, 'the Learn end card: the board is back on the game');
+  assert.equal(F.keepsScreen({ tab: 'path', zoneTab: 'play', learnEnd: false }), false);
+  assert.equal(F.keepsScreen({ tab: 'coach', zoneTab: 'play', learnEnd: false }), false);
+  assert.equal(F.keepsScreen({ tab: 'progress', zoneTab: 'play', learnEnd: true }), false);
+});
+
+test('Criterion 7: one function says whether the board is in use. Phones: only while the board screen is open with no end card', () => {
+  // phones: a saved, closed game or a closed lesson does not count (G-D11)
+  assert.equal(F.inUse({ wide: false, open: false, end: false, busy: true, check: false }), false);
+  assert.equal(F.inUse({ wide: false, open: true, end: false, busy: true, check: false }), true);
+  assert.equal(F.inUse({ wide: false, open: true, end: false, busy: false, check: false }), true, 'a fresh board with no move still counts (A-D19)');
+  assert.equal(F.inUse({ wide: false, open: true, end: true, busy: true, check: false }), false, 'an end card: the activity is over');
+  // wide: today's rule, unchanged (F-D4, F-D17)
+  assert.equal(F.inUse({ wide: true, open: false, end: false, busy: true, check: false }), true);
+  assert.equal(F.inUse({ wide: true, open: true, end: true, busy: true, check: false }), true);
+  assert.equal(F.inUse({ wide: true, open: true, end: false, busy: false, check: false }), false);
+  // the level check counts everywhere
+  for (const wide of [true, false]) assert.equal(F.inUse({ wide, open: false, end: false, busy: false, check: true }), true);
+  // a missing fact fails closed
+  assert.equal(F.inUse(), true);
+  assert.equal(F.inUse({ wide: false }), true);
+  assert.equal(F.inUse({ wide: false, open: false, end: false, check: false }), false);
+});
+
+test('Criterion 7: one function decides the tip slot (and so the banner): never while the board screen is open', () => {
+  const places = ['home', 'progress', 'game', 'learn', 'step'];
+  // the first-day rule holds everywhere (F-D5)
+  for (const place of places) for (const wide of [true, false]) assert.equal(F.slotOk({ place, day: false, inUse: false, wide, gameOn: false }), false, place);
+  // Home and Progress: never while the board is in use
+  for (const place of ['home', 'progress']) for (const wide of [true, false]) {
+    assert.equal(F.slotOk({ place, day: true, inUse: true, wide, gameOn: false }), false);
+    assert.equal(F.slotOk({ place, day: true, inUse: false, wide, gameOn: false }), true);
+  }
+  // phones (G-D11): a saved, closed game no longer hides the slot on Home, Progress or end cards
+  assert.equal(F.slotOk({ place: 'home', day: true, inUse: false, wide: false, gameOn: true }), true);
+  assert.equal(F.slotOk({ place: 'progress', day: true, inUse: false, wide: false, gameOn: true }), true);
+  for (const place of ['game', 'learn', 'step']) assert.equal(F.slotOk({ place, day: true, inUse: false, wide: false, gameOn: true }), true, place);
+  // an end card's slot never shows under a board screen that is still in use (no end card up)
+  for (const place of ['game', 'learn', 'step']) assert.equal(F.slotOk({ place, day: true, inUse: true, wide: false, gameOn: false }), false, place);
+  // wide keeps F-D32: an end card has no slot while a game is unfinished
+  for (const place of ['game', 'learn', 'step']) {
+    assert.equal(F.slotOk({ place, day: true, inUse: true, wide: true, gameOn: true }), false, place);
+    assert.equal(F.slotOk({ place, day: true, inUse: false, wide: true, gameOn: false }), true, place);
+    assert.equal(F.slotOk({ place, day: true, inUse: true, wide: true, gameOn: false }), true, place + ': wide end cards ask only about the game, as before');
+  }
+  // unknown facts fail closed
+  assert.equal(F.slotOk(), false);
+  assert.equal(F.slotOk({ place: 'home', day: true }), false);
+  assert.equal(F.slotOk({ place: 'nowhere', day: true, inUse: false, wide: false, gameOn: false }), false);
+});
+
+test('G-D22: the Resume game card’s line, with the real move number and whose turn it is', () => {
+  assert.equal(F.resumeLine(12, true), 'Move 12, your turn');
+  assert.equal(F.resumeLine(12, false), 'Move 12, engine to move');
+  assert.equal(F.resumeLine(1, false), 'Move 1, engine to move');
+  assert.equal(F.resumeLine(2, true), 'Move 2, your turn');
+  assert.equal(F.resumeLine(0, true), 'Move 1, your turn', 'never a move 0');
+  for (const t of [F.resumeLine(7, true), F.resumeLine(7, false)]) assert.ok(!/—/.test(t));
+});
+
+test('G-D5, G-D26: the Resume card’s title for each kind of activity', () => {
+  assert.equal(F.resumeTitle('game'), 'Resume game');
+  assert.equal(F.resumeTitle('lesson'), 'Resume lesson');
+  for (const k of ['puzzles', 'safety']) assert.equal(F.resumeTitle(k), 'Resume puzzles', k);
+  for (const k of ['drill', 'book', 'squares', 'reach']) assert.equal(F.resumeTitle(k), 'Resume drill', k);
+  assert.equal(F.COPY.recent, 'Recent games');
+  assert.equal(F.COPY.close, 'Close');
+});
+
+test('G-D25: on a phone the app always opens on Home; wide screens open as before', () => {
+  const has = (t) => ['coach', 'path', 'train', 'play', 'progress'].includes(t);
+  for (const t of ['coach', 'path', 'train', 'play', 'progress', null, 'bogus']) assert.equal(F.startTab(t, false, has), 'coach', String(t));
+  assert.equal(F.startTab('play', true, has), 'play');
+  assert.equal(F.startTab('train', true, has), 'train');
+  assert.equal(F.startTab('progress', true, has), 'progress');
+  assert.equal(F.startTab('path', true, has), 'coach', 'Learn was never restored');
+  assert.equal(F.startTab(null, true, has), 'coach');
+  assert.equal(F.startTab('bogus', true, has), 'coach');
+});
+
+test('G-D4, G-D23: where Close lands', () => {
+  assert.equal(F.closeTab({ mode: 'play', zoneTab: 'play' }), 'play');
+  assert.equal(F.closeTab({ mode: 'lesson', zoneTab: 'path' }), 'path');
+  assert.equal(F.closeTab({ mode: 'puzzle', zoneTab: 'train' }), 'train');
+  assert.equal(F.closeTab({ mode: 'puzzle', zoneTab: 'path' }), 'path', 'a lesson’s practice set belongs to Learn');
+  assert.equal(F.closeTab({ mode: 'play', zoneTab: 'play', learnEnd: true }), 'path', 'the Learn end card');
+  assert.equal(F.closeTab({ mode: 'review', zoneTab: 'play', past: true, from: 'progress' }), 'progress', 'a past game opened on Progress');
+  assert.equal(F.closeTab({ mode: 'review', zoneTab: 'play', past: true, from: 'play' }), 'play', 'a past game opened from Recent games on Play');
+  assert.equal(F.closeTab({ mode: 'review', zoneTab: 'play', past: false, from: 'play' }), 'play', 'a review opened from a game’s end card');
+  assert.equal(F.closeTab({ mode: 'review', zoneTab: 'play', past: false, from: 'progress' }), 'play');
+});

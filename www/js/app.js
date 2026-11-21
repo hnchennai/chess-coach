@@ -788,9 +788,17 @@
     if (!ADS) return null;
     try { var C = window.Capacitor; if (!C || !C.Plugins || !C.Plugins.AdMob) return null; if (typeof C.isNativePlatform === 'function' && !C.isNativePlatform()) return null; return C.Plugins.AdMob; } catch (e) { return null; }
   })();
-  var ad = { state: 'off', banner: 'none', loaded: false, margin: 0, h: 0, ok: false, place: null, visit: null, since: NaN, timer: null, retry: null, retryAt: 0, info: null, form: false, inited: false };
+  var ad = { state: 'off', banner: 'none', loaded: false, margin: 0, h: 0, ok: false, place: null, visit: null, since: NaN, timer: null, retry: null, retryAt: 0, info: null, form: false, inited: false, err: '', facts: null };
   function adNow() { return window.performance && performance.now ? performance.now() : Date.now(); }
   function adNoop() {}
+  /* Test builds only: the last failure, in words, for the state line in Settings (Ads.debugLine). Never shown with real ads on. */
+  function adErr(step, e) { var m = ''; try { m = e && (e.message || e.error || (typeof e === 'string' ? e : JSON.stringify(e))) || ''; } catch (x) {} ad.err = step + ': ' + (m || 'failed'); }
+  function adDebug() {
+    var el = $('adDebug'); if (!el) return;
+    var t = '';
+    try { if (window.Capacitor) t = !ADS ? 'Ads test: rules file not loaded' : !AD ? 'Ads test: plugin not found' : ADS.debugLine(ad); } catch (e) {}
+    el.textContent = t; el.hidden = !t;
+  }
   /* One plugin call. Always a promise; a throw becomes a rejection, so no caller can leak an error. */
   function adCall(m, a) { try { var r = a === undefined ? AD[m]() : AD[m](a); return r && typeof r.then === 'function' ? r : Promise.resolve(r); } catch (e) { return Promise.reject(e); } }
   /* A-D12: a sheet, a dialog or an offer is open: Settings, the level check, any of Rani's notes, or one of Google's forms */
@@ -818,9 +826,9 @@
     adPad();
   }
   /* No ad came: nothing on screen, no gap. While the same screen stays open, one check a minute later (a single timer). */
-  function adLost() { ad.banner = 'none'; ad.loaded = false; ad.h = 0; ad.retryAt = adNow() + 60000; adPad(); adSync(); }
+  function adLost(e) { if (e !== undefined) adErr('ad load', e); ad.banner = 'none'; ad.loaded = false; ad.h = 0; ad.retryAt = adNow() + 60000; adPad(); adSync(); }
   /* A plugin call for the banner failed: remove whatever the native side has, so the page and the native side cannot disagree. */
-  function adDrop() { adCall('removeBanner').catch(adNoop); adLost(); }
+  function adDrop(e) { adErr('banner call', e); adCall('removeBanner').catch(adNoop); adLost(); }
   function adShow() {
     var m = ADS.marginFor(adTabsFixed());
     if (ad.banner === 'shown' && ad.margin === m) return;
@@ -839,6 +847,7 @@
   function adSync() {
     if (!AD || !booted || ad.state === 'off') return;
     var f = adFacts(), now = adNow(), ok = ADS.mayShow(f);
+    if (!f.overlay) ad.facts = f; /* the last facts with no sheet open, for the test state line */
     /* The 1 second clock starts at the first frame after the screen that allows the banner is drawn (when the player can
        see it), and again whenever the banner becomes allowed: a new screen or card, a sheet or note closed, the phone upright. */
     if (!ok) { ad.ok = false; ad.place = null; ad.visit = null; ad.since = NaN; }
@@ -854,14 +863,14 @@
     if (want) adShow(); else adHide();
   }
   /* The session has no ads (the consent check failed, or a plugin error during start-up). Nothing is retried until the next app start. */
-  function adFail() { ad.form = false; ad.state = 'off'; if (ad.banner === 'shown') { ad.banner = 'hidden'; adCall('hideBanner').catch(adNoop); } adPad(); }
+  function adFail(e) { adErr('start (' + ad.state + ')', e); ad.form = false; ad.state = 'off'; if (ad.banner === 'shown') { ad.banner = 'hidden'; adCall('hideBanner').catch(adNoop); } adPad(); }
   function adChoice() { var b = $('privChoices'); if (b) b.hidden = !ADS.hasChoice(ad.info); } /* A-D17 */
   /* A-D7, A-D11: asked once, when the app has started. A no leaves the state 'off' for the whole session. */
   function adBoot() {
     if (!AD || ad.state !== 'off' || ad.booted) return;
     ad.booted = true;
     var f = adFacts(); f.boot = true;
-    if (!ADS.mayStart(f)) return;
+    if (!ADS.mayStart(f)) { ad.err = 'not started: first day or no level'; return; }
     ad.state = 'consent';
     adCall('requestConsentInfo').then(function (info) { ad.info = info || null; adChoice(); adConsent(); }).catch(adFail);
   }
@@ -883,11 +892,11 @@
     function on(name, fn) { try { var r = AD.addListener(name, fn); if (r && typeof r.catch === 'function') r.catch(adNoop); } catch (e) {} }
     /* the height the plugin reports (0 when the banner is hidden, removed or has no ad) */
     on('bannerAdSizeChanged', function (s) { ad.h = s && +s.height > 0 ? +s.height : 0; adPad(); });
-    on('bannerAdLoaded', function () { if (ad.banner === 'none') return; ad.loaded = true; if (ad.banner === 'hidden') adCall('hideBanner').catch(adNoop); adPad(); });
+    on('bannerAdLoaded', function () { if (ad.banner === 'none') return; ad.loaded = true; ad.err = ''; if (ad.banner === 'hidden') adCall('hideBanner').catch(adNoop); adPad(); });
     on('bannerAdFailedToLoad', adLost);
   }
   function adReady() {
-    if (!ADS.canRequest(ad.info)) { ad.state = 'noads'; adHide(); return; }
+    if (!ADS.canRequest(ad.info)) { ad.err = 'Google says ads cannot be requested'; ad.state = 'noads'; adHide(); return; }
     if (ad.inited) { ad.state = 'ready'; adSync(); return; }
     ad.state = 'init'; adListen();
     adCall('initialize', ADS.initOptions()).then(function () { ad.inited = true; ad.state = 'ready'; adSync(); }).catch(adFail);
@@ -1919,7 +1928,7 @@
   var setOpener = null;
   function openSettings() {
     var sh = $('settingsSheet'); if (!sh || !sh.hidden) return;
-    setOpener = document.activeElement; renderLevelCard(); renderLook();
+    setOpener = document.activeElement; renderLevelCard(); renderLook(); adDebug();
     sh.hidden = false; document.documentElement.classList.add('sheet-open'); adSync(); /* A-D12 */
     var pn = sh.querySelector('.sheet-panel'); if (pn) pn.focus({ preventScroll: true });
   }

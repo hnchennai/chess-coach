@@ -716,6 +716,7 @@ header h1 { margin-right: auto; } /* the gear stays right when the engine pill i
 .settitle { margin: 0 0 10px; font-size: 17px; font-weight: 600; }
 /* ---------- F3b: Settings rows "Privacy policy" and "Privacy choices" (44px targets), and the page padding under the ad banner ---------- */
 .privset { margin-top: 12px; padding-block: 4px; }
+.adsdebug { margin: 4px 12px 8px; font-size: 12px; line-height: 1.4; opacity: .7; overflow-wrap: anywhere; }
 .rowlink { display: flex; align-items: center; width: 100%; box-sizing: border-box; text-align: left; text-decoration: none; }
 .rowlink[hidden] { display: none; }
 .rowlink + .rowlink { border-top: 1px solid var(--line); border-radius: 0 0 6px 6px; }
@@ -910,7 +911,7 @@ header h1 { margin-right: auto; } /* the gear stays right when the engine pill i
     <!-- S2b, D41: Coach and pieces for every level (the same markup as Home's card, rendered by renderLook) -->
     <section class="card lookset" aria-labelledby="lookSetTitle"><h3 class="settitle" id="lookSetTitle">Coach and pieces</h3><div id="lookSet"></div></section>
     <!-- F3b (A-D17): "Privacy policy" for everyone; "Privacy choices" only where Google reports a choice applies (app.js adChoice) -->
-    <div class="card privset"><a class="linkbtn rowlink" data-act="privacy" href="https://hnchennai.github.io/privacy.html" target="_blank" rel="noopener">Privacy policy</a><button class="linkbtn rowlink" type="button" data-act="privchoices" id="privChoices" hidden>Privacy choices</button></div>
+    <div class="card privset"><a class="linkbtn rowlink" data-act="privacy" href="https://hnchennai.github.io/privacy.html" target="_blank" rel="noopener">Privacy policy</a><button class="linkbtn rowlink" type="button" data-act="privchoices" id="privChoices" hidden>Privacy choices</button><p class="adsdebug" id="adDebug" hidden></p></div> <!-- adDebug: test builds only (launch switch off), the ads state for phone tests; empty and hidden on the web and once real ads are on -->
   </div>
 </div>
 <div class="raninote" id="raniNote" role="status" hidden></div>

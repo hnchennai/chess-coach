@@ -98,7 +98,7 @@ Hard rules, the licence line gains:
 | `app-ads.txt` at https://hnchennai.github.io/app-ads.txt | Claude | Live; AdMob verifies only after the Play listing |
 | Privacy policy, ads version | Claude | Drafted, unpublished; goes live with this slice |
 | Plugin `@capacitor-community/admob` 8.4.2 (Capacitor 8) | Claude | Checked on npm, 2026-11-19 |
-| Europe consent message created in AdMob (Privacy and messaging) | Suresh | To do before launch, not needed for test ads |
+| Europe consent message created in AdMob (Privacy and messaging) | Suresh | Done, 2026-11-21. Needed for any ad, test ads too: without it Google's consent check fails and no banner shows (found on the phone test) |
 | Suresh's phone as an AdMob test device | Suresh | To do before the launch switch |
 | AdMob account is personal; entity type of the D-U-N-S organization | Suresh | Open. If a company or LLP, new IDs before launch |
 
@@ -116,4 +116,5 @@ Hard rules, the licence line gains:
 - Two independent reviews (spec; integration, privacy and ads policy) and one delta re-review each. No blocker in the code. Fix rounds: 2.
 - Google libraries pinned: play-services-ads 25.4.0, user-messaging-platform 4.0.0, webview-native-ui engine 1.0.11.
 - Open until a phone test: day-one network silence (Google's library registers start-up code of its own), banner position with Android 16 edge to edge, the system browser link, and that the ads rules file loads inside the app.
+- Test builds show one small "Ads test" state line at the end of Settings (state, consent answer, last error), so a phone test can be read without a cable. It is empty once the launch switch is on.
 - To turn real ads on later: set `live: true`, update the unit test that asserts it is false, and set the repository variable ADS_LIVE to yes. Checkpoint.

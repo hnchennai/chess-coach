@@ -65,7 +65,21 @@
   function canRequest(info) { return !!info && info.canRequestAds === true; }
   function hasChoice(info) { return !!info && info.privacyOptionsRequirementStatus === 'REQUIRED'; }
 
+  /* TEST BUILDS ONLY: one line for Settings that says where the ads start-up stands and why there is no banner, so a phone
+     test can be read without a cable. Nothing is shown once the launch switch is on.
+     d: { state, banner, loaded, h, err, info, facts } (app.js ad state and the last facts the banner rule saw) */
+  function debugLine(d) {
+    if (CONFIG.live === true) return '';
+    if (!d || typeof d !== 'object') return 'Ads test: no state';
+    function yn(v) { return v === true ? 'yes' : v === false ? 'no' : 'unknown'; }
+    var i = d.info, f = d.facts, e = String(d.err || '').slice(0, 200);
+    return 'Ads test: state ' + (d.state || 'unknown') + '; banner ' + (d.banner || 'unknown') + '; ' + (d.loaded ? 'ad loaded (' + (+d.h || 0) + ')' : 'no ad loaded') +
+      '; consent ' + (i ? (i.status || 'unknown') + ', can request ' + yn(i.canRequestAds) : 'unknown') +
+      (f ? '; slot ' + yn(f.slot) + '; first day ' + yn(f.firstDay) + '; activity ' + yn(f.activity) + '; sheet ' + yn(f.overlay) + '; height ' + (+f.height || 0) : '') +
+      '; ' + (e || 'no error');
+  }
+
   return { CONFIG: CONFIG, MIN_HEIGHT: MIN_HEIGHT, SHOW_DELAY: SHOW_DELAY, TAB_BAR: TAB_BAR, GAP: GAP, POLICY_URL: POLICY_URL, COPY: COPY,
     mayShow: mayShow, mayStart: mayStart, mayForm: mayForm, unitFor: unitFor, initOptions: initOptions, bannerOptions: bannerOptions, marginFor: marginFor, padFor: padFor,
-    waitLeft: waitLeft, needsForm: needsForm, canRequest: canRequest, hasChoice: hasChoice };
+    waitLeft: waitLeft, debugLine: debugLine, needsForm: needsForm, canRequest: canRequest, hasChoice: hasChoice };
 });

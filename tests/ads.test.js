@@ -333,3 +333,17 @@ test('CI: the workflow calls both scripts in the right places and checks what Gr
   const r = read('README.md');
   [PIN.ads, PIN.ump, PIN.engine, '@capacitor-community/admob', 'webview-native-ui'].forEach((x) => assert.ok(r.slice(r.indexOf('## Credits')).includes(x), 'README credits: ' + x));
 });
+
+test('test builds only: the Settings state line says why there is no banner, and is empty once real ads are on', () => {
+  const line = A.debugLine({ state: 'off', banner: 'none', loaded: false, h: 0, err: 'start: Publisher misconfiguration', info: null,
+    facts: { slot: true, firstDay: false, activity: false, overlay: false, height: 800, native: true, level: 'beginner' } });
+  assert.ok(line.startsWith('Ads test: '));
+  ['state off', 'banner none', 'consent unknown', 'slot yes', 'first day no', 'activity no', 'sheet no', 'height 800', 'start: Publisher misconfiguration'].forEach((x) => assert.ok(line.includes(x), x + ' in: ' + line));
+  const ok = A.debugLine({ state: 'ready', banner: 'shown', loaded: true, h: 60, err: '', info: { status: 'NOT_REQUIRED', canRequestAds: true }, facts: null });
+  assert.ok(ok.includes('state ready') && ok.includes('ad loaded (60)') && ok.includes('consent NOT_REQUIRED, can request yes') && ok.includes('no error'));
+  assert.ok(A.debugLine({ err: 'x'.repeat(500) }).length < 420, 'a long error is cut');
+  assert.equal(A.debugLine(null), 'Ads test: no state');
+  assert.ok(!/[—–]/.test(line + ok));
+  const src = read('src/js/ads.js');
+  assert.ok(/function debugLine\(d\) \{\s*if \(CONFIG\.live === true\) return '';/.test(src), 'nothing is shown once the launch switch is on');
+});

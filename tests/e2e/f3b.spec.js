@@ -480,23 +480,76 @@ const cases = [
     assert.equal(await vis(page, '#settingsSheet [data-act="privchoices"]'), true, 'he can change his mind in Settings');
     return page;
   }],
-  ['C8 / criterion 8, A-D7: the app starts in an unfinished game on day two: no consent check and no ads for the whole session, even after the game ends', async (vp) => {
+  ['C8a / A-D7: the app starts in an unfinished game on day two, outside Europe: one consent check, no form, and the banner comes on the end card after the game', async (vp) => {
+    const page = await newPage(vp, club({ games: [] }), { game: MATE1, tab: 'play' });
+    await page.waitForFunction(() => !window.__coach.st.busy); await page.waitForTimeout(1500);
+    assert.deepEqual(await names(page), ['requestConsentInfo', 'initialize'], 'the consent check at app start; no form; no ad request while the game is going');
+    assert.equal(await shown(page), false); assert.equal(await padNow(page), 0);
+    await page.locator('#board .sq[data-sq="h5"]').click(); await page.locator('#board .sq[data-sq="f7"]').click();
+    await page.waitForFunction(() => window.__ad.cards.some((c) => c.id === 'gameEnd'), null, { timeout: 30000 });
+    assert.equal(await shown(page), false, 'the card first');
+    const card = (await page.evaluate(() => window.__ad.cards)).filter((c) => c.id === 'gameEnd').pop();
+    await backAfterDelay(page, 2 + 3, card.t, 'the end card of the game the app started in', 'showBanner'); // 2 calls and 3 listeners before
+    const cs = await calls(page);
+    assert.equal(cs.filter((c) => c.m === 'requestConsentInfo').length, 1, 'the consent check ran once');
+    assert.equal(cs.filter((c) => c.m === 'showConsentForm').length, 0);
+    requestRules(cs, 'started in a game');
+    return page;
+  }],
+  ['C8b / criterion 8: Europe, a form is required, and the player opens a lesson before Google answers: no form and no ads in this session; the next app start shows the form', async (vp) => {
+    const page = await newPage(vp, prof(), { ads: { status: 'REQUIRED', form: true, can: false, privacy: 'REQUIRED', holdConsent: true } });
+    await page.waitForFunction(() => window.__ad.calls.some((c) => c.m === 'requestConsentInfo'));
+    await page.locator('#bhome .bh-go').click(); await page.waitForFunction(() => window.__coach.st.mode === 'lesson');
+    await page.evaluate(() => window.__ad.release.consent()); // Google answers while the lesson is open
+    await page.locator('#navNext').click(); await page.waitForTimeout(600);
+    assert.deepEqual(await names(page, true), ['requestConsentInfo'], 'no form over the lesson');
+    await finishLesson(page);
+    await page.waitForFunction(() => window.__ad.cards.some((c) => c.id === 'learnEnd'));
+    await page.waitForTimeout(1600);
+    await page.locator('#learnEnd [data-act="home"]').click(); await page.locator('#tab-coach').click();
+    await page.evaluate(() => { window.dispatchEvent(new Event('online')); document.dispatchEvent(new Event('visibilitychange')); window.dispatchEvent(new Event('resize')); });
+    await page.waitForTimeout(1600);
+    assert.deepEqual(await names(page, true), ['requestConsentInfo'], 'the form is never shown later in the session; no SDK start, no ad request');
+    assert.equal(await padNow(page), 0); assert.equal(await vis(page, await slotSel(page, '#homeSlot')), true, 'the tip is there as usual');
+    await page.locator('#settingsBtn').click();
+    assert.equal(await vis(page, '#settingsSheet [data-act="privchoices"]'), true, 'Google says a choice applies, so the row is there');
+    await page.locator('[data-act="settingsclose"]').click();
+    // the next app start, nothing open: the form comes first
+    await page.evaluate(() => { window.__ad.calls.length = 0; });
+    await page.reload(); await page.waitForFunction(() => window.__coach && window.Placement);
+    await page.waitForFunction(() => window.__ad.release.consent); await page.evaluate(() => window.__ad.release.consent());
+    await page.waitForFunction(() => window.__ad.calls.some((c) => c.m === 'showConsentForm'));
+    await ready(page); requestRules(await calls(page), 'next start');
+    return page;
+  }],
+  ['C8c / A-D17: Europe, consent given earlier, the app starts in an unfinished game: "Privacy choices" is there, no form, and the banner comes after the game', async (vp) => {
+    const page = await newPage(vp, club({ games: [] }), { game: MATE1, tab: 'play', ads: { status: 'OBTAINED', form: true, can: true, privacy: 'REQUIRED' } });
+    await page.waitForFunction(() => !window.__coach.st.busy); await page.waitForTimeout(1500);
+    assert.deepEqual(await names(page), ['requestConsentInfo', 'initialize'], 'no form: consent is already there');
+    await page.locator('#settingsBtn').click();
+    assert.equal(await vis(page, '#settingsSheet [data-act="privchoices"]'), true, 'the row is there in a session that started in a game');
+    await page.locator('[data-act="settingsclose"]').click();
+    assert.equal(await shown(page), false, 'no banner while the game is going');
+    await page.locator('#board .sq[data-sq="h5"]').click(); await page.locator('#board .sq[data-sq="f7"]').click();
+    await page.waitForFunction(() => window.__ad.cards.some((c) => c.id === 'gameEnd'), null, { timeout: 30000 });
+    const card = (await page.evaluate(() => window.__ad.cards)).filter((c) => c.id === 'gameEnd').pop();
+    await backAfterDelay(page, 2 + 3, card.t, 'the end card', 'showBanner');
+    const cs = await calls(page);
+    assert.equal(cs.filter((c) => c.m === 'showConsentForm').length, 0); requestRules(cs, 'consent given earlier');
+    return page;
+  }],
+  ['C8d / criterion 8: Europe, a form is required, and the app starts in an unfinished game: the check runs, no form, no ads this session, the row is there', async (vp) => {
     const page = await newPage(vp, club({ games: [] }), { game: MATE1, tab: 'play', ads: { status: 'REQUIRED', form: true, can: false, privacy: 'REQUIRED' } });
-    await page.waitForFunction(() => !window.__coach.st.busy); await page.waitForTimeout(700);
-    assert.deepEqual(await names(page, true), [], 'a game is open at app start: nothing ads-related runs');
+    await page.waitForFunction(() => !window.__coach.st.busy); await page.waitForTimeout(1200);
+    assert.deepEqual(await names(page, true), ['requestConsentInfo'], 'the check, and nothing else: no form over the game');
     await page.locator('#board .sq[data-sq="h5"]').click(); await page.locator('#board .sq[data-sq="f7"]').click();
     await page.waitForFunction(() => window.__ad.cards.some((c) => c.id === 'gameEnd'), null, { timeout: 30000 });
     await page.waitForTimeout(1600);
-    await page.locator('#gameEnd [data-act="home"]').click(); await page.locator('#tab-progress').click(); await page.locator('#tab-coach').click();
-    await page.evaluate(() => { window.dispatchEvent(new Event('online')); document.dispatchEvent(new Event('visibilitychange')); window.dispatchEvent(new Event('resize')); });
-    await page.waitForTimeout(1600);
-    assert.deepEqual(await names(page, true), [], 'zero plugin calls all session: no late "quiet moment" start, no form');
-    assert.equal(await page.evaluate(() => window.__coach.ads().state), 'off'); assert.equal(await padNow(page), 0);
-    assert.equal(await vis(page, await slotSel(page, '#homeSlot')), true, 'the tip is there as usual');
-    // the next app start, with no game going: the start-up runs, and the form comes first
-    await page.reload(); await page.waitForFunction(() => window.__coach && window.Placement);
-    await page.waitForFunction(() => window.__ad.calls.some((c) => c.m === 'showConsentForm'));
-    await ready(page); requestRules(await calls(page), 'next start');
+    await page.locator('#gameEnd [data-act="home"]').click(); await page.waitForTimeout(1500);
+    assert.deepEqual(await names(page, true), ['requestConsentInfo'], 'no form later, no SDK start, no ad request');
+    assert.equal(await padNow(page), 0);
+    await page.locator('#settingsBtn').click();
+    assert.equal(await vis(page, '#settingsSheet [data-act="privchoices"]'), true);
     return page;
   }],
   ['S8, S9 / criteria 3, 9: Settings has "Privacy policy" and no "Privacy choices" outside Europe; the banner hides while Settings is open and returns a second after it closes', async (vp) => {

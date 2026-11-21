@@ -19,16 +19,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
       # Ads (F3b, A-D8): real ads are a checkpoint. The build fails if the launch switch in src/js/ads.js is on,
       # unless the repository variable ADS_LIVE is set to yes on purpose (Settings > Secrets and variables > Actions > Variables).
       - name: Ads launch switch guard
         env:
           ADS_LIVE: ${{ vars.ADS_LIVE }}
-        run: sh scripts/check-ads-switch.sh
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
+        run: |
+          sh scripts/check-ads-switch.sh
+          # the ads unit tests too: an edit inside ads.js that hands out the real unit while the switch is off fails here
+          node --test tests/ads.test.js
 
       - uses: actions/setup-java@v4
         with:

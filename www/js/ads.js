@@ -30,14 +30,16 @@
     return s.slot === true && s.native === true && s.firstDay === false && s.activity === false && s.overlay === false &&
       typeof s.height === 'number' && s.height >= MIN_HEIGHT;
   }
-  /* A-D11, A-D7: whether the ads start-up (consent check, then the SDK) runs for this app session. It is asked once, at app
-     start (boot), and never again: not on the first day, not before a level is set, not if an activity (for example a resumed
-     unfinished game) or a sheet is open at that moment. A no means no plugin call at all until the next app start.
-     s: { boot, native, firstDay, level, activity, overlay } */
+  /* A-D11, A-D7: whether the consent check (Google is asked, nothing is shown) runs for this app session. It is asked once,
+     at app start (boot), and never again: not on the first day and not before a level is set. A no means no plugin call at
+     all until the next app start. An open game does not stop the check: it shows nothing. s: { boot, native, firstDay, level } */
   function mayStart(s) {
     if (!s || typeof s !== 'object') return false;
-    return s.boot === true && s.native === true && s.firstDay === false && !!s.level && s.activity === false && s.overlay === false;
+    return s.boot === true && s.native === true && s.firstDay === false && !!s.level;
   }
+  /* A-D7: whether Google's consent form may open now, at the moment Google's answer arrives: only with no activity and no
+     sheet, dialog or level check open. Both facts must be known. s: { activity, overlay } */
+  function mayForm(s) { return !!s && typeof s === 'object' && s.activity === false && s.overlay === false; }
   function unitFor(on) { return on === true ? CONFIG.unit : CONFIG.testUnit; }
   /* A-D5: the SDK's start options. PG is the highest ad content rating. The names are the plugin's. */
   function initOptions() { return { maxAdContentRating: 'ParentalGuidance' }; }
@@ -64,6 +66,6 @@
   function hasChoice(info) { return !!info && info.privacyOptionsRequirementStatus === 'REQUIRED'; }
 
   return { CONFIG: CONFIG, MIN_HEIGHT: MIN_HEIGHT, SHOW_DELAY: SHOW_DELAY, TAB_BAR: TAB_BAR, GAP: GAP, POLICY_URL: POLICY_URL, COPY: COPY,
-    mayShow: mayShow, mayStart: mayStart, unitFor: unitFor, initOptions: initOptions, bannerOptions: bannerOptions, marginFor: marginFor, padFor: padFor,
+    mayShow: mayShow, mayStart: mayStart, mayForm: mayForm, unitFor: unitFor, initOptions: initOptions, bannerOptions: bannerOptions, marginFor: marginFor, padFor: padFor,
     waitLeft: waitLeft, needsForm: needsForm, canRequest: canRequest, hasChoice: hasChoice };
 });

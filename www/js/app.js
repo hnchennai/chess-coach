@@ -767,18 +767,22 @@
      ads.js (pure); this reads the screen's facts, asks Ads.mayShow, and shows or hides one native banner strip.
      - Android app only. On the web ads.js is not even loaded (scripts/build.sh), so window.Ads is missing, AD is null, the
        state is 'off' and nothing below runs (A-D9).
-     - The start-up is decided ONCE, at app start (adBoot): from day two, and only if no activity and no sheet is open at that
-       moment (A-D7, A-D11). Otherwise there is no plugin call at all in this app session, and the next app start decides again.
-       So day one is silent, an app left open over midnight stays silent, and so does a session that began in an unfinished game.
-     - Start-up order: the consent check, Google's form only if required, then the SDK, then the banner. No ad is requested
-       until Google says ads can be requested. If the consent check fails (offline), there are no ads in this session.
-       Known and accepted: Google's form is downloaded before it shows, so a player who starts a lesson or a game in that
-       second can see the form over it.
+     - The start-up is decided ONCE, at app start (adBoot), from day two (A-D7, A-D11): Google is asked once whether consent is
+       needed (a check that shows nothing, so it runs even if the app starts in an unfinished game). On day one, and before a
+       level is set, there is no plugin call at all; an app left open over midnight stays silent until the next app start.
+     - The answer sets the "Privacy choices" row for the session. If ads can already be requested (no consent needed, or given
+       earlier), the SDK starts and the banner follows its normal rules. If a form is required, it is shown only if, when the
+       answer arrives, no activity and no sheet, level check or question from Rani is open; otherwise there is no form and
+       there are no ads in this session, and the next app start decides again. The form is never shown later in a session.
+       What remains: the plugin downloads the form between our call and its display (usually well under a second), so a
+       player who opens something in that moment can see the form appear over it.
+     - No ad is requested until Google says ads can be requested. If the consent check fails (offline), no ads this session.
      - Hide first, show late: adSync runs inside renderSlots and wherever a sheet, a note or the level check opens or closes,
        so the banner is told to hide in the same step that changes the screen. It shows or comes back no sooner than 1 second
        after the screen or card that allows it was drawn, or after a sheet or note closed (A-D15, accidental taps).
      - Any failure (no ad, a plugin error) leaves the screen as it is without ads: no strip, no gap, nothing logged (A-D13).
-     States: off | consent | form | init | ready | noads. Banner: none | shown | hidden. ---------- */
+     States: off | consent | form | init | ready | noads | noform (a form was due but could not be shown: no ads this session).
+     Banner: none | shown | hidden. ---------- */
   var ADS = window.Ads || null;
   var AD = (function () {
     if (!ADS) return null;
@@ -856,14 +860,18 @@
   function adBoot() {
     if (!AD || ad.state !== 'off' || ad.booted) return;
     ad.booted = true;
-    var f = adFacts(); f.boot = true; f.overlay = Placement.isOpen(); /* at app start only the level check counts as a sheet (a note from Rani does not stop the start-up) */
+    var f = adFacts(); f.boot = true;
     if (!ADS.mayStart(f)) return;
     ad.state = 'consent';
     adCall('requestConsentInfo').then(function (info) { ad.info = info || null; adChoice(); adConsent(); }).catch(adFail);
   }
-  /* Google's form, only if required. */
+  /* Google's form, only if required, and only if nothing is open at this moment (the answer has just arrived): no activity,
+     no Settings, no level check, no question from Rani (an offer). A plain note from Rani does not count. Otherwise: no form
+     and no ads in this session. */
   function adConsent() {
     if (!ADS.needsForm(ad.info)) { adReady(); return; }
+    var sh = $('settingsSheet'), open = !!((sh && !sh.hidden) || Placement.isOpen() || (noteCur && noteCur.kind !== 'info'));
+    if (!ADS.mayForm({ activity: activityOn(), overlay: open })) { ad.state = 'noform'; return; }
     ad.state = 'form'; ad.form = true;
     adCall('showConsentForm').then(function (info) {
       ad.form = false;

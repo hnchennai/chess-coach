@@ -61,16 +61,15 @@ test('mayShow fails closed on a missing or odd state', () => {
   assert.equal(A.mayShow({ slot: true, native: true, height: 900 }), false, 'firstDay, activity and overlay must be known (false), not missing');
 });
 
-test('criterion 2 / A-D11: the ads start-up may run only from day two, on the native platform, outside an activity', () => {
-  const S = { boot: true, native: true, firstDay: false, level: 'beginner', activity: false, overlay: false };
+test('criterion 2 / A-D11: the consent check runs once at app start, from day two, on the native platform, whatever is open', () => {
+  const S = { boot: true, native: true, firstDay: false, level: 'beginner' };
   assert.equal(A.mayStart(S), true);
   assert.equal(A.mayStart(Object.assign({}, S, { boot: false })), false, 'A-D7: asked at app start only, never at a later quiet moment');
   assert.equal(A.mayStart(Object.assign({}, S, { boot: undefined })), false);
   assert.equal(A.mayStart(Object.assign({}, S, { firstDay: true })), false, 'day one: nothing ads-related runs');
   assert.equal(A.mayStart(Object.assign({}, S, { native: false })), false, 'web: nothing runs');
   assert.equal(A.mayStart(Object.assign({}, S, { level: null })), false, 'no level yet (the level check comes first)');
-  assert.equal(A.mayStart(Object.assign({}, S, { activity: true })), false, 'A-D7: never during an activity');
-  assert.equal(A.mayStart(Object.assign({}, S, { overlay: true })), false);
+  assert.equal(A.mayStart(Object.assign({}, S, { activity: true, overlay: true })), true, 'the check itself shows nothing, so an open game does not stop it');
   assert.equal(A.mayStart(), false);
   assert.equal(A.mayStart({}), false);
 });
@@ -132,6 +131,13 @@ test('criterion 8 / A-D7: the form is needed only when Google says so and has on
   assert.equal(A.needsForm({ status: 'OBTAINED', isConsentFormAvailable: true }), false);
   assert.equal(A.needsForm({ status: 'UNKNOWN' }), false);
   assert.equal(A.needsForm(null), false);
+});
+
+test('criterion 8 / A-D7: Google’s form may open only when no activity and no sheet is open; every fact must be known', () => {
+  assert.equal(A.mayForm({ activity: false, overlay: false }), true);
+  assert.equal(A.mayForm({ activity: true, overlay: false }), false, 'never over a lesson, game, puzzle set or review');
+  assert.equal(A.mayForm({ activity: false, overlay: true }), false, 'never over Settings, the level check or an offer');
+  assert.equal(A.mayForm({ activity: false }), false); assert.equal(A.mayForm({}), false); assert.equal(A.mayForm(null), false); assert.equal(A.mayForm(), false);
 });
 
 test('criterion 8: no ad request until Google says ads can be requested', () => {
@@ -316,6 +322,9 @@ test('CI: the workflow calls both scripts in the right places and checks what Gr
   const w = read('.github/workflows/build-apk.yml');
   assert.ok(w.includes('vars.ADS_LIVE'));
   assert.ok(w.indexOf('sh scripts/check-ads-switch.sh') > 0 && w.indexOf('sh scripts/check-ads-switch.sh') < w.indexOf('npm install'), 'the guard runs before anything is built');
+  const g = w.indexOf('node --test tests/ads.test.js');
+  assert.ok(g > w.indexOf('actions/setup-node') && g > w.indexOf('node-version: 22') && g < w.indexOf('npm install'), 'the guard step also runs these unit tests (after Node is set up), so an edit inside ads.js that hands out the real unit fails the build');
+  assert.ok(Math.abs(g - w.indexOf('sh scripts/check-ads-switch.sh')) < 200, 'in the same step as the guard script');
   assert.ok(w.indexOf('npx cap add android') < w.indexOf('sh scripts/android-ads.sh android') && w.indexOf('sh scripts/android-ads.sh android') < w.indexOf('npx cap sync android'));
   assert.ok(!w.includes(REAL), 'the real unit lives in src/js/ads.js only');
   ['play-services-ads:' + PIN.ads, 'user-messaging-platform:' + PIN.ump, 'io.github.webview-native-ui:engine:' + PIN.engine].forEach((x) => assert.ok(w.includes(x.replace(/\./g, '\\.')) || w.includes(x), 'resolved version checked: ' + x));

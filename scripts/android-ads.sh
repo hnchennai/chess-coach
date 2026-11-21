@@ -5,8 +5,10 @@
 #
 # 1. AndroidManifest.xml, inside <application>:
 #    - com.google.android.gms.ads.APPLICATION_ID: without it Google's ads library stops the app at launch.
-#    - com.google.android.gms.ads.DELAY_APP_MEASUREMENT_INIT = true: the library sends nothing on its own at app start;
-#      it waits until the app calls it (A-D11: on a player's first day the app never calls it).
+#    - com.google.android.gms.ads.DELAY_APP_MEASUREMENT_INIT = true: asks Google's library to delay app measurement until
+#      the app starts the SDK (A-D11: on a player's first day the app never starts it). What is known: Google added this
+#      option in SDK 18.1.0. What is not known: whether the library still sends anything on its own at app start (it
+#      registers a start-up provider, MobileAdsInitProvider). That must be confirmed with a traffic capture on a phone.
 # 2. variables.gradle: exact versions, so two builds of one commit link the same libraries.
 #    - play-services-ads 25.4.0 (the plugin's default is the range 25.4.+; 25.4.0 is the newest 25.4.x on Google's Maven, 2026-11-20)
 #    - user-messaging-platform 4.0.0 (the plugin's default; also what play-services-ads-api 25.4.0 asks for)

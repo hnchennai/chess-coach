@@ -4,6 +4,7 @@
   "private": true,
   "description": "Suresh's Chess Coach as an Android app (Capacitor)",
   "dependencies": {
+    "@capacitor-community/admob": "8.4.2",
     "@capacitor/android": "8.6.2",
     "@capacitor/core": "8.6.2"
   },
@@ -12,6 +13,7 @@
     "@capacitor/cli": "8.6.2"
   },
   "overrides": {
-    "sharp": "0.33.5"
+    "sharp": "0.33.5",
+    "@webview-native-ui/engine": "1.0.11"
   }
 }

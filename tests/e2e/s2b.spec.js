@@ -423,10 +423,14 @@ const cases = [
     b = await block(page);
     assert.equal(b.line, 'You’ll play Rani’s practice partner.', 'D48 at once');
     assert.equal(await page.locator('#bhome .bh-av svg.gaja').count(), 1, 'Gaja on Beginner Home at once');
-    // Focus trap: Shift+Tab from the first control wraps to the last, which is a piece set in the new section.
+    // Focus trap: Shift+Tab from the first control wraps to the last. Since F3b (A-D17) the last control is "Privacy policy";
+    // the one before it is a piece set in the new section.
     await page.locator('#settingsSheet .pl-x').focus();
     await page.keyboard.press('Shift+Tab');
+    assert.equal(await page.evaluate(() => document.activeElement.dataset.act), 'privacy', 'the trap wraps to the last control');
+    await page.keyboard.press('Shift+Tab');
     assert.equal(await page.evaluate(() => !!(document.activeElement.dataset.set && document.activeElement.closest('#lookSet'))), true, 'the trap includes the new buttons');
+    await page.keyboard.press('Tab');
     await page.keyboard.press('Tab');
     assert.equal(await page.evaluate(() => document.activeElement.dataset.act), 'settingsclose', 'and wraps back');
     // A piece set: the board and the sheet update at once.

@@ -23,6 +23,16 @@ jobs:
         with:
           node-version: 22
 
+      # Ads (F3b, A-D8): real ads are a checkpoint. The build fails if the launch switch in src/js/ads.js is on,
+      # unless the repository variable ADS_LIVE is set to yes on purpose (Settings > Secrets and variables > Actions > Variables).
+      - name: Ads launch switch guard
+        env:
+          ADS_LIVE: ${{ vars.ADS_LIVE }}
+        run: |
+          sh scripts/check-ads-switch.sh
+          # the ads unit tests too: an edit inside ads.js that hands out the real unit while the switch is off fails here
+          node --test tests/ads.test.js
+
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -45,6 +55,10 @@ jobs:
           # Play Store rule: new apps and updates must target Android 16 (API 36). Fail the build if the project targets less.
           cat android/variables.gradle
           grep -Eq 'targetSdkVersion *= *(3[6-9]|[4-9][0-9])' android/variables.gradle
+          # Ads (F3b): app ID and delayed measurement into the manifest, exact Google library versions into variables.gradle.
+          # The script fails the step if anything did not apply.
+          sh scripts/android-ads.sh android
+          cat android/app/src/main/AndroidManifest.xml android/variables.gradle
 
       # Gradle distributions live on GitHub releases. Unsigned downloads can fail (GitHub incident, 2026-11-08),
       # so fetch it signed in with the build's own token, check Gradle's published SHA-256, and point the wrapper at the local file.
@@ -79,6 +93,13 @@ jobs:
           cd android
           chmod +x gradlew
           echo "apply from: '../../android-signing.gradle'" >> app/build.gradle
+          # Ads (F3b): the build must link exactly the pinned libraries (scripts/android-ads.sh). Fail if Gradle resolved anything else.
+          ./gradlew -q :app:dependencies --configuration releaseRuntimeClasspath --no-daemon > "$RUNNER_TEMP/deps.txt"
+          grep -E 'play-services-ads:|user-messaging-platform:|webview-native-ui:engine:' "$RUNNER_TEMP/deps.txt" | sort -u
+          for D in 'com.google.android.gms:play-services-ads:25.4.0' 'com.google.android.ump:user-messaging-platform:4.0.0' 'io.github.webview-native-ui:engine:1.0.11'; do
+            grep -qE -- "--- $D( \(\*\)| \(c\))?\$" "$RUNNER_TEMP/deps.txt" || { echo "::error::Gradle did not resolve exactly $D"; exit 1; }
+          done
+          if grep -E -- '--- (com\.google\.android\.gms:play-services-ads|com\.google\.android\.ump:user-messaging-platform|io\.github\.webview-native-ui:engine):.* -> ' "$RUNNER_TEMP/deps.txt"; then echo "::error::An ads library version was changed during resolution"; exit 1; fi
           if [ -n "$KS_PASS" ]; then
             echo "$KS_B64" | base64 -d > "$KS_PATH"
             ./gradlew assembleRelease bundleRelease --no-daemon

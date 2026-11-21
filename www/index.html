@@ -714,6 +714,13 @@ header h1 { margin-right: auto; } /* the gear stays right when the engine pill i
 /* Settings: Coach and pieces (D41) */
 .lookset { margin-top: 12px; }
 .settitle { margin: 0 0 10px; font-size: 17px; font-weight: 600; }
+/* ---------- F3b: Settings rows "Privacy policy" and "Privacy choices" (44px targets), and the page padding under the ad banner ---------- */
+.privset { margin-top: 12px; padding-block: 4px; }
+.adsdebug { margin: 4px 12px 8px; font-size: 12px; line-height: 1.4; opacity: .7; overflow-wrap: anywhere; }
+.rowlink { display: flex; align-items: center; width: 100%; box-sizing: border-box; text-align: left; text-decoration: none; }
+.rowlink[hidden] { display: none; }
+.rowlink + .rowlink { border-top: 1px solid var(--line); border-radius: 0 0 6px 6px; }
+.adpad { height: 0; }
 </style>
 
 <div class="wrap">
@@ -883,7 +890,7 @@ header h1 { margin-right: auto; } /* the gear stays right when the engine pill i
         <!-- F2 (F-D3): the tip slot at the bottom of Progress, above the license credits -->
         <div class="tipslot" id="progSlot" hidden></div>
         <!-- License credits stay for every level, Beginners too (constitution; D37 is the one exception to D23). -->
-        <p class="credit">Chess Coach is free software under the <a href="https://www.gnu.org/licenses/gpl-3.0.html" target="_blank" rel="noopener">GNU GPL version 3</a>. Source code: <a href="https://github.com/hnchennai/chess-coach" target="_blank" rel="noopener">github.com/hnchennai/chess-coach</a>.</p>
+        <p class="credit">Chess Coach is free software under the <a href="https://www.gnu.org/licenses/gpl-3.0.html" target="_blank" rel="noopener">GNU GPL version 3</a>. Source code: <a href="https://github.com/hnchennai/chess-coach" target="_blank" rel="noopener">github.com/hnchennai/chess-coach</a>. The app’s own code carries an added permission (LICENSE-EXCEPTION in the source) to be combined with Google Mobile Ads, Google User Messaging Platform and Google Play Billing. Stockfish is separate and unchanged.</p>
         <p class="credit">Analysis by Stockfish 19 (GPLv3, stockfishchess.org) via stockfish.js. Puzzles mined from engine games and verified by Stockfish.</p>
         <p class="credit">3D marble set and board: “A Beautiful Game” by the MaterialX Project (ASWF), glTF conversion by Ed Mackey, licensed <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener">CC BY 4.0</a>. Simplified and resized for this app. Three.js (MIT) draws the 3D view.</p>
       </div>
@@ -893,6 +900,8 @@ header h1 { margin-right: auto; } /* the gear stays right when the engine pill i
   <div class="tipslot slotstrip" id="slotStrip" hidden></div>
   <!-- An end card that appears is read out here (title and lines), politely -->
   <div class="sr" id="endLive" aria-live="polite"></div>
+  <!-- F3b (A-D14): the page's bottom padding while the ad banner is on screen (the banner itself is a native strip, not in the page) -->
+  <div class="adpad" id="adPad" aria-hidden="true" hidden></div>
 </div>
 <div class="placement" id="placement" hidden></div>
 <div class="sheet" id="settingsSheet" hidden>
@@ -901,6 +910,8 @@ header h1 { margin-right: auto; } /* the gear stays right when the engine pill i
     <div class="card levelcard" id="levelCard"></div>
     <!-- S2b, D41: Coach and pieces for every level (the same markup as Home's card, rendered by renderLook) -->
     <section class="card lookset" aria-labelledby="lookSetTitle"><h3 class="settitle" id="lookSetTitle">Coach and pieces</h3><div id="lookSet"></div></section>
+    <!-- F3b (A-D17): "Privacy policy" for everyone; "Privacy choices" only where Google reports a choice applies (app.js adChoice) -->
+    <div class="card privset"><a class="linkbtn rowlink" data-act="privacy" href="https://hnchennai.github.io/privacy.html" target="_blank" rel="noopener">Privacy policy</a><button class="linkbtn rowlink" type="button" data-act="privchoices" id="privChoices" hidden>Privacy choices</button><p class="adsdebug" id="adDebug" hidden></p></div> <!-- adDebug: test builds only (launch switch off), the ads state for phone tests; empty and hidden on the web and once real ads are on -->
   </div>
 </div>
 <div class="raninote" id="raniNote" role="status" hidden></div>
@@ -922,4 +933,5 @@ header h1 { margin-right: auto; } /* the gear stays right when the engine pill i
 <script src="js/home.js"></script>
 <script src="js/flow.js"></script>
 <script src="js/tips.js"></script>
+<script>if(window.Capacitor)document.write('<script src="js/ads.js"><\/script>')</script>
 <script src="js/app.js"></script>

@@ -757,10 +757,166 @@
     if (st.tab === 'coach') renderSlot($('homeSlot'), w ? null : 'home', visits.coach);
     if (st.tab === 'progress') renderSlot($('progSlot'), w ? null : 'progress', visits.progress);
     renderSlot($('slotStrip'), p && p[0], p && p[1]);
+    adSync(); /* F3b: the banner follows the slot, in the same step */
   }
   /* When the window turns from phone to desktop layout or back, the slot moves between its place and the strip. */
   var wasWide = null;
   window.addEventListener('resize', function () { var w = wide(); if (w === wasWide) return; wasWide = w; if (!booted) return; render(); if (st.end) renderPath(); });
+
+  /* ---------- ADS GLUE (F3b, docs/specs/ads.product.md). The only code that talks to the native ads plugin. The rules are in
+     ads.js (pure); this reads the screen's facts, asks Ads.mayShow, and shows or hides one native banner strip.
+     - Android app only. On the web ads.js is not even loaded (scripts/build.sh), so window.Ads is missing, AD is null, the
+       state is 'off' and nothing below runs (A-D9).
+     - The start-up is decided ONCE, at app start (adBoot), from day two (A-D7, A-D11): Google is asked once whether consent is
+       needed (a check that shows nothing, so it runs even if the app starts in an unfinished game). On day one, and before a
+       level is set, there is no plugin call at all; an app left open over midnight stays silent until the next app start.
+     - The answer sets the "Privacy choices" row for the session. If ads can already be requested (no consent needed, or given
+       earlier), the SDK starts and the banner follows its normal rules. If a form is required, it is shown only if, when the
+       answer arrives, no activity and no sheet, level check or question from Rani is open; otherwise there is no form and
+       there are no ads in this session, and the next app start decides again. The form is never shown later in a session.
+       What remains: the plugin downloads the form between our call and its display (usually well under a second), so a
+       player who opens something in that moment can see the form appear over it.
+     - No ad is requested until Google says ads can be requested. If the consent check fails (offline), no ads this session.
+     - Hide first, show late: adSync runs inside renderSlots and wherever a sheet, a note or the level check opens or closes,
+       so the banner is told to hide in the same step that changes the screen. It shows or comes back no sooner than 1 second
+       after the screen or card that allows it was drawn, or after a sheet or note closed (A-D15, accidental taps).
+     - Any failure (no ad, a plugin error) leaves the screen as it is without ads: no strip, no gap, nothing logged (A-D13).
+     States: off | consent | form | init | ready | noads | noform (a form was due but could not be shown: no ads this session).
+     Banner: none | shown | hidden. ---------- */
+  var ADS = window.Ads || null;
+  var AD = (function () {
+    if (!ADS) return null;
+    try { var C = window.Capacitor; if (!C || !C.Plugins || !C.Plugins.AdMob) return null; if (typeof C.isNativePlatform === 'function' && !C.isNativePlatform()) return null; return C.Plugins.AdMob; } catch (e) { return null; }
+  })();
+  var ad = { state: 'off', banner: 'none', loaded: false, margin: 0, h: 0, ok: false, place: null, visit: null, since: NaN, timer: null, retry: null, retryAt: 0, info: null, form: false, inited: false, err: '', facts: null };
+  function adNow() { return window.performance && performance.now ? performance.now() : Date.now(); }
+  function adNoop() {}
+  /* Test builds only: the last failure, in words, for the state line in Settings (Ads.debugLine). Never shown with real ads on. */
+  function adErr(step, e) { var m = ''; try { m = e && (e.message || e.error || (typeof e === 'string' ? e : JSON.stringify(e))) || ''; } catch (x) {} ad.err = step + ': ' + (m || 'failed'); }
+  function adDebug() {
+    var el = $('adDebug'); if (!el) return;
+    var t = '';
+    try { if (window.Capacitor) t = !ADS ? 'Ads test: rules file not loaded' : !AD ? 'Ads test: plugin not found' : ADS.debugLine(ad); } catch (e) {}
+    el.textContent = t; el.hidden = !t;
+  }
+  /* One plugin call. Always a promise; a throw becomes a rejection, so no caller can leak an error. */
+  function adCall(m, a) { try { var r = a === undefined ? AD[m]() : AD[m](a); return r && typeof r.then === 'function' ? r : Promise.resolve(r); } catch (e) { return Promise.reject(e); } }
+  /* A-D12: a sheet, a dialog or an offer is open: Settings, the level check, any of Rani's notes, or one of Google's forms */
+  function adOverlay() { var sh = $('settingsSheet'); return !!((sh && !sh.hidden) || Placement.isOpen() || noteCur || ad.form); }
+  /* Criterion 1: the slot rule's own answer for the screen the player is on (the place stripPlace names, on phones too). */
+  var AD_CARD = { game: 'gameEnd', learn: 'learnEnd', step: 'sessionCard' };
+  /* A-D19: on Home the banner never shares the screen with the board, moved or not. The board column is hidden on Beginner Home. */
+  function adBoard(place) { if (place !== 'home') return false; var b = document.querySelector('.boardcol'); return !b || b.getClientRects().length > 0; }
+  function adFacts() {
+    var p = stripPlace();
+    /* an end card counts once it is on screen (the state changes a moment before the card is drawn) */
+    if (p && AD_CARD[p[0]]) { var c = $(AD_CARD[p[0]]); if (!c || c.hidden) p = null; }
+    return { place: p ? p[0] : null, visit: p ? p[1] : null, slot: !!p && slotAllowed(p[0], p[1]), native: !!AD, firstDay: Tips.firstDay(prof, Date.now()), level: prof.level || null,
+      activity: activityOn(), overlay: adOverlay(), board: adBoard(p ? p[0] : null), height: window.innerHeight };
+  }
+  function adTabsFixed() { var t = document.querySelector('.tabs'); return !!t && getComputedStyle(t).position === 'fixed'; }
+  /* A-D14: the page's bottom padding: an empty box, the last thing in the page. Only while the banner is on screen WITH an ad
+     in it (a size from the plugin and a loaded ad), so an empty strip never reserves space. */
+  function adPad() {
+    var el = $('adPad'); if (!el) return;
+    var h = ad.banner === 'shown' && ad.loaded ? ADS.padFor(ad.h, ad.margin > 0) : 0;
+    if (h > 0) { el.style.height = h + 'px'; el.hidden = false; } else if (!el.hidden) el.hidden = true;
+  }
+  function adHide() {
+    clearTimeout(ad.retry); ad.retry = null;
+    if (ad.banner === 'shown') { ad.banner = 'hidden'; adCall('hideBanner').catch(adNoop); }
+    adPad();
+  }
+  /* No ad came: nothing on screen, no gap. While the same screen stays open, one check a minute later (a single timer). */
+  function adLost(e) { if (e !== undefined) adErr('ad load', e); ad.banner = 'none'; ad.loaded = false; ad.h = 0; ad.retryAt = adNow() + 60000; adPad(); adSync(); }
+  /* A plugin call for the banner failed: remove whatever the native side has, so the page and the native side cannot disagree. */
+  function adDrop(e) { adErr('banner call', e); adCall('removeBanner').catch(adNoop); adLost(); }
+  function adShow() {
+    var m = ADS.marginFor(adTabsFixed());
+    if (ad.banner === 'shown' && ad.margin === m) return;
+    if (ad.banner === 'hidden' && ad.margin === m) { ad.banner = 'shown'; adCall('resumeBanner').catch(adDrop); return; }
+    if (ad.banner === 'none') {
+      var left = ad.retryAt - adNow();
+      if (left > 0) { if (!ad.retry) ad.retry = setTimeout(function () { ad.retry = null; adSync(); }, left + 20); return; }
+    }
+    /* a new banner, or the same one moved (the layout changed between phone and wide): the plugin keeps the ad and moves it */
+    var moved = ad.banner !== 'none';
+    ad.margin = m; ad.banner = 'shown'; if (!moved) { ad.loaded = false; ad.h = 0; }
+    var r = adCall('showBanner', ADS.bannerOptions({ margin: m }));
+    (moved ? r.then(function () { return ad.banner === 'shown' ? adCall('resumeBanner') : null; }) : r).catch(adDrop);
+    adPad();
+  }
+  function adSync() {
+    if (!AD || !booted || ad.state === 'off') return;
+    var f = adFacts(), now = adNow(), ok = ADS.mayShow(f);
+    if (!f.overlay) ad.facts = f; /* the last facts with no sheet open, for the test state line */
+    /* The 1 second clock starts at the first frame after the screen that allows the banner is drawn (when the player can
+       see it), and again whenever the banner becomes allowed: a new screen or card, a sheet or note closed, the phone upright. */
+    if (!ok) { ad.ok = false; ad.place = null; ad.visit = null; ad.since = NaN; }
+    else if (!ad.ok || f.place !== ad.place || f.visit !== ad.visit) {
+      ad.ok = true; ad.place = f.place; ad.visit = f.visit; ad.since = NaN;
+      var pl = f.place, vi = f.visit;
+      /* two frames: the first draws the screen, the second begins once the player can see it */
+      requestAnimationFrame(function () { requestAnimationFrame(function () { if (ad.ok && ad.place === pl && ad.visit === vi && isNaN(ad.since)) { ad.since = adNow(); adSync(); } }); });
+    }
+    var want = ad.state === 'ready' && ok, wait = want ? ADS.waitLeft(ad.since, now) : 0;
+    clearTimeout(ad.timer); ad.timer = null;
+    if (want && wait > 0) { want = false; if (!isNaN(ad.since)) ad.timer = setTimeout(adSync, wait); } /* no clock yet: the frame above calls back */
+    if (want) adShow(); else adHide();
+  }
+  /* The session has no ads (the consent check failed, or a plugin error during start-up). Nothing is retried until the next app start. */
+  function adFail(e) { adErr('start (' + ad.state + ')', e); ad.form = false; ad.state = 'off'; if (ad.banner === 'shown') { ad.banner = 'hidden'; adCall('hideBanner').catch(adNoop); } adPad(); }
+  function adChoice() { var b = $('privChoices'); if (b) b.hidden = !ADS.hasChoice(ad.info); } /* A-D17 */
+  /* A-D7, A-D11: asked once, when the app has started. A no leaves the state 'off' for the whole session. */
+  function adBoot() {
+    if (!AD || ad.state !== 'off' || ad.booted) return;
+    ad.booted = true;
+    var f = adFacts(); f.boot = true;
+    if (!ADS.mayStart(f)) { ad.err = 'not started: first day or no level'; return; }
+    ad.state = 'consent';
+    adCall('requestConsentInfo').then(function (info) { ad.info = info || null; adChoice(); adConsent(); }).catch(adFail);
+  }
+  /* Google's form, only if required, and only if nothing is open at this moment (the answer has just arrived): no activity,
+     no Settings, no level check, no question from Rani (an offer). A plain note from Rani does not count. Otherwise: no form
+     and no ads in this session. */
+  function adConsent() {
+    if (!ADS.needsForm(ad.info)) { adReady(); return; }
+    var sh = $('settingsSheet'), open = !!((sh && !sh.hidden) || Placement.isOpen() || (noteCur && noteCur.kind !== 'info'));
+    if (!ADS.mayForm({ activity: activityOn(), overlay: open })) { ad.state = 'noform'; return; }
+    ad.state = 'form'; ad.form = true;
+    adCall('showConsentForm').then(function (info) {
+      ad.form = false;
+      if (info) ad.info = { status: info.status, isConsentFormAvailable: false, canRequestAds: info.canRequestAds, privacyOptionsRequirementStatus: info.privacyOptionsRequirementStatus };
+      adChoice(); adReady();
+    }).catch(adFail);
+  }
+  function adListen() {
+    function on(name, fn) { try { var r = AD.addListener(name, fn); if (r && typeof r.catch === 'function') r.catch(adNoop); } catch (e) {} }
+    /* the height the plugin reports (0 when the banner is hidden, removed or has no ad) */
+    on('bannerAdSizeChanged', function (s) { ad.h = s && +s.height > 0 ? +s.height : 0; adPad(); });
+    on('bannerAdLoaded', function () { if (ad.banner === 'none') return; ad.loaded = true; ad.err = ''; if (ad.banner === 'hidden') adCall('hideBanner').catch(adNoop); adPad(); });
+    on('bannerAdFailedToLoad', adLost);
+  }
+  function adReady() {
+    if (!ADS.canRequest(ad.info)) { ad.err = 'Google says ads cannot be requested'; ad.state = 'noads'; adHide(); return; }
+    if (ad.inited) { ad.state = 'ready'; adSync(); return; }
+    ad.state = 'init'; adListen();
+    adCall('initialize', ADS.initOptions()).then(function () { ad.inited = true; ad.state = 'ready'; adSync(); }).catch(adFail);
+  }
+  /* A-D17: "Privacy choices" reopens Google's form; afterwards Google is asked again whether ads can be requested. */
+  function adChoices() {
+    if (!AD || !ADS.hasChoice(ad.info) || ad.form || ad.state === 'off') return;
+    ad.form = true; adSync();
+    adCall('showPrivacyOptionsForm').catch(adNoop).then(function () { return adCall('requestConsentInfo'); }).then(function (info) {
+      ad.form = false; ad.info = info || ad.info; adChoice();
+      if (ADS.canRequest(ad.info)) { if (ad.state === 'noads') adReady(); else adSync(); return; }
+      if (ad.banner !== 'none') { ad.banner = 'none'; ad.loaded = false; ad.h = 0; adCall('removeBanner').catch(adNoop); }
+      if (ad.state === 'ready') ad.state = 'noads';
+      adSync();
+    }).catch(function () { ad.form = false; adSync(); });
+  }
+  /* A-D4: a turned phone or a resized window decides again at once. */
+  if (AD) { window.addEventListener('resize', adSync); window.addEventListener('orientationchange', adSync); }
 
   /* ---------- F1: end cards. One main button (the next step), small buttons for the other choices, always a Home button.
      Flow (flow.js) decides which card; this wires each button to an action the app already has. ---------- */
@@ -1774,19 +1930,19 @@
   var setOpener = null;
   function openSettings() {
     var sh = $('settingsSheet'); if (!sh || !sh.hidden) return;
-    setOpener = document.activeElement; renderLevelCard(); renderLook();
-    sh.hidden = false; document.documentElement.classList.add('sheet-open');
+    setOpener = document.activeElement; renderLevelCard(); renderLook(); adDebug();
+    sh.hidden = false; document.documentElement.classList.add('sheet-open'); adSync(); /* A-D12 */
     var pn = sh.querySelector('.sheet-panel'); if (pn) pn.focus({ preventScroll: true });
   }
   function closeSettings(noFocus) {
     var sh = $('settingsSheet'); if (!sh || sh.hidden) return;
-    sh.hidden = true; document.documentElement.classList.remove('sheet-open');
+    sh.hidden = true; document.documentElement.classList.remove('sheet-open'); adSync();
     var back = setOpener && setOpener.isConnected && setOpener.offsetParent !== null ? setOpener : $('settingsBtn');
     if (!noFocus && back) back.focus(); setOpener = null;
     if (!noFocus) focusOffer();
   }
   function trapTab(box, e) {
-    var f = Array.prototype.filter.call(box.querySelectorAll('button:not([disabled]), [tabindex="0"], select, input'), function (x) { return x.offsetParent !== null; });
+    var f = Array.prototype.filter.call(box.querySelectorAll('button:not([disabled]), a[href], [tabindex="0"], select, input'), function (x) { return x.offsetParent !== null; });
     if (!f.length) return;
     var first = f[0], last = f[f.length - 1];
     if (e.shiftKey && (document.activeElement === first || !box.contains(document.activeElement))) { e.preventDefault(); last.focus(); }
@@ -1817,6 +1973,7 @@
   }
   function drawNote() {
     var el = $('raniNote'), n = noteCur; if (!el) return;
+    adSync(); /* A-D12: no banner under a note or an offer */
     if (!n) { el.hidden = true; el.innerHTML = ''; el.className = 'raninote'; return; }
     var offer = n.kind === 'offer', ask = n.kind === 'ask';
     el.className = 'raninote' + (offer || ask ? ' offer' : '');
@@ -2353,6 +2510,7 @@
     if (d.act === 'showall') { prof.showAll = !prof.showAll; saveProfile(); refreshUI(); renderLevelCard('[data-act="showall"]'); return; }
     if (d.act === 'settings') { openSettings(); return; }
     if (d.act === 'settingsclose') { closeSettings(); return; }
+    if (d.act === 'privchoices') { adChoices(); return; }
     if (d.act === 'notedone') { hideNote(); return; }
     if (d.act === 'offeryes') { answerOffer(true); return; }
     if (d.act === 'offerno') { answerOffer(false); return; }
@@ -2398,11 +2556,14 @@
     if (lsGet(K3D) === true) set3d(true, true);
     if (Profile.needsCheck(prof)) openPlacement(false);
     booted = true;
+    adBoot(); /* F3b: the one moment the ads start-up may begin (from day two, no activity open); on day one and on the web, nothing */
     initCloud();
   }
   if (window.claude && window.claude.hot && window.claude.hot.snapshot) { try { window.claude.hot.snapshot(snapshot); } catch (e) {} }
   window.claude && window.claude.hot && window.claude.hot.ready ? window.claude.hot.ready(start) : start((window.claude && window.claude.hot && window.claude.hot.data) || {});
   window.__coach = { st: st, getProf: function () { return prof; }, PZ: PZ, startPart: startPart, trainStart: trainStart, openPlacement: openPlacement, nextUnit: nextUnit, hist: function () { return G.history(); }, openSettings: openSettings,
+    ads: function () { return { state: ad.state, banner: ad.banner, h: ad.h, loaded: ad.loaded }; }, /* the ads glue's state (e2e) */
+    note: function (t) { showNote(t); }, /* one of Rani's notes, as the app shows them (e2e) */
     reveals: function () { return revealN; }, /* how often an end card was scrolled into view (e2e) */
     nextLabel: function () { return nextAction(currentStage()).label; } /* today's Next step, for the e2e check that the Continue card follows it */ };
 })();

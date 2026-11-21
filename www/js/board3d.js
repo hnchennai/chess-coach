@@ -245,19 +245,27 @@ var Board3D = (function () {
   /* ---------- role tags (G1, G-D13): a round tag with the chess symbol, floating above every themed piece ---------- */
   /* The tag is a child of its piece, so it moves, hops, grows and leaves with it. placeCam() turns it to the camera.
      One shape for all tags and one material per set, colour and role: nothing is made per frame.
-     TAG_GAP: seen from the opening camera height, the tag's lower edge just clears the top of its own emblem. */
-  var TAG_R = 0.2, TAG_GAP = 0.16, tagGeo = null, tagMats = {}, tagTop = {}, tagsOn = true;
+     It sits on the piece's upper right shoulder as the player sees it, like the corner badge of the flat view: a piece
+     turns with the camera (placeCam), so its own +x is the player's right and its own +z points at the player.
+     The tag's middle is just outside the top right corner of the emblem (TAG_DX to the right, TAG_DY up), so only its
+     edge lies over the emblem. TAG_Z: in front of the emblem, so the piece never hides its own tag.
+     TAG_LOW: as the camera comes down (from the opening height to the lowest), every tag slides down to this one
+     height, beside its piece. Seen from low down the ranks are closer together on screen than a tag is wide, and a tag
+     left at the top of a tall piece would sit on the piece and the tag behind it. */
+  var TAG_R = 0.2, TAG_DX = 0.13, TAG_DY = 0.06, TAG_Z = 0.1, TAG_XMAX = 0.36, TAG_LOW = 0.45, POL0 = 0.6, POL1 = 1.12, tagGeo = null, tagMats = {}, tagTop = {}, tagsOn = true;
   function tagMat(set, color, type) {
     var key = set + color + type;
     return tagMats[key] || (tagMats[key] = new T.MeshBasicMaterial({ map: glyphTexture(set, color, type), transparent: true, depthWrite: false, toneMapped: false }));
   }
-  function noRay() {}
+  /* A tap on a tag is a tap on its own piece (pick() looks at tags first). A hidden tag takes no taps. */
+  function tagRay(rc, hits) { if (this.visible && !this.parent.userData.gone) T.Mesh.prototype.raycast.call(this, rc, hits); }
   function addTag(g, set, color, type) {
-    var key = set + color + type, top = tagTop[key];
-    if (top == null) { g.updateMatrixWorld(true); top = tagTop[key] = new T.Box3().setFromObject(g).max.y; }
+    var key = set + color + type, c = tagTop[key], top;
+    if (!c) { g.updateMatrixWorld(true); c = tagTop[key] = new T.Box3().setFromObject(g.userData.emb || g).max.clone(); c.y = new T.Box3().setFromObject(g).max.y; }
+    top = c.y;
     var m = new T.Mesh(tagGeo || (tagGeo = new T.CircleGeometry(TAG_R, 28)), tagMat(set, color, type));
-    m.position.set(0, top + TAG_GAP + TAG_R, 0); m.renderOrder = 5; m.visible = tagsOn;
-    m.raycast = noRay; /* a tap on a tag is a tap on the board behind it, not on the piece */
+    m.position.set(Math.min(c.x + TAG_DX, TAG_XMAX), top + TAG_DY, TAG_Z); m.userData.y0 = m.position.y; m.renderOrder = 5; m.visible = tagsOn;
+    m.raycast = tagRay;
     m.userData.role = type; m.userData.color = color;
     g.add(m); g.userData.tag = m; g.userData.top = top;
     return g;
@@ -445,9 +453,10 @@ var Board3D = (function () {
     cam.setViewOffset(w, h, 0, -cy * h / 2 * Math.min(1, zoom), w, h);
     var ry = Math.atan2(cam.position.x, cam.position.z);
     var tilt = -(Math.PI / 2 - pol) * 0.45;
+    var low = clamp((pol - POL0) / (POL1 - POL0), 0, 1);
     pcGroup.children.forEach(function (o) {
       if (o.userData.bill) { o.rotation.y = ry; if (o.userData.emb) o.userData.emb.rotation.x = tilt; }
-      var tg = o.userData.tag; if (tg && tg.visible) tg.quaternion.copy(o.quaternion).invert().multiply(cam.quaternion); /* G-D13: the tag faces the player */
+      var tg = o.userData.tag; if (tg && tg.visible) { tg.quaternion.copy(o.quaternion).invert().multiply(cam.quaternion); tg.position.y = tg.userData.y0 + (TAG_LOW - tg.userData.y0) * low; } /* G-D13: the tag faces the player */
     });
   }
 
@@ -459,7 +468,9 @@ var Board3D = (function () {
     var t = -ray.ray.origin.y / ray.ray.direction.y, ground = null;
     if (t > 0) { var pt = ray.ray.origin.clone().add(ray.ray.direction.clone().multiplyScalar(t)); ground = posSq(pt.x, pt.z); }
     var hits = ray.intersectObjects(pcGroup.children, true), sqs = [];
-    hits.forEach(function (h) { var o = h.object; while (o && o.parent !== pcGroup) o = o.parent; if (o && o.userData.sq && sqs.indexOf(o.userData.sq) < 0) sqs.push(o.userData.sq); });
+    /* G1: a tag in front of everything else under the finger stands for its own piece, never the square behind it */
+    if (hits.length && hits[0].object.userData.role && hits[0].object.parent.userData.sq) return hits[0].object.parent.userData.sq;
+    hits.forEach(function (h) { var o = h.object; if (o.userData.role) return; while (o && o.parent !== pcGroup) o = o.parent; if (o && o.userData.sq && sqs.indexOf(o.userData.sq) < 0) sqs.push(o.userData.sq); });
     if (ground && sqs.indexOf(ground) > -1) return ground;
     if (ground && state && state.pos.some(function (q) { return q.sq === ground; })) return ground;
     return sqs[0] || ground;
@@ -610,12 +621,27 @@ var Board3D = (function () {
   function screenOf(sq, front) { var p = sqPos(sq), v = new T.Vector3(p.x, 0, p.z + (front ? (white ? 0.38 : -0.38) : 0)).project(cam), r = renderer.domElement.getBoundingClientRect(); return { x: r.left + (v.x + 1) / 2 * r.width, y: r.top + (1 - v.y) / 2 * r.height }; }
   /* What the scene holds, for the browser checks (tests/e2e/g1.spec.js). Nothing in the app calls these. */
   var debug = {
+    idle: function () { return !anims.length && Math.abs(azGoal - az) <= 0.001; },
     ready: function () { return !!(on && T && renderer && state && theme === state.theme && pieces.length === state.pos.length); },
     /* every tag in the scene: its piece, whether it is drawn, where it is in the world and on screen, and whether it faces the camera */
     tags: function () {
       var out = [], r = renderer.domElement.getBoundingClientRect(), v = new T.Vector3(), n = new T.Vector3(), cd = new T.Vector3(), up = new T.Vector3();
       placeCam(); scene.updateMatrixWorld(true); cam.getWorldDirection(cd); up.set(0, 1, 0).applyQuaternion(cam.quaternion);
       function scr(x, y, z) { v.set(x, y, z).project(cam); return { x: r.left + (v.x + 1) / 2 * r.width, y: r.top + (1 - v.y) / 2 * r.height }; }
+      /* the box on screen of every mesh under root except the tag, measured now from the meshes themselves */
+      function rect(root, skip) {
+        var b = { l: Infinity, t: Infinity, r: -Infinity, b: -Infinity }, c = new T.Vector3();
+        root.traverse(function (m) {
+          if (!m.isMesh || m === skip) return;
+          if (!m.geometry.boundingBox) m.geometry.computeBoundingBox();
+          var bb = m.geometry.boundingBox;
+          for (var i = 0; i < 8; i++) {
+            c.set(i & 1 ? bb.max.x : bb.min.x, i & 2 ? bb.max.y : bb.min.y, i & 4 ? bb.max.z : bb.min.z).applyMatrix4(m.matrixWorld);
+            var q = scr(c.x, c.y, c.z); b.l = Math.min(b.l, q.x); b.r = Math.max(b.r, q.x); b.t = Math.min(b.t, q.y); b.b = Math.max(b.b, q.y);
+          }
+        });
+        return b;
+      }
       pcGroup.children.forEach(function (o) {
         var t = o.userData.tag; if (!t) return;
         var w = t.getWorldPosition(new T.Vector3()), s = scr(w.x, w.y, w.z), e = scr(w.x + up.x * TAG_R, w.y + up.y * TAG_R, w.z + up.z * TAG_R);
@@ -624,6 +650,7 @@ var Board3D = (function () {
         out.push({ sq: o.userData.sq, role: t.userData.role, color: t.userData.color, visible: t.visible, gone: !!o.userData.gone, facing: -n.dot(cd),
           x: w.x, y: w.y, z: w.z, px: o.position.x, py: o.position.y, pz: o.position.z, top: o.userData.top, r: TAG_R,
           sx: s.x, sy: s.y, sr: Math.hypot(e.x - s.x, e.y - s.y), topSx: tp.x, topSy: tp.y, baseSx: bs.x, baseSy: bs.y,
+          box: rect(o, t), emb: rect(o.userData.emb || o, t), depth: w.distanceTo(cam.position), pdepth: o.position.distanceTo(cam.position),
           rect: { left: r.left, top: r.top, right: r.right, bottom: r.bottom } });
       });
       return out;

@@ -101,8 +101,11 @@ const flatTags = (page) => page.evaluate(() => [...document.querySelectorAll('#g
   }
   return o;
 }).filter(Boolean));
+const idle3d = (page) => page.waitForFunction(() => window.Board3D.debug.ready() && window.Board3D.debug.idle(), null, { timeout: 15000 });
 const tags3d = (page) => page.evaluate(() => window.Board3D.debug.tags());
 const pieces = (page) => page.evaluate(() => { const g = new window.Chess(); window.__coach.hist().forEach((m) => g.move(m)); const out = []; g.SQUARES.forEach((s) => { const p = g.get(s); if (p) out.push({ sq: s, color: p.color, type: p.type }); }); return out; });
+// How far a tag's middle is from a box on screen (0 inside it).
+const near = (t, b) => Math.hypot(Math.max(b.l - t.sx, 0, t.sx - b.r), Math.max(b.t - t.sy, 0, t.sy - b.b));
 const byColor = (list, c) => list.filter((t) => t.color === c);
 function sixRoles(list, why) {
   for (const c of ['w', 'b']) assert.deepEqual([...new Set(byColor(list, c).map((t) => t.role))].sort(), ROLES.slice().sort(), why + ': six different tags for ' + c);
@@ -182,8 +185,8 @@ const cases = [
     assert.equal(await line(page), 'Rocket: knight. Jumps in an L shape.');
     await shot(page, vp, 'name-line');
     const el = await page.evaluate(() => { const e = document.getElementById('pieceLine'), r = e.getBoundingClientRect(), b = document.getElementById('board').getBoundingClientRect(); return { role: e.getAttribute('role'), live: e.getAttribute('aria-live'), top: r.top, bottom: r.bottom, left: r.left, right: r.right, boardBottom: b.bottom, clipped: e.scrollHeight > e.clientHeight + 1 || e.scrollWidth > e.clientWidth + 1, vw: window.innerWidth }; });
-    assert.equal(el.role, 'status', 'read out politely');
-    assert.equal(el.live, 'polite');
+    assert.equal(el.role, 'status', 'read out politely (a status is a polite live region)');
+    assert.equal(el.live, null, 'one way of saying so, not two');
     assert.ok(el.top >= el.boardBottom - 1, 'under the board');
     assert.ok(el.left >= 0 && el.right <= el.vw, 'inside the screen');
     assert.equal(el.clipped, false, 'the whole line fits');
@@ -203,8 +206,8 @@ const cases = [
     await page.waitForFunction(() => !document.getElementById('hintBtn').disabled);
     const h0 = await page.locator('#hintBtn').innerText();
     await page.locator('#hintBtn').click();
+    assert.equal(await line(page), 'Rookie: pawn. Moves forward, captures diagonally.', 'asking for a hint leaves the line alone');
     await page.waitForFunction((t) => document.getElementById('hintBtn').textContent !== t, h0, { timeout: 20000 });
-    assert.equal(await line(page), 'Rookie: pawn. Moves forward, captures diagonally.', 'a hint leaves the line alone');
     assert.match(await page.evaluate(() => (window.__coach.st.fb || {}).title || ''), /Hint/, 'and the coach shows the hint');
     await tap(page, 'e2'); await tap(page, 'e4');
     await page.waitForFunction(() => window.__coach.hist().length >= 1);
@@ -255,6 +258,7 @@ const cases = [
   ['S9 3D: every piece has a tag above it for its role, and it faces the player at every board angle, flipped too', async (vp) => {
     const page = await newPage(vp, club(), { set: 'heroes', v3d: true });
     const start = await pieces(page);
+    let curPol = 0.6;
     const check = async (why) => {
       const list = await tags3d(page);
       assert.equal(list.length, 32, why + ': one tag per piece');
@@ -265,10 +269,12 @@ const cases = [
         assert.equal(t.role, want.type, why + ' ' + t.sq + ': the tag is for the piece’s role'); assert.equal(t.color, want.color);
         assert.equal(t.visible, true, why + ' ' + t.sq + ': drawn');
         assert.ok(t.facing > 0.9999, why + ' ' + t.sq + ': faces the camera (' + t.facing + ')');
-        assert.ok(Math.abs(t.x - t.px) < 1e-6 && Math.abs(t.z - t.pz) < 1e-6, why + ' ' + t.sq + ': straight above its own piece');
-        assert.ok(t.y >= t.top + t.r, why + ' ' + t.sq + ': clear of the top of the piece');
-        assert.ok(t.sy < t.topSy && t.sy < t.baseSy, why + ' ' + t.sq + ': above the piece on screen');
-        assert.ok(Math.abs(t.sx - t.topSx) < t.sr * 1.5, why + ' ' + t.sq + ': not drifting sideways');
+        assert.ok(Math.hypot(t.x - t.px, t.z - t.pz) < 0.5 && t.y > t.py, why + ' ' + t.sq + ': over its own square');
+        // the piece's box is measured here, from its meshes without the tag (not from what the tag was placed by)
+        assert.ok(near(t, t.box) <= t.sr * 1.2, why + ' ' + t.sq + ': touching its own piece on screen ' + JSON.stringify([t.sx, t.sy, t.box]));
+        assert.ok(t.sx > (t.box.l + t.box.r) / 2, why + ' ' + t.sq + ': on the right of its piece');
+        if (curPol === 0.6) assert.ok(t.sy < (t.box.t + t.box.b) / 2, why + ' ' + t.sq + ': at the upper right shoulder (from the opening height)');
+        assert.ok(t.depth < t.pdepth, why + ' ' + t.sq + ': in front of its own piece');
         assert.ok(t.sx > t.rect.left && t.sx < t.rect.right && t.sy > t.rect.top && t.sy < t.rect.bottom, why + ' ' + t.sq + ': on screen');
       }
       return list;
@@ -277,14 +283,14 @@ const cases = [
     notes.push(vp.width + ': 3D tag is ' + (2 * Math.min(...first.map((t) => t.sr))).toFixed(1) + ' to ' + (2 * Math.max(...first.map((t) => t.sr))).toFixed(1) + 'px across at the opening view');
     await shot(page, vp, '3d-tags');
     for (const [az, pol] of [[-1.2, 0.28], [1.2, 0.28], [-1.2, 1.12], [1.2, 1.12], [0, 1.12], [0.6, 0.7], [-0.4, 0.5]]) {
-      await page.evaluate(([a, p]) => window.Board3D.debug.view(a, p), [az, pol]);
+      await page.evaluate(([a, p]) => window.Board3D.debug.view(a, p), [az, pol]); curPol = pol;
       await check('turned to ' + az + ', ' + pol);
     }
     await shot(page, vp, '3d-tags-turned');
     await page.locator('#flipBtn').click();
-    await page.waitForTimeout(700);
+    await idle3d(page); curPol = 0;
     await check('flipped');
-    for (const [az, pol] of [[-1.2, 0.28], [1.2, 1.12]]) { await page.evaluate(([a, p]) => window.Board3D.debug.view(a, p), [az, pol]); await check('flipped and turned to ' + az + ', ' + pol); }
+    for (const [az, pol] of [[-1.2, 0.28], [1.2, 1.12]]) { await page.evaluate(([a, p]) => window.Board3D.debug.view(a, p), [az, pol]); curPol = pol; await check('flipped and turned to ' + az + ', ' + pol); }
     // every other set, at one angle
     for (const set of (await themed(page)).filter((s) => s !== 'heroes')) {
       await pickSet(page, set);
@@ -309,10 +315,10 @@ const cases = [
     // while the capturing pawn slides, its tag stays over it
     for (let i = 0; i < 4; i++) {
       await page.waitForTimeout(60);
-      for (const t of (await tags3d(page)).filter((x) => x.visible)) assert.ok(Math.abs(t.x - t.px) < 1e-6 && Math.abs(t.z - t.pz) < 1e-6 && t.y >= t.py + t.top, 'mid move: over its own piece (' + t.sq + ')');
+      for (const t of (await tags3d(page)).filter((x) => x.visible)) assert.ok(Math.hypot(t.x - t.px, t.z - t.pz) < 0.5 && t.y > t.py && near(t, t.box) <= t.sr * 1.2, 'mid move: on its own piece (' + t.sq + ')');
     }
     await page.waitForFunction(() => !window.__coach.st.busy && window.__coach.hist().length >= 4, null, { timeout: 30000 });
-    await page.waitForTimeout(1200);
+    await idle3d(page);
     const after = await tags3d(page), pos = await pieces(page);
     assert.equal(after.length, pos.length, 'when the board settles: as many tags as pieces (' + pos.length + ')');
     assert.ok(after.every((t) => t.visible && !t.gone));
@@ -334,27 +340,174 @@ const cases = [
     assert.deepEqual(res.c, ['e1wk', 'e8bk', 'g8wq'], 'settled: the pawn and its tag are gone for good');
     return page;
   }],
-  ['C9 3D: a tag is not a tap target (a tap on it lands on the board behind, as with tags off), and a tap on a piece names it', async (vp) => {
+  ['Fix 1, 3D: a tap on a tag is a tap on its own piece, never the piece or square behind it', async (vp) => {
     const page = await newPage(vp, club(), { set: 'heroes', v3d: true });
     await page.waitForFunction(() => !window.__coach.st.busy);
-    const clear = async () => { await tap(page, 'h5'); assert.equal(await page.evaluate(() => window.__coach.st.sel), null); assert.equal(await line(page), ''); };
-    // seen from low down, a tag hangs over the squares behind its piece: for the second rank those are empty
+    const sel = () => page.evaluate(() => window.__coach.st.sel);
+    const clear = async () => { await tap(page, 'h5'); assert.equal(await sel(), null); assert.equal(await line(page), ''); };
+    const name = (sq) => page.evaluate((s) => { const g = new window.Chess(), p = g.get(s); return window.Words.nameLine(window.Avatar.label('heroes', p.color, p.type), p.type); }, sq);
+    for (const [az, pol] of [[0, 0.6], [0, 1.12], [0, 0.28]]) {
+      await page.evaluate(([a, p]) => window.Board3D.debug.view(a, p), [az, pol]);
+      const all = await tags3d(page);
+      for (const sq of ['d1', 'g1', 'a1', 'e2', 'a2', 'h2', 'c1']) {
+        const t = all.find((x) => x.sq === sq);
+        for (const [dx, dy] of [[0, 0], [0, -0.7], [0.7, 0], [0.5, -0.5]]) { // the middle and the outer half: a nearer piece may stand in front of the inner edge
+          await clear(); await page.mouse.click(t.sx + dx * t.sr, t.sy + dy * t.sr);
+          await page.waitForFunction(() => window.__coach.st.sel || !document.getElementById('pieceLine').hidden, null, { timeout: 3000 }).catch(() => {});
+          assert.equal(await sel(), sq, 'view ' + az + ',' + pol + ': a tap on the ' + sq + ' tag (' + dx + ',' + dy + ') picks up ' + sq);
+          assert.equal(await line(page), await name(sq), 'and names it');
+        }
+      }
+      for (const sq of ['e7', 'd8', 'g8']) { // the other side's pieces: named, not picked up
+        const t = all.find((x) => x.sq === sq);
+        await clear(); await page.mouse.click(t.sx, t.sy);
+        await page.waitForFunction(() => !document.getElementById('pieceLine').hidden, null, { timeout: 3000 }).catch(() => {});
+        assert.equal(await line(page), await name(sq), 'view ' + az + ',' + pol + ': a tap on the ' + sq + ' tag names ' + sq);
+        assert.equal(await sel(), null);
+      }
+    }
+    // with a pawn picked up and the board tilted low, a tap on its own tag does not play a move
     await page.evaluate(() => window.Board3D.debug.view(0, 1.12));
-    const all = await tags3d(page), pts = ['a2', 'c2', 'e2', 'g2', 'h2', 'd1', 'g1', 'e7', 'd8'].map((sq) => all.find((x) => x.sq === sq));
-    const run = async (on) => {
-      await page.evaluate((v) => window.Board3D.debug.show(v), on);
-      const out = [];
-      for (const t of pts) { await clear(); await page.mouse.click(t.sx, t.sy - t.sr * 0.6); await page.waitForTimeout(60); out.push(t.sq + '>' + (await page.evaluate(() => window.__coach.st.sel)) + '>' + (await line(page))); }
-      return out;
-    };
-    const off = await run(false), on = await run(true);
-    assert.deepEqual(on, off, 'a tap where a tag is drawn picks what it picks with tags off');
-    assert.ok(off.some((x) => /^.2>null>$/.test(x)), 'the taps include tags that hang over an empty square: ' + off.join(' | '));
+    await clear(); await tap(page, 'e2');
+    const t = (await tags3d(page)).find((x) => x.sq === 'e2');
+    await page.mouse.click(t.sx, t.sy - t.sr * 0.5);
+    await page.waitForTimeout(150);
+    assert.deepEqual(await page.evaluate(() => window.__coach.hist()), [], 'no move was played');
+    assert.equal(await sel(), 'e2', 'the pawn is still the picked piece');
+    // tags off: nothing invisible takes the tap. The same spots now pick whatever is behind them, so not always the tag's piece.
+    await page.evaluate(() => { window.Board3D.debug.view(0, 0.6); window.Board3D.debug.show(false); });
+    const hidden = (await tags3d(page)).filter((x) => x.color === 'w'), got = [];
+    assert.ok(hidden.every((x) => !x.visible));
+    for (const h of hidden) { await clear(); await page.mouse.click(h.sx + h.sr * 0.6, h.sy - h.sr * 0.6); await page.waitForTimeout(40); got.push(h.sq + '>' + (await sel())); }
+    assert.ok(got.some((x) => x.slice(0, 2) !== x.slice(3)), 'tags off: a hidden tag does not take the tap: ' + got.join(' '));
     await clear();
+    // a tap on the piece itself still works
+    await page.evaluate(() => window.Board3D.debug.show(true));
     const t2 = (await tags3d(page)).find((x) => x.sq === 'e2');
     await page.mouse.click(t2.baseSx, t2.baseSy);
     await page.waitForFunction(() => window.__coach.st.sel === 'e2');
     assert.equal(await line(page), 'Rookie: pawn. Moves forward, captures diagonally.', 'a tap on the piece in 3D shows the name line');
+    return page;
+  }],
+  ['Fix 2, 3D: in a crowded position a tag sits on its own piece’s shoulder and covers no more than a corner of any emblem', async (vp) => {
+    // The Italian game after 5...Nf6: knights and bishops packed in front of their pawns.
+    const ITALIAN = ['e4', 'e5', 'Nf3', 'Nc6', 'Bc4', 'Bc5', 'd3', 'd6', 'Nc3', 'Nf6'];
+    // How much of rectangle b the disc (x, y, r) covers, by sampling.
+    const cover = (x, y, r, b) => { let n = 0, all = 0; for (let i = 0; i < 24; i++) for (let j = 0; j < 24; j++) { const px = b.l + (i + 0.5) * (b.r - b.l) / 24, py = b.t + (j + 0.5) * (b.b - b.t) / 24; all++; if (Math.hypot(px - x, py - y) <= r) n++; } return n / all; };
+    // The limits. The emblem box is the box on screen of the emblem's own meshes (for the figure sets, of the whole figure),
+    // measured fresh from the scene. From the opening height a tag is about as big on screen as a small emblem, so "a corner"
+    // is: under a fifth of a neighbour's box (the emblem sets measure 0 to 2%, the figures up to 19% of the whole figure
+    // with its base), under a third of its own (measured 12 to 30%), and two tags may overlap by at most 30% of their radii
+    // (measured 9%). Before the fix the same position measured 74% of a neighbour and tags stacked by 94%.
+    const NEIGHBOUR = 0.2, OWN = 0.33, STACK = 0.3, bad = [], per = [];
+    let worst = { n: 0, own: 0, tagOnTag: 0 }, page;
+    for (const set of ['heroes', 'ramayana']) {
+      if (page) { assert.deepEqual(page.errors, [], 'console errors or warnings (' + set + ')'); await page.context().close(); }
+      page = await newPage(vp, club(), { set, v3d: true, game: Object.assign({}, GAME0, { sans: ITALIAN }) });
+      await page.waitForFunction(() => !window.__coach.st.busy);
+      for (const flip of [false, true]) {
+        if (flip) { await page.locator('#flipBtn').click(); await idle3d(page); }
+        for (const [name, az, pol] of [['default', 0, 0.6], ['low', 0, 1.12], ['high', 0, 0.28]]) {
+          await page.evaluate(([a, p]) => window.Board3D.debug.view(a, p), [az, pol]);
+          const list = await tags3d(page), why = set + (flip ? ' flipped ' : ' ') + name;
+          assert.equal(list.length, 32);
+          const W = { n: 0, own: 0, tt: 0, min: 99 };
+          for (const t of list) {
+            W.min = Math.min(W.min, 2 * t.sr);
+            if (name === 'default' && 2 * t.sr < 14) bad.push(why + ' ' + t.sq + ': under 14px across (' + (2 * t.sr).toFixed(1) + ')');
+            if (!(near(t, t.box) <= t.sr * 1.2)) bad.push(why + ' ' + t.sq + ': not touching its own piece');
+            const own = cover(t.sx, t.sy, t.sr, t.emb);
+            worst.own = Math.max(worst.own, own); W.own = Math.max(W.own, own);
+            if (own > OWN) bad.push(why + ' ' + t.sq + ': covers ' + (own * 100).toFixed(0) + '% of its own emblem');
+            for (const o of list) {
+              if (o === t) continue;
+              // only a piece further from the camera can be covered: a nearer one is drawn over the tag
+              if (o.pdepth > t.depth) { const c = cover(t.sx, t.sy, t.sr, o.emb); worst.n = Math.max(worst.n, c); W.n = Math.max(W.n, c); if (c > NEIGHBOUR) bad.push(why + ': the ' + t.sq + ' tag covers ' + (c * 100).toFixed(0) + '% of the emblem on ' + o.sq); }
+              const d = Math.hypot(t.sx - o.sx, t.sy - o.sy), ov = 1 - d / (t.sr + o.sr); worst.tagOnTag = Math.max(worst.tagOnTag, ov); W.tt = Math.max(W.tt, ov);
+              if (ov > STACK) bad.push(why + ': the tags on ' + t.sq + ' and ' + o.sq + ' stack (' + (ov * 100).toFixed(0) + '%)');
+            }
+          }
+          per.push(why + ': neighbour ' + (W.n * 100).toFixed(0) + '%, own ' + (W.own * 100).toFixed(0) + '%, tag on tag ' + (Math.max(0, W.tt) * 100).toFixed(0) + '%, smallest ' + W.min.toFixed(1) + 'px');
+          await shot(page, vp, 'crowd-' + set + (flip ? '-flipped' : '') + '-' + name);
+        }
+      }
+    }
+    if (process.env.G1_COVER) notes.push(...per);
+    assert.deepEqual(bad.slice(0, 12), [], bad.length + ' tags cover too much');
+    notes.push(vp.width + ': crowded position, worst cover of a neighbour’s emblem ' + (worst.n * 100).toFixed(1) + '%, of its own ' + (worst.own * 100).toFixed(1) + '%, worst tag on tag overlap ' + (Math.max(0, worst.tagOnTag) * 100).toFixed(0) + '% of the two radii');
+    return page;
+  }],
+
+  // ---------- fix 4: how long the name line stays ----------
+  ['Fix 4 name line: it goes by itself after 5 seconds, and a new tap starts the 5 seconds again', async (vp) => {
+    const page = await newPage(vp, club(), { set: 'heroes' });
+    await page.waitForFunction(() => !window.__coach.st.busy);
+    await tap(page, 'g1'); const t0 = Date.now();
+    assert.equal(await line(page), 'Rocket: knight. Jumps in an L shape.');
+    await page.waitForTimeout(3000);
+    assert.equal(await line(page), 'Rocket: knight. Jumps in an L shape.', 'still there after 3 seconds');
+    await tap(page, 'c1'); const t1 = Date.now(); // a new tap: 5 more seconds from here
+    assert.equal(await line(page), 'Volt: bishop. Moves any distance diagonally.');
+    await page.waitForTimeout(Math.max(0, 5700 - (Date.now() - t0)));
+    assert.equal(await line(page), 'Volt: bishop. Moves any distance diagonally.', 'the first tap’s 5 seconds do not end the second line');
+    await page.waitForFunction(() => document.getElementById('pieceLine').hidden, null, { timeout: 6000 });
+    const took = Date.now() - t1;
+    assert.ok(took >= 4500 && took <= 7500, 'gone about 5 seconds after the last tap (' + took + 'ms)');
+    assert.equal(await page.evaluate(() => window.__coach.st.sel), 'c1', 'the picked piece stays picked');
+    assert.equal(await page.evaluate(() => document.getElementById('youCaps').offsetParent !== null), true, 'the "You" row is back');
+    return page;
+  }],
+  ['Fix 4 name line: it goes on a move by either side, on a new game and when the activity changes', async (vp) => {
+    // the partner's move: the player plays e4 and, in the same breath, taps a knight that will not move
+    let page = await newPage(vp, club(), { set: 'heroes' });
+    await page.waitForFunction(() => !window.__coach.st.busy);
+    const seen = await page.evaluate(() => {
+      const tap = (s) => { const el = document.querySelector('.sq[data-sq="' + s + '"]'), r = el.getBoundingClientRect(), o = { bubbles: true, pointerId: 1, clientX: r.left + r.width / 2, clientY: r.top + r.height / 2 }; el.dispatchEvent(new PointerEvent('pointerdown', o)); el.dispatchEvent(new PointerEvent('pointerup', o)); };
+      tap('e2'); tap('e4'); tap('g1');
+      const e = document.getElementById('pieceLine'); return { n: window.__coach.hist().length, text: e.hidden ? '' : e.textContent };
+    });
+    assert.equal(seen.n, 1, 'tapped before the partner’s reply'); assert.equal(seen.text, 'Rocket: knight. Jumps in an L shape.');
+    await page.waitForFunction(() => window.__coach.hist().length >= 2, null, { timeout: 4500 });
+    assert.equal(await line(page), '', 'the partner’s move clears the line (the knight on g1 did not move)');
+    assert.deepEqual(page.errors, [], 'console errors or warnings'); await page.context().close();
+    // the player's own move, with another piece's line showing
+    page = await newPage(vp, club(), { set: 'heroes' });
+    await page.waitForFunction(() => !window.__coach.st.busy);
+    await tap(page, 'e2'); await tap(page, 'g8');
+    assert.equal(await line(page), 'Blaster: knight. Jumps in an L shape.');
+    await tap(page, 'e2'); await tap(page, 'e4');
+    assert.equal((await page.evaluate(() => window.__coach.hist()))[0], 'e4');
+    assert.equal(await line(page), '', 'the player’s move clears the line');
+    // a new game
+    await page.waitForFunction(() => !window.__coach.st.busy && window.__coach.hist().length >= 2, null, { timeout: 30000 });
+    await tap(page, 'a1');
+    assert.equal(await line(page), 'Headquarters: rook. Moves any distance in straight lines.');
+    await page.evaluate(() => document.getElementById('newBtn').click());
+    await page.waitForFunction(() => window.__coach.hist().length === 0);
+    assert.equal(await line(page), '', '"Start new game" clears the line (the rook is on a1 in the new game too)');
+    // a new game from the very first position, where nothing on the board changes
+    await page.waitForFunction(() => !window.__coach.st.busy);
+    await tap(page, 'a1');
+    assert.equal(await line(page), 'Headquarters: rook. Moves any distance in straight lines.');
+    await page.evaluate(() => document.getElementById('newBtn').click());
+    assert.equal(await line(page), '', 'and when no move had been played');
+    // an activity change: a lesson opens
+    await tap(page, 'a1');
+    assert.equal(await line(page), 'Headquarters: rook. Moves any distance in straight lines.');
+    await page.evaluate(() => window.__coach.startPart('rules', 'learn'));
+    await page.waitForFunction(() => window.__coach.st.mode === 'lesson');
+    assert.equal(await line(page), '', 'opening a lesson clears the line');
+    return page;
+  }],
+
+  // ---------- fix 3: the note in Coach and pieces ----------
+  ['Fix 3 note: Coach and pieces says how to tell the pieces apart, in the agreed words', async (vp) => {
+    const page = await newPage(vp, club(), { set: 'heroes', tab: 'coach' });
+    const WANT = 'Every themed piece carries a small chess symbol. Tap a piece to see its name and how it moves.';
+    await page.locator('#settingsBtn').click();
+    assert.equal(await page.evaluate(() => document.querySelector('#lookSet .setnote').textContent), WANT, 'in Settings');
+    assert.equal(await page.evaluate(() => document.querySelector('#lookCard .setnote').textContent), WANT, 'on Home’s card');
+    assert.ok(!/Hover over|long-press|in its corner/.test(await page.evaluate(() => document.body.textContent)), 'the old note is gone');
     return page;
   }],
 
@@ -497,7 +650,7 @@ const cases = [
     for (const [az, pol] of [[-1, 0.4], [1, 1], [0.3, 0.6]]) await page.evaluate(([x, y]) => window.Board3D.debug.view(x, y), [az, pol]);
     await tap(page, 'e2'); await tap(page, 'e4');
     await page.waitForFunction(() => !window.__coach.st.busy && window.__coach.hist().length >= 2, null, { timeout: 30000 });
-    await page.waitForTimeout(900);
+    await idle3d(page);
     const b = await page.evaluate(() => window.Board3D.debug.info());
     assert.deepEqual({ g: b.tagGeometries, m: b.tagMaterials, t: b.tags }, { g: a.tagGeometries, m: a.tagMaterials, t: a.tags }, 'the same shape, materials and tag count after turning and a move each');
     return page;

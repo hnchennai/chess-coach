@@ -490,15 +490,22 @@
   /* G-D14: a tap on a themed piece, either colour, names it in one line under the board: "Rocket: knight. Jumps in an L shape."
      The line lies over the "You" row (as the preview label lies over the row above the board), so nothing under the board
      moves when it comes or goes. Classic pieces have no emblem name and get no line. */
+  /* How long it stays: until any move by either side, a new game or another activity, a tap on an empty square, or
+     5 seconds after the tap. A new tap on a piece starts the 5 seconds again. */
+  var NAME_MS = 5000, nameTimer = 0;
+  function nameKey() { return st.mode + '|' + viewGame().fen(); }
+  function clearName() { clearTimeout(nameTimer); nameTimer = 0; st.nm = null; renderName(); }
   function namePiece(s) {
     var p = viewGame().get(s);
-    st.nm = p && Avatar.label(st.theme, p.color, p.type) ? { sq: s, color: p.color, type: p.type, mode: st.mode } : null;
+    clearTimeout(nameTimer); nameTimer = 0;
+    st.nm = p && Avatar.label(st.theme, p.color, p.type) ? { sq: s, color: p.color, type: p.type, key: nameKey() } : null;
+    if (st.nm) nameTimer = setTimeout(clearName, NAME_MS);
     renderName();
   }
   function renderName() {
-    var el = $('pieceLine'), n = st.nm, p = n && !st.pv && n.mode === st.mode ? viewGame().get(n.sq) : null;
+    var el = $('pieceLine'), n = st.nm, p = n && !st.pv && n.key === nameKey() ? viewGame().get(n.sq) : null;
     var t = p && p.color === n.color && p.type === n.type ? Words.nameLine(Avatar.label(st.theme, p.color, p.type), p.type) : '';
-    if (!t) st.nm = null; /* the piece moved, was taken, or the set or the activity changed */
+    if (!t && n) { clearTimeout(nameTimer); nameTimer = 0; st.nm = null; } /* a move was played, or the set or the activity changed */
     if (el.textContent !== t) el.textContent = t;
     el.hidden = !t;
   }
@@ -1151,7 +1158,7 @@
   function newGame(force, opts) {
     opts = opts || {};
     if (!force && st.mode === 'play' && G.history().length > 2 && !G.game_over() && !st.confirmNew) { st.confirmNew = true; $('newConfirm').hidden = false; switchTab('play'); return; }
-    $('newConfirm').hidden = true; st.confirmNew = false;
+    $('newConfirm').hidden = true; st.confirmNew = false; st.nm = null; /* G1: a new game clears the name line */
     clearSession(); st.mode = 'play'; st.rv = null;
     var c = opts.color || $('colorSel').value; if (c === 'r') c = Math.random() < 0.5 ? 'w' : 'b';
     /* D19: a Beginner's "New game" always plays Rani's practice partner (the Beginner bot); lesson tasks pass their own level. */
@@ -1274,7 +1281,7 @@
   }
 
   /* ---------- sessions ---------- */
-  function clearSession() { st.end = null; st.ses = null; st.pz = null; st.qz = null; st.sq = null; st.dr = null; st.bk = null; st.ls = null; st.rc = null; st.flash = null; }
+  function clearSession() { st.nm = null; st.end = null; st.ses = null; st.pz = null; st.qz = null; st.sq = null; st.dr = null; st.bk = null; st.ls = null; st.rc = null; st.flash = null; }
   function exitMode(toGame) {
     var from = st.mode, unit = st.ses && st.ses.unit;
     clearSession(); st.mode = 'play'; st.rv = null; st.sel = null; resetHints();
@@ -1829,7 +1836,7 @@
         var S = Avatar.SETS[id], pv = ['k', 'q', 'n'].map(function (t) { var tk = Avatar.piece(id, 'w', t, tg); return '<span>' + (tk || GLYPH[t] + VS) + '</span>'; }).join('') + '<span>' + (Avatar.piece(id, 'b', 'k', tg) || GLYPH.k + VS) + '</span>';
         return '<button class="setbtn' + (st.theme === id ? ' on' : '') + '" type="button" data-set="' + id + '" aria-pressed="' + (st.theme === id) + '"><div class="pv">' + pv + '</div><b>' + esc(S.name) + '</b><small>' + esc(S.note) + '</small></button>';
       }).join('') + '</div>';
-    }).join('') + '<p class="setnote">Every piece keeps a chess symbol in its corner, so you always know what it is. Hover over a piece (or long-press on a phone) to see its character.</p>';
+    }).join('') + '<p class="setnote">Every themed piece carries a small chess symbol. Tap a piece to see its name and how it moves.</p>';
   }
 
 

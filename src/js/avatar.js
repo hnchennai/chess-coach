@@ -91,9 +91,12 @@ var Avatar = (function () {
     var o = color === 'w' ? S.light : S.dark;
     return [o[0], o[0], o[1], o[1], o[2], o[1]];
   }
-  function piece(set, color, type) {
+  /* tag (G1, G-D13): the round role tag in the bottom right corner. Pass false for a token without it ("Piece tags" off).
+     The tag sits outside the group that shrinks a pawn, so it is the same size on every piece: 34 of 100 units across,
+     which is 14.4px on a 360px wide board (G-D16). */
+  function piece(set, color, type, tag) {
     var S = SETS[set]; if (!S || set === 'classic' || !S[color]) return null;
-    var key = set + color + type; if (cache[key]) return cache[key];
+    var key = set + color + type + (tag === false ? 'x' : ''); if (cache[key]) return cache[key];
     var e = S[color][type], P = pals(S, color), id = 'tk' + key, royal = type === 'k' || type === 'q';
     var ico = (I[e[0]] || '').replace(/ACC/g, P[5]);
     var g = '<svg class="tok" viewBox="0 0 100 100" aria-hidden="true"><defs>' +
@@ -111,10 +114,11 @@ var Avatar = (function () {
       '<path d="M22 34 A30 30 0 0 1 78 34 C66 26 34 26 22 34 z" fill="url(#' + id + 'g)"/>' +
       (type === 'k' ? '<path d="M35 12 L33 1.5 L42 7 L50 0.5 L58 7 L67 1.5 L65 12 z" fill="url(#' + id + 'r)" stroke="rgba(0,0,0,.45)" stroke-width="1"/><circle cx="50" cy="7.5" r="2.3" fill="' + P[5] + '" stroke="rgba(0,0,0,.4)" stroke-width=".6"/>' : '') +
       (type === 'q' ? '<path d="M50 1 L55 6.5 L50 12 L45 6.5 z" fill="' + P[5] + '" stroke="' + P[2] + '" stroke-width="1.4"/>' : '') +
-      '<circle cx="79" cy="79" r="15.5" fill="url(#' + id + 'r)" stroke="rgba(0,0,0,.45)" stroke-width="1"/>' +
-      '<circle cx="79" cy="79" r="12.3" fill="' + P[1] + '"/>' +
-      '<text x="79" y="86" text-anchor="middle" font-size="19" fill="' + P[4] + '" font-family="\'Noto Sans Symbols 2\',\'Segoe UI Symbol\',sans-serif">' + GLY[type] + '︎</text>' +
-      '</g></svg>';
+      '</g>' + (tag === false ? '' : '<g class="ptag" data-role="' + type + '">' +
+      '<circle cx="82" cy="82" r="17" fill="url(#' + id + 'r)" stroke="rgba(0,0,0,.45)" stroke-width="1"/>' +
+      '<circle cx="82" cy="82" r="13.6" fill="' + P[1] + '"/>' +
+      '<text x="82" y="89.6" text-anchor="middle" font-size="21" fill="' + P[4] + '" font-family="\'Noto Sans Symbols 2\',\'Segoe UI Symbol\',sans-serif">' + GLY[type] + '\uFE0E</text></g>') +
+      '</svg>';
     cache[key] = g; return g;
   }
   function label(set, color, type) { var S = SETS[set]; return S && S[color] ? S[color][type][1] : null; }

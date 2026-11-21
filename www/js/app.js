@@ -35,7 +35,7 @@
     theme: 'classic', mode: 'play', tab: 'path', user: 'w', level: 2, flipped: false,
     ann: {}, notes: {}, tags: {}, sel: null, arrows: [], hls: [], hintLvl: 0,
     busy: false, evalW: 0, fb: null, opp: null, think: null, over: false,
-    recorded: false, t: 0, goal: null, rv: null, pz: null, ses: null, ls: null, dr: null, bk: null, sq: null, qz: null, unitOpen: null, confirmNew: false
+    recorded: false, t: 0, goal: null, rv: null, pz: null, ses: null, ls: null, dr: null, bk: null, sq: null, qz: null, unitOpen: null, confirmNew: false, nm: null
   };
   var prof = Profile.blank();
   var $ = function (id) { return document.getElementById(id); };
@@ -438,7 +438,7 @@
     $('board').classList.toggle('nocoord', st.mode === 'squares');
     Object.keys(sqEls).forEach(function (s) {
       var el = sqEls[s], p = g.get(s), pc = el.querySelector('.pc');
-      var tok = p && st.mode !== 'squares' ? Avatar.piece(st.theme, p.color, p.type) : null, pk = p ? (tok ? 't' : 'g') + p.color + p.type + st.theme : '';
+      var tg = tagsOn(), tok = p && st.mode !== 'squares' ? Avatar.piece(st.theme, p.color, p.type, tg) : null, pk = p ? (tok ? (tg ? 't' : 'u') : 'g') + p.color + p.type + st.theme : '';
       if (pc.dataset.k !== pk) { pc.dataset.k = pk; if (tok) pc.innerHTML = tok; else pc.textContent = p ? GLYPH[p.type] + VS : ''; }
       pc.className = 'pc' + (p ? ' ' + p.color : '') + (tok ? ' themed' : '');
       el.classList.toggle('last', !!last && (last.from === s || last.to === s));
@@ -454,7 +454,7 @@
       el.title = nm ? nm + ' (' + PNAME[p.type] + ')' : '';
     });
     var pt = $('pvTag'); pt.hidden = !st.pv; if (st.pv) pt.textContent = st.pv.label;
-    renderStrip();
+    renderStrip(); renderName();
     if (st.v3d && window.Board3D) sync3d(g, last, targets, checkSq);
     renderArrows(); renderEval(); renderCaps(g); renderMode(); renderPlayPanel(); renderMoves(); renderEnd(); renderSession(); renderSlots(); releaseOffer();
     if (st.tab === 'coach') { if (plain()) renderBHome(); else renderCont(); } /* AC8: a game that starts or ends next to Home (desktop) shows at once */
@@ -484,6 +484,32 @@
     return !!st.ses && !sesEnded() && st.tab === ZTAB[zoneOf()];
   }
   function renderHint() { $('hintBtn').classList.toggle('primary', hintMain()); }
+  /* ---------- piece tags and the name line (G1) ---------- */
+  /* G-D15: the "Piece tags" switch. On unless the player turned it off. */
+  function tagsOn() { return prof.pieceTags !== false; }
+  /* G-D14: a tap on a themed piece, either colour, names it in one line under the board: "Rocket: knight. Jumps in an L shape."
+     The line lies over the "You" row (as the preview label lies over the row above the board), so nothing under the board
+     moves when it comes or goes. Classic pieces have no emblem name and get no line. */
+  /* How long it stays: until any move by either side, a new game or another activity, a tap on an empty square, or
+     5 seconds after the tap. A new tap on a piece starts the 5 seconds again. */
+  var NAME_MS = 5000, nameTimer = 0;
+  /* The position the line was asked in. Worked out at the tap, and after that only while a line is showing. */
+  function nameKey() { return st.mode + '|' + viewGame().fen(); }
+  function clearName() { clearTimeout(nameTimer); nameTimer = 0; st.nm = null; renderName(); }
+  function namePiece(s) {
+    var p = viewGame().get(s);
+    clearTimeout(nameTimer); nameTimer = 0;
+    st.nm = p && Avatar.label(st.theme, p.color, p.type) ? { sq: s, color: p.color, type: p.type, key: nameKey() } : null;
+    if (st.nm) nameTimer = setTimeout(clearName, NAME_MS);
+    renderName();
+  }
+  function renderName() {
+    var el = $('pieceLine'), n = st.nm, p = n && !st.pv && n.key === nameKey() ? viewGame().get(n.sq) : null;
+    var t = p && p.color === n.color && p.type === n.type ? Words.nameLine(Avatar.label(st.theme, p.color, p.type), p.type) : '';
+    if (!t && n) { clearTimeout(nameTimer); nameTimer = 0; st.nm = null; } /* a move was played, or the set or the activity changed */
+    if (el.textContent !== t) el.textContent = t;
+    el.hidden = !t;
+  }
   /* ---------- 3D view ---------- */
   var b3host = null, K3D = 'suresh-chess-coach.view3d';
   function sync3d(g, last, targets, checkSq) {
@@ -491,7 +517,7 @@
     if (st.mode !== 'squares') for (var f = 0; f < 8; f++) for (var r = 1; r <= 8; r++) { var s = FILES[f] + r, p = g.get(s); if (p) pos.push({ sq: s, color: p.color, type: p.type }); }
     if (st.flash && st.flash.ok) ok.push(st.flash.sq);
     if (st.mode === 'reach' && st.rc) ok = ok.concat(st.rc.found);
-    Board3D.sync({ pos: pos, theme: st.theme, white: orientWhite(), last: last ? { from: last.from, to: last.to } : null, sel: st.pv ? null : st.sel, targets: targets, check: checkSq, hls: st.pv ? st.pv.hl : st.hls, arrows: st.pv ? st.pv.arrows : st.arrows, ok: ok, bad: st.mode === 'reach' && st.rc ? st.rc.bad : null, coords: st.mode !== 'squares' });
+    Board3D.sync({ pos: pos, theme: st.theme, white: orientWhite(), last: last ? { from: last.from, to: last.to } : null, sel: st.pv ? null : st.sel, targets: targets, check: checkSq, hls: st.pv ? st.pv.hl : st.hls, arrows: st.pv ? st.pv.arrows : st.arrows, ok: ok, bad: st.mode === 'reach' && st.rc ? st.rc.bad : null, coords: st.mode !== 'squares', tags: tagsOn() });
   }
   function set3d(v, quiet) {
     st.v3d = v; if (!quiet) lsSet(K3D, v);
@@ -1133,7 +1159,7 @@
   function newGame(force, opts) {
     opts = opts || {};
     if (!force && st.mode === 'play' && G.history().length > 2 && !G.game_over() && !st.confirmNew) { st.confirmNew = true; $('newConfirm').hidden = false; switchTab('play'); return; }
-    $('newConfirm').hidden = true; st.confirmNew = false;
+    $('newConfirm').hidden = true; st.confirmNew = false; st.nm = null; /* G1: a new game clears the name line */
     clearSession(); st.mode = 'play'; st.rv = null;
     var c = opts.color || $('colorSel').value; if (c === 'r') c = Math.random() < 0.5 ? 'w' : 'b';
     /* D19: a Beginner's "New game" always plays Rani's practice partner (the Beginner bot); lesson tasks pass their own level. */
@@ -1256,7 +1282,7 @@
   }
 
   /* ---------- sessions ---------- */
-  function clearSession() { st.end = null; st.ses = null; st.pz = null; st.qz = null; st.sq = null; st.dr = null; st.bk = null; st.ls = null; st.rc = null; st.flash = null; }
+  function clearSession() { st.nm = null; st.end = null; st.ses = null; st.pz = null; st.qz = null; st.sq = null; st.dr = null; st.bk = null; st.ls = null; st.rc = null; st.flash = null; }
   function exitMode(toGame) {
     var from = st.mode, unit = st.ses && st.ses.unit;
     clearSession(); st.mode = 'play'; st.rv = null; st.sel = null; resetHints();
@@ -1786,14 +1812,17 @@
   }
   /* D41: the same markup on Home's card (Improver, Club, Show everything) and in Settings (every level), with no container ids.
      A re-render keeps focus on the same choice in its own container (keyboard users in the sheet). */
+  var TAGSW = '<!--tagsw-->';
   function renderLook() {
-    var base = lookHtml();
+    /* G1 (G-D15): the "Piece tags" switch is in Settings only (G-D7: Home's card does not change). It turns the tags on
+       themed pieces on and off in both board views; the name line for a tapped piece stays either way. */
+    var base = lookHtml(), sw = '<button class="switchrow tagsw" type="button" role="switch" aria-checked="' + tagsOn() + '" data-act="tags"><span><b>Piece tags</b></span><i class="sw" aria-hidden="true"></i></button>';
     [['lookCard', 'lc-'], ['lookSet', 'ls-']].forEach(function (c) {
       var el = $(c[0]); if (!el) return;
       /* the piece previews' gradient ids get a prefix per container: no duplicate ids, and a preview never paints from a
          gradient inside a hidden board or panel (D38 hides the board on Beginner Home) */
-      var html = base.replace(/(id="|url\(#)tk/g, '$1' + c[1] + 'tk');
-      var a = document.activeElement, keep = a && el.contains(a) && a.dataset ? (a.dataset.coach ? '[data-coach="' + a.dataset.coach + '"]' : a.dataset.set ? '[data-set="' + a.dataset.set + '"]' : null) : null;
+      var html = base.replace(/(id="|url\(#)tk/g, '$1' + c[1] + 'tk').replace(TAGSW, c[0] === 'lookSet' ? sw : '');
+      var a = document.activeElement, keep = a && el.contains(a) && a.dataset ? (a.dataset.coach ? '[data-coach="' + a.dataset.coach + '"]' : a.dataset.set ? '[data-set="' + a.dataset.set + '"]' : a.dataset.act ? '[data-act="' + a.dataset.act + '"]' : null) : null;
       if (el._h === html) return; el._h = html; el.innerHTML = html;
       if (keep) { var f = el.querySelector(keep); if (f) try { f.focus({ preventScroll: true }); } catch (e) {} }
     });
@@ -1802,13 +1831,13 @@
     var groups = [], by = {};
     Object.keys(Avatar.SETS).forEach(function (id) { var gname = Avatar.SETS[id].group || 'More'; if (!by[gname]) { by[gname] = []; groups.push(gname); } by[gname].push(id); });
     var ORDER = ['Classic', 'Indian epics', 'Indian history', 'Fables', 'World myths', 'Fantasy']; groups.sort(function (x, y) { var i = ORDER.indexOf(x), j = ORDER.indexOf(y); return (i < 0 ? 99 : i) - (j < 0 ? 99 : j); });
-    var cc = Coach3D.get();
-    return '<p class="eyebrow">Choose your coach</p><div class="sets coachpick">' + [['rani', 'Queen Rani', '3D animated queen. Reacts to every move.'], ['gaja', 'Coach Gaja', 'Flat elephant drawing. Lighter on old phones.']].map(function (o) { return '<button class="setbtn' + (cc === o[0] ? ' on' : '') + '" type="button" data-coach="' + o[0] + '" aria-pressed="' + (cc === o[0]) + '"><b>' + o[1] + '</b><small>' + o[2] + '</small></button>'; }).join('') + '</div><p class="eyebrow" style="margin-top:14px">Choose your pieces</p>' + groups.map(function (gname) {
+    var cc = Coach3D.get(), tg = tagsOn();
+    return '<p class="eyebrow">Choose your coach</p><div class="sets coachpick">' + [['rani', 'Queen Rani', '3D animated queen. Reacts to every move.'], ['gaja', 'Coach Gaja', 'Flat elephant drawing. Lighter on old phones.']].map(function (o) { return '<button class="setbtn' + (cc === o[0] ? ' on' : '') + '" type="button" data-coach="' + o[0] + '" aria-pressed="' + (cc === o[0]) + '"><b>' + o[1] + '</b><small>' + o[2] + '</small></button>'; }).join('') + '</div><p class="eyebrow" style="margin-top:14px">Choose your pieces</p>' + TAGSW + groups.map(function (gname) {
       return '<p class="setgrp">' + esc(gname) + '</p><div class="sets">' + by[gname].map(function (id) {
-        var S = Avatar.SETS[id], pv = ['k', 'q', 'n'].map(function (t) { var tk = Avatar.piece(id, 'w', t); return '<span>' + (tk || GLYPH[t] + VS) + '</span>'; }).join('') + '<span>' + (Avatar.piece(id, 'b', 'k') || GLYPH.k + VS) + '</span>';
+        var S = Avatar.SETS[id], pv = ['k', 'q', 'n'].map(function (t) { var tk = Avatar.piece(id, 'w', t, tg); return '<span>' + (tk || GLYPH[t] + VS) + '</span>'; }).join('') + '<span>' + (Avatar.piece(id, 'b', 'k', tg) || GLYPH.k + VS) + '</span>';
         return '<button class="setbtn' + (st.theme === id ? ' on' : '') + '" type="button" data-set="' + id + '" aria-pressed="' + (st.theme === id) + '"><div class="pv">' + pv + '</div><b>' + esc(S.name) + '</b><small>' + esc(S.note) + '</small></button>';
       }).join('') + '</div>';
-    }).join('') + '<p class="setnote">Every piece keeps a chess symbol in its corner, so you always know what it is. Hover over a piece (or long-press on a phone) to see its character.</p>';
+    }).join('') + '<p class="setnote">Every themed piece carries a small chess symbol. Tap a piece to see its name and how it moves.</p>';
   }
 
 
@@ -2352,9 +2381,10 @@
   function press(s) {
     if (st.pv) { endPreview(); return false; }
     if (st.mode === 'squares') { tapSquare(s); return false; }
+    namePiece(s);
     if (st.mode === 'reach') { tapReach(s); return false; }
     if (!interactive()) return false;
-    if (st.sel && st.sel !== s && canMove(st.sel, s)) { userMove(st.sel, s); return false; }
+    if (st.sel && st.sel !== s && canMove(st.sel, s)) { st.nm = null; userMove(st.sel, s); return false; }
     if (ownPiece(s)) { st.sel = s; render(); return true; }
     st.sel = null; render(); return false;
   }
@@ -2363,7 +2393,7 @@
     var s = el.dataset.sq, started = press(s);
     if (started && st.sel === s) {
       var size = el.getBoundingClientRect().width, p = viewGame().get(s), pc = el.querySelector('.pc'), g = document.createElement('div');
-      g.className = 'ghost'; var gt = Avatar.piece(st.theme, p.color, p.type); g.innerHTML = gt ? '<span class="tokw" style="width:' + (size * 0.94) + 'px;height:' + (size * 0.94) + 'px">' + gt + '</span>' : '<span class="pc ' + p.color + '" style="font-size:' + (size * 0.83) + 'px">' + GLYPH[p.type] + VS + '</span>';
+      g.className = 'ghost'; var gt = Avatar.piece(st.theme, p.color, p.type, tagsOn()); g.innerHTML = gt ? '<span class="tokw" style="width:' + (size * 0.94) + 'px;height:' + (size * 0.94) + 'px">' + gt + '</span>' : '<span class="pc ' + p.color + '" style="font-size:' + (size * 0.83) + 'px">' + GLYPH[p.type] + VS + '</span>';
       g.style.left = e.clientX + 'px'; g.style.top = e.clientY + 'px'; g.hidden = true; document.body.appendChild(g);
       drag = { from: s, ghost: g, pc: pc, x: e.clientX, y: e.clientY, moved: false };
       try { gridEl.setPointerCapture(e.pointerId); } catch (err) {}
@@ -2508,6 +2538,7 @@
     if (d.lvset) { chooseLevel(d.lvset); return; }
     if (d.act === 'recheck') { closeSettings(); openPlacement(true); return; }
     if (d.act === 'showall') { prof.showAll = !prof.showAll; saveProfile(); refreshUI(); renderLevelCard('[data-act="showall"]'); return; }
+    if (d.act === 'tags') { prof.pieceTags = !tagsOn(); saveProfile(); render(); renderLook(); return; }
     if (d.act === 'settings') { openSettings(); return; }
     if (d.act === 'settingsclose') { closeSettings(); return; }
     if (d.act === 'privchoices') { adChoices(); return; }

@@ -20,6 +20,7 @@
   function courseUnits(units) { return units || (root && root.COURSE && root.COURSE.UNITS) || null; }
   function clone(x) { return x == null ? x : JSON.parse(JSON.stringify(x)); }
   function isObj(x) { return !!x && typeof x === 'object' && !Array.isArray(x); }
+  function hasTags(p) { return isObj(p) && typeof p.pieceTags === 'boolean'; }
   function hasProgress(p) {
     if ((p.games || []).length || (p.reviewed || []).length || (p.rn || 0) > 0) return true;
     if (isObj(p.puz) && Object.keys(p.puz).length) return true;
@@ -61,7 +62,7 @@
 
   function blank() {
     return { v: V, games: [], puz: {}, rating: 800, rn: 0, course: {}, days: {}, reviewed: [], t: 0, theme: null,
-      level: null, levelT: 0, placed: null, start: null, showAll: false, unlockAll: false, provisional: false, pgsDeclined: false, levelOfferT: 0 };
+      level: null, levelT: 0, placed: null, start: null, showAll: false, unlockAll: false, provisional: false, pgsDeclined: false, levelOfferT: 0, pieceTags: true };
   }
 
   /* Any saved shape -> v5. Never drops a field it does not know. null stays null (nothing saved). */
@@ -74,6 +75,7 @@
     o.rating = +o.rating || 800; o.rn = +o.rn || 0; o.t = +o.t || 0; o.theme = o.theme || null;
     o.showAll = !!o.showAll; o.unlockAll = !!o.unlockAll; o.provisional = !!o.provisional; o.pgsDeclined = !!o.pgsDeclined;
     o.levelT = +o.levelT || 0; o.levelOfferT = +o.levelOfferT || 0;
+    o.pieceTags = o.pieceTags !== false; /* G1 (G-D15): a save from before the setting, or a broken value, reads as on */
     if (!LEVELS[o.level]) o.level = null;
     if ((+p.v || 0) < V && !o.level && hasProgress(o)) {
       o.level = levelFromRating(o.rating); o.levelT = 0; o.placed = 'derived'; o.start = 'rules'; o.unlockAll = true; o.provisional = false;
@@ -173,6 +175,8 @@
     if (b.rn > a.rn || (b.rn === a.rn && bNewer)) { o.rating = b.rating; o.rn = b.rn; }
     if (bNewer) { o.showAll = b.showAll; if (b.theme) o.theme = b.theme; }
     if (!o.theme && b.theme) o.theme = b.theme;
+    /* G1 (G-D15): newest for settings. A copy that never had the setting (an older app) does not undo a choice. */
+    if (hasTags(cloud) && (bNewer || !hasTags(local))) o.pieceTags = b.pieceTags; else o.pieceTags = a.pieceTags;
     var takeCloud = false;
     if (b.level) {
       if (!a.level) takeCloud = true;

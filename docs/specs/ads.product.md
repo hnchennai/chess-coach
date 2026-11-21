@@ -19,13 +19,13 @@ Builds on: `docs/specs/flow-rework.product.md` (F-D1 to F-D33). Android only.
 ## Decisions
 | # | Decision | Source |
 |---|---|---|
-| A-D1 | The banner is one strip at the bottom of the screen, just above the tab bar. It shows only on screens where the tip slot shows today: Home, Progress and end cards (F-D3) | Suresh, 2026-11-19 |
+| A-D1 | The banner is one strip at the bottom of the screen, above the tab bar with an 8px gap. It shows only on screens where the tip slot shows today: Home, Progress and end cards (F-D3) | Suresh, 2026-11-19 |
 | A-D2 | Rani's tip stays in the page as it is. The banner is extra, it does not replace the tip. This replaces F-D6 | Follows from A-D1 |
 | A-D3 | All slot rules carry over to the banner: none on the first calendar day (F-D5), none during a game, lesson, puzzle set, drill, review or level check (F-D4, F-D17, F-D32), never full screen | Earlier decisions |
 | A-D4 | No banner when the phone is held sideways (screen shorter than 500px) | Suresh, 2026-11-19 |
 | A-D5 | Ads are non-personalised for everyone, everywhere (F-D2). Highest ad content rating: PG | Suresh, 2026-11-19 |
 | A-D6 | The phone's advertising ID stays available to Google's ads (standard setup). The privacy policy says so | Suresh, 2026-11-19 |
-| A-D7 | Europe and UK: Google's consent form shows once at app start, from the second day, never during an activity. No ad request is made there until the form allows it. Other countries see no form | Suresh, 2026-11-19 |
+| A-D7 | Europe and UK: Google's consent form shows once at app start, from the second day, never during an activity. No ad request is made there until the form allows it. Other countries see no form. Refined after review (2026-11-21): from day two the app asks Google once at each start whether consent applies (nothing is shown). The form opens only if no activity, sheet, level check or question from Rani is open when the answer arrives; otherwise no form and no ads in that session | Suresh, 2026-11-19; refinement delegated to Claude |
 | A-D8 | Until Suresh says the Play launch is on, every build shows Google's test ads only. One switch in the build turns on the real ad unit. Flipping it is a checkpoint | Suresh, 2026-11-19 |
 | A-D9 | The web version gets no ads and no ads code. Tips only, unchanged | Suresh, 2026-11-19 |
 | A-D10 | Licence: the app's own code gains a written exception that allows combining it with Google's ads and billing libraries. Stockfish stays a separate, unmodified engine that the app talks to by messages, with its source linked | Suresh, 2026-11-19. Claude is not a lawyer; small remaining risk noted |
@@ -33,7 +33,7 @@ Builds on: `docs/specs/flow-rework.product.md` (F-D1 to F-D33). Android only.
 | A-D12 | The banner hides while any sheet, dialog or offer is open (Settings, level-up offer, confirm boxes), because a native strip would cover them | Delegated to Claude |
 | A-D13 | Offline or no ad available: no strip and no empty gap. The screen looks as it does today | Delegated to Claude |
 | A-D14 | When the banner shows, the page gains bottom padding of the banner's height, so the last button or the tip is never covered. Nothing above the bottom of the page moves | Delegated to Claude |
-| A-D15 | On an end card the banner appears no sooner than 1 second after the card, so a tap meant for the board or a button cannot land on an ad | Delegated to Claude (AdMob accidental-click rule, lesson L20) |
+| A-D15 | Every time the banner appears (Home, Progress, end cards, after a sheet or note closes, after a tab change) it waits at least 1 second, so a tap meant for something else cannot land on an ad | Delegated to Claude (AdMob accidental-click rule, lesson L20); widened from end cards only after review, 2026-11-21 |
 | A-D16 | Wide screens (tablet, board and panel side by side): the banner is still one strip at the bottom of the screen, never in a column beside the board (F-D27) | Delegated to Claude |
 | A-D17 | Settings gains "Privacy policy" (opens https://hnchennai.github.io/privacy.html) for everyone, and "Privacy choices" (reopens Google's form) only where Google says a choice applies | Delegated to Claude (Google requires the second where consent applies) |
 | A-D18 | No "Remove ads" button or wording yet. That is F5 | Scope |
@@ -66,7 +66,7 @@ Hard rules, the licence line gains:
 9. Given Priya opens Settings or gets the level-up offer while the banner is showing, then the banner hides until the sheet closes.
 10. Given Priya turns her phone sideways on Home, then the banner hides and Continue is on the first screen.
 11. Given any build before the Play launch, then the banner is Google's sample ad marked "Test Ad", never a real ad.
-12. Given the web version, then nothing changes and no ads code is loaded.
+12. Given the web version, then nothing changes and the ads rules file is never loaded.
 
 ## Acceptance criteria
 1. The banner can show only when the tip slot rule allows a slot on the current screen. One function decides both.
@@ -74,7 +74,7 @@ Hard rules, the licence line gains:
 3. Banner hidden within one frame of an activity starting, a sheet or dialog opening, the screen becoming shorter than 500px, or leaving a slot screen.
 4. Every ad request is non-personalised with a PG ceiling. Test: the request options are asserted in a unit test.
 5. With the banner showing at 360, 412 and 1280 wide, no button, tip or tab is covered, and Beginner Home keeps Continue on the first screen at 412x915.
-6. End card: banner no earlier than 1000ms after the card renders.
+6. Every appearance of the banner is no earlier than 1000ms after the screen or card that allows it is drawn.
 7. No ad available or offline: no strip, no reserved space, no console error.
 8. Consent: where required, no ad request before the form is answered. The form never opens during an activity or on day one.
 9. "Privacy choices" shows only when Google reports that a choice applies. "Privacy policy" always shows.
@@ -111,3 +111,9 @@ Hard rules, the licence line gains:
 - Licence: the exception is common practice, but the Stockfish authors could read the GPL more strictly. Fallback: remove the ads code, which leaves the app plain GPLv3.
 - AdMob limits ad serving until the app is on a store and reviewed. Expected; test ads are unaffected.
 - A native strip over a web page can lag one frame behind fast changes. Covered by hiding first, showing late (criteria 3 and 6).
+
+## Review record (2026-11-20 to 2026-11-21)
+- Two independent reviews (spec; integration, privacy and ads policy) and one delta re-review each. No blocker in the code. Fix rounds: 2.
+- Google libraries pinned: play-services-ads 25.4.0, user-messaging-platform 4.0.0, webview-native-ui engine 1.0.11.
+- Open until a phone test: day-one network silence (Google's library registers start-up code of its own), banner position with Android 16 edge to edge, the system browser link, and that the ads rules file loads inside the app.
+- To turn real ads on later: set `live: true`, update the unit test that asserts it is false, and set the repository variable ADS_LIVE to yes. Checkpoint.

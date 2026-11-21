@@ -1,4 +1,4 @@
-/* ---------- Words: the last move in plain words for Beginners (S2a, D17). Pure: no DOM, no network. ---------- */
+/* ---------- Words: the last move in plain words for Beginners (S2a, D17), and a tapped piece's name line (G1). Pure: no DOM, no network. ---------- */
 (function (root, factory) {
   var W = factory();
   if (typeof module === 'object' && module.exports) module.exports = W; else root.Words = W;
@@ -28,5 +28,17 @@
     return san.indexOf('+') > -1 ? s + ' Check!' : s;
   }
 
-  return { say: say, PARTNER: PARTNER };
+  /* G1 (G-D14): the line under the board for a tapped themed piece: the emblem's name, the role and how it moves.
+     name: Avatar.label(set, color, type), which is null for classic pieces, so they get no line. */
+  var ROLE = {
+    k: 'king. Moves one square in any direction.',
+    q: 'queen. Moves any distance, straight or diagonally.',
+    r: 'rook. Moves any distance in straight lines.',
+    b: 'bishop. Moves any distance diagonally.',
+    n: 'knight. Jumps in an L shape.',
+    p: 'pawn. Moves forward, captures diagonally.'
+  };
+  function nameLine(name, type) { return name && ROLE.hasOwnProperty(type) ? name + ': ' + ROLE[type] : ''; }
+
+  return { say: say, nameLine: nameLine, PARTNER: PARTNER };
 });

@@ -406,3 +406,38 @@ test('lessonOfferDue caps a future finish time at now', () => {
   p.levelOfferT = now - DAY;
   assert.equal(P.lessonOfferDue(p, UNITS, null, now), true, 'still offered when the answer is older than now');
 });
+
+// ---------- G1 (G-D15): the "Piece tags" setting ----------
+test('G1: a new profile has piece tags on', () => {
+  assert.equal(P.blank().pieceTags, true);
+});
+
+test('G1: migrate turns piece tags on for an old save that never had the setting, and keeps a saved choice', () => {
+  const v4 = { v: 4, games: [{ id: 'g1', d: 1, r: 'W', sans: ['e4'] }], puz: {}, rating: 820, rn: 0, course: {}, days: {}, reviewed: [], t: 50, theme: 'heroes' };
+  assert.equal(P.migrate(v4).pieceTags, true, 'v4 save');
+  assert.equal(P.migrate({ v: 5, level: 'club', theme: 'heroes' }).pieceTags, true, 'v5 save from before G1');
+  assert.equal(P.migrate({ v: 5, pieceTags: false }).pieceTags, false, 'off stays off');
+  assert.equal(P.migrate({ v: 5, pieceTags: true }).pieceTags, true);
+  assert.equal(P.migrate({ v: 5, pieceTags: null }).pieceTags, true, 'a broken value reads as on');
+  assert.equal(P.migrate(P.migrate({ v: 5, pieceTags: false })).pieceTags, false, 'migrating twice changes nothing');
+  assert.equal(P.migrate(JSON.parse(JSON.stringify(P.migrate({ v: 5, pieceTags: false })))).pieceTags, false, 'survives a save and a load');
+});
+
+test('G1: merge takes piece tags from the newer copy (newest for settings)', () => {
+  const off = { v: 5, pieceTags: false, t: 10 }, on = { v: 5, pieceTags: true, t: 20 };
+  assert.equal(P.merge(off, on).pieceTags, true, 'cloud is newer');
+  assert.equal(P.merge(on, off).pieceTags, true, 'local is newer');
+  assert.equal(P.merge({ v: 5, pieceTags: true, t: 10 }, { v: 5, pieceTags: false, t: 20 }).pieceTags, false, 'cloud is newer and off');
+  assert.equal(P.merge({ v: 5, pieceTags: false, t: 20 }, { v: 5, pieceTags: true, t: 10 }).pieceTags, false, 'local is newer and off');
+});
+
+test('G1: merge keeps the local choice when the other copy never had the setting, and merge with nothing keeps it', () => {
+  assert.equal(P.merge({ v: 5, pieceTags: false, t: 10 }, { v: 5, t: 20, theme: 'heroes' }).pieceTags, false, 'a newer save from an older app does not turn tags back on');
+  assert.equal(P.merge({ v: 5, pieceTags: false, t: 10 }, null).pieceTags, false);
+  assert.equal(P.merge(null, { v: 5, pieceTags: false, t: 10 }).pieceTags, false, 'a fresh device takes the saved choice');
+  assert.equal(P.merge({ v: 5, t: 10 }, { v: 5, t: 20 }).pieceTags, true);
+});
+
+test('G1: merge takes a saved choice over a copy that never had the setting, whichever is newer', () => {
+  assert.equal(P.merge({ v: 5, t: 20 }, { v: 5, pieceTags: false, t: 10 }).pieceTags, false);
+});

@@ -400,6 +400,10 @@ header { justify-content: space-between; align-items: center; }
 .player { position: relative; }
 .pvtag { position: absolute; inset: -2px 0; z-index: 3; display: flex; align-items: center; justify-content: center; text-align: center; background: #1c4a78; color: #fff; font-size: 12.5px; font-weight: 600; padding: 0 12px; border-radius: 8px; pointer-events: none; line-height: 1.25; }
 .coachstrip .mvc { font-size: .85em; }
+/* G1 (G-D14): the name line for a tapped themed piece, over the "You" row under the board */
+.pname { position: absolute; inset: -2px 0; z-index: 3; display: flex; align-items: center; justify-content: center; text-align: center; background: var(--accent-soft); color: var(--ink); border: 1px solid var(--line); font-size: 12.5px; font-weight: 600; padding: 0 10px; border-radius: 8px; pointer-events: none; line-height: 1.2; }
+/* G1 (G-D15): the "Piece tags" switch, first under "Choose your pieces" in Settings */
+.switchrow.tagsw { border-top: 0; margin: 0 0 2px; padding: 0; min-height: 44px; }
 /* ---------- zones: Learn / Train / Play ---------- */
 :root { --z-learn: #2d6db3; --z-learn-soft: #e5eef8; --z-train: #7748c2; --z-train-soft: #efe8fa; --z-play: var(--accent); --z-play-soft: var(--accent-soft); }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --z-learn: #6ea6e6; --z-learn-soft: #1b2a3c; --z-train: #ad8be8; --z-train-soft: #2a2140; } }
@@ -751,6 +755,8 @@ header h1 { margin-right: auto; } /* the gear stays right when the engine pill i
       </div>
       <div class="coachstrip" id="coachStrip" aria-live="polite"></div>
       <div class="player">
+        <!-- G1 (G-D14): the name line for a tapped themed piece. It lies over this row, so nothing under the board moves. -->
+        <div class="pname" id="pieceLine" role="status" aria-live="polite" hidden></div>
         <div class="who"><span class="swatch" id="youSwatch"></span>You</div>
         <div class="caps" id="youCaps"></div>
       </div>

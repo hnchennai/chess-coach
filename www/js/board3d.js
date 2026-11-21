@@ -225,17 +225,46 @@ var Board3D = (function () {
   }
   function minY(em) { var m = Infinity; [em.ink, em.acc].forEach(function (g) { if (g) { g.computeBoundingBox(); m = Math.min(m, g.boundingBox.min.y); } }); return m === Infinity ? 0 : m; }
 
-  var glyphTex = {};
-  function plaqueMat(set, color, type) {
+  /* One round symbol picture per set, colour and role: the plaque on the base and the tag above the piece share it. */
+  var glyphTex = {}, glyphMap = {};
+  function glyphTexture(set, color, type) {
     var key = set + color + type;
-    if (glyphTex[key]) return glyphTex[key];
+    if (glyphMap[key]) return glyphMap[key];
     var P = palette(set, color), c = document.createElement('canvas'); c.width = c.height = 128;
     var x = c.getContext('2d');
     x.fillStyle = mixHex(P[2], P[3], 0.4); x.beginPath(); x.arc(64, 64, 62, 0, Math.PI * 2); x.fill();
     x.fillStyle = P[1]; x.beginPath(); x.arc(64, 64, 52, 0, Math.PI * 2); x.fill();
-    x.fillStyle = P[4]; x.font = '78px "Noto Sans Symbols 2","Segoe UI Symbol","DejaVu Sans",sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText(GLY[type] + '︎', 64, 70);
+    x.fillStyle = P[4]; x.font = '78px "Noto Sans Symbols 2","Segoe UI Symbol","DejaVu Sans",sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText(GLY[type] + '\uFE0E', 64, 70);
     var t = new T.CanvasTexture(c); t.encoding = T.sRGBEncoding; t.anisotropy = 4;
-    return (glyphTex[key] = new T.MeshStandardMaterial({ map: t, roughness: 0.4, metalness: 0.1, transparent: true }));
+    return (glyphMap[key] = t);
+  }
+  function plaqueMat(set, color, type) {
+    var key = set + color + type;
+    return glyphTex[key] || (glyphTex[key] = new T.MeshStandardMaterial({ map: glyphTexture(set, color, type), roughness: 0.4, metalness: 0.1, transparent: true }));
+  }
+  /* ---------- role tags (G1, G-D13): a round tag with the chess symbol, floating above every themed piece ---------- */
+  /* The tag is a child of its piece, so it moves, hops, grows and leaves with it. placeCam() turns it to the camera.
+     One shape for all tags and one material per set, colour and role: nothing is made per frame.
+     TAG_GAP: seen from the opening camera height, the tag's lower edge just clears the top of its own emblem. */
+  var TAG_R = 0.2, TAG_GAP = 0.16, tagGeo = null, tagMats = {}, tagTop = {}, tagsOn = true;
+  function tagMat(set, color, type) {
+    var key = set + color + type;
+    return tagMats[key] || (tagMats[key] = new T.MeshBasicMaterial({ map: glyphTexture(set, color, type), transparent: true, depthWrite: false, toneMapped: false }));
+  }
+  function noRay() {}
+  function addTag(g, set, color, type) {
+    var key = set + color + type, top = tagTop[key];
+    if (top == null) { g.updateMatrixWorld(true); top = tagTop[key] = new T.Box3().setFromObject(g).max.y; }
+    var m = new T.Mesh(tagGeo || (tagGeo = new T.CircleGeometry(TAG_R, 28)), tagMat(set, color, type));
+    m.position.set(0, top + TAG_GAP + TAG_R, 0); m.renderOrder = 5; m.visible = tagsOn;
+    m.raycast = noRay; /* a tap on a tag is a tap on the board behind it, not on the piece */
+    m.userData.role = type; m.userData.color = color;
+    g.add(m); g.userData.tag = m; g.userData.top = top;
+    return g;
+  }
+  function showTags(v) {
+    tagsOn = v;
+    if (pcGroup) pcGroup.children.forEach(function (o) { if (o.userData.tag) o.userData.tag.visible = v && !o.userData.gone; });
   }
 
   function geos(set, color, type) {
@@ -263,6 +292,10 @@ var Board3D = (function () {
     return g;
   }
   function makePiece(set, color, type) {
+    var g = buildPiece(set, color, type);
+    return set !== 'classic' && palette(set, color) ? addTag(g, set, color, type) : g;
+  }
+  function buildPiece(set, color, type) {
     if (set === 'classic' && heir && heir[color + type]) { var hp = heir[color + type].clone(); if (type === 'n') hp.rotation.y = color === 'w' ? -Math.PI / 2 : Math.PI / 2; return hp; }
     if (window.Rama3D && Rama3D.has(set)) return figurePiece(set, color, type);
     var G = geos(set, color, type), M = mats(set, color), g = new T.Group();
@@ -412,7 +445,10 @@ var Board3D = (function () {
     cam.setViewOffset(w, h, 0, -cy * h / 2 * Math.min(1, zoom), w, h);
     var ry = Math.atan2(cam.position.x, cam.position.z);
     var tilt = -(Math.PI / 2 - pol) * 0.45;
-    pcGroup.children.forEach(function (o) { if (o.userData.bill) { o.rotation.y = ry; if (o.userData.emb) o.userData.emb.rotation.x = tilt; } });
+    pcGroup.children.forEach(function (o) {
+      if (o.userData.bill) { o.rotation.y = ry; if (o.userData.emb) o.userData.emb.rotation.x = tilt; }
+      var tg = o.userData.tag; if (tg && tg.visible) tg.quaternion.copy(o.quaternion).invert().multiply(cam.quaternion); /* G-D13: the tag faces the player */
+    });
   }
 
   /* ---------- input ---------- */
@@ -519,6 +555,7 @@ var Board3D = (function () {
     });
     left.forEach(function (p) {
       if (instant) { pcGroup.remove(p.obj); return; }
+      p.obj.userData.gone = true; if (p.obj.userData.tag) p.obj.userData.tag.visible = false; /* a captured piece has no tag */
       anims.push({ o: p.obj, t0: performance.now() + 220, d: 380, kind: 'drop' });
     });
     pieces = next;
@@ -564,11 +601,49 @@ var Board3D = (function () {
     if (flip) { az = -az; }
     boardMesh.material[2].map = s.coords === false ? texPlain : texCoords;
     if (labels) labels.visible = s.coords !== false;
+    if ((s.tags !== false) !== tagsOn) showTags(s.tags !== false);
     syncPieces(s, instant || !prev);
     drawHl(s); drawArrows(s); kick();
   }
   function resize() { sizeW = 0; kick(); }
   window.addEventListener('resize', function () { if (on) resize(); });
   function screenOf(sq, front) { var p = sqPos(sq), v = new T.Vector3(p.x, 0, p.z + (front ? (white ? 0.38 : -0.38) : 0)).project(cam), r = renderer.domElement.getBoundingClientRect(); return { x: r.left + (v.x + 1) / 2 * r.width, y: r.top + (1 - v.y) / 2 * r.height }; }
-  return { enable: enable, disable: disable, sync: sync, resize: resize, screenOf: screenOf, loadThree: load, isOn: function () { return on; } };
+  /* What the scene holds, for the browser checks (tests/e2e/g1.spec.js). Nothing in the app calls these. */
+  var debug = {
+    ready: function () { return !!(on && T && renderer && state && theme === state.theme && pieces.length === state.pos.length); },
+    /* every tag in the scene: its piece, whether it is drawn, where it is in the world and on screen, and whether it faces the camera */
+    tags: function () {
+      var out = [], r = renderer.domElement.getBoundingClientRect(), v = new T.Vector3(), n = new T.Vector3(), cd = new T.Vector3(), up = new T.Vector3();
+      placeCam(); scene.updateMatrixWorld(true); cam.getWorldDirection(cd); up.set(0, 1, 0).applyQuaternion(cam.quaternion);
+      function scr(x, y, z) { v.set(x, y, z).project(cam); return { x: r.left + (v.x + 1) / 2 * r.width, y: r.top + (1 - v.y) / 2 * r.height }; }
+      pcGroup.children.forEach(function (o) {
+        var t = o.userData.tag; if (!t) return;
+        var w = t.getWorldPosition(new T.Vector3()), s = scr(w.x, w.y, w.z), e = scr(w.x + up.x * TAG_R, w.y + up.y * TAG_R, w.z + up.z * TAG_R);
+        var tp = scr(o.position.x, o.position.y + o.userData.top * o.scale.y, o.position.z), bs = scr(o.position.x, o.position.y, o.position.z);
+        n.set(0, 0, 1).transformDirection(t.matrixWorld);
+        out.push({ sq: o.userData.sq, role: t.userData.role, color: t.userData.color, visible: t.visible, gone: !!o.userData.gone, facing: -n.dot(cd),
+          x: w.x, y: w.y, z: w.z, px: o.position.x, py: o.position.y, pz: o.position.z, top: o.userData.top, r: TAG_R,
+          sx: s.x, sy: s.y, sr: Math.hypot(e.x - s.x, e.y - s.y), topSx: tp.x, topSy: tp.y, baseSx: bs.x, baseSy: bs.y,
+          rect: { left: r.left, top: r.top, right: r.right, bottom: r.bottom } });
+      });
+      return out;
+    },
+    /* turn the board as a drag does (the same limits), and draw */
+    view: function (a, p) { az = azGoal = clamp(a, -1.2, 1.2); pol = clamp(p, 0.28, 1.12); fit(); placeCam(); renderer.render(scene, cam); dirty = false; },
+    show: function (v) { showTags(v); kick(); },
+    /* the mean time to draw one frame, in ms, with tags on or off: n frames, each one finished before the next starts */
+    bench: function (n, tags) {
+      var gl = renderer.getContext(), px = new Uint8Array(4), t0, i;
+      showTags(tags); fit(); placeCam(); renderer.render(scene, cam); gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px);
+      t0 = performance.now();
+      for (i = 0; i < n; i++) { placeCam(); renderer.render(scene, cam); gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px); }
+      return (performance.now() - t0) / n;
+    },
+    info: function () {
+      var tags = 0, geos = {}, ms = {};
+      pcGroup.children.forEach(function (o) { var t = o.userData.tag; if (t) { tags++; geos[t.geometry.uuid] = 1; ms[t.material.uuid] = 1; } });
+      return { tags: tags, tagGeometries: Object.keys(geos).length, tagMaterials: Object.keys(ms).length, calls: renderer.info.render.calls, w: renderer.domElement.width, h: renderer.domElement.height };
+    }
+  };
+  return { enable: enable, disable: disable, sync: sync, resize: resize, screenOf: screenOf, loadThree: load, isOn: function () { return on; }, debug: debug };
 })();

@@ -36,7 +36,7 @@ Builds on: `flow-rework.product.md` (F-D1 to F-D33), `beginner-flow.product.md` 
 | G-D11 | The tip slot and the ad banner are hidden while the activity screen is open, and never share a screen with a board in use. A saved game that the player has closed no longer hides them on Home, Progress or end cards. This replaces the strict part of F-D17 and F-D32 on phones, from slice G2 | Suresh, 2026-11-21 |
 | G-D12 | On phones the banner shows on Home for every level, because Home has no board (A-D19 still holds: never with the board) | Suresh, 2026-11-21 |
 | G-D13 | Themed piece sets get a small round tag on every piece with the standard chess symbol for its role. In 3D the tag floats above the piece and always faces the player. In the flat view it sits in the corner of the piece. Classic pieces get no tag | Suresh, 2026-11-21 |
-| G-D14 | Tapping a themed piece shows one line under the board: the emblem's name, the role, and how it moves. For example "Rocket: bishop. Moves any distance diagonally." | Suresh, 2026-11-21 (mockup screen 3); wording delegated to Claude |
+| G-D14 | Tapping a themed piece shows one line under the board: the emblem's name, the role, and how it moves. For example "Rocket: knight. Jumps in an L shape." (Hero League: the rocket is the knight) | Suresh, 2026-11-21 (mockup screen 3); wording delegated to Claude |
 | G-D15 | Settings, in "Coach and pieces": a switch "Piece tags", on by default. It turns the tags off in both views. The name line for a tapped piece stays | Suresh, 2026-11-21 |
 | G-D16 | The tag is readable at 360px wide: at least 14px across in the flat view, and it never hides the emblem or a neighbour's emblem by more than a corner | Delegated to Claude |
 | G-D17 | The level check, Settings and Rani's notes do not change | Scope |
@@ -64,8 +64,8 @@ Builds on: `flow-rework.product.md` (F-D1 to F-D33), `beginner-flow.product.md` 
 6. Given Priya opens a lesson from Learn and finishes it, then the end card shows under the board with the next step, and the tabs are back.
 7. Given Meera presses the phone's back button during a puzzle set, then the set closes like Close does, and "Resume puzzles" is first on Train.
 8. Given Arjun uses a tablet held sideways (1280 wide), then the board is on the left and the tabs on the right, as today.
-9. Given Arjun plays with the space theme in 3D, then every piece has a small symbol tag above it that faces him as he turns the board.
-10. Given Arjun taps the rocket, then the line under the board reads "Rocket: bishop. Moves any distance diagonally."
+9. Given Arjun plays with the Hero League set in 3D, then every piece has a small symbol tag above it that faces him as he turns the board.
+10. Given Arjun taps the rocket, then the line under the board reads "Rocket: knight. Jumps in an L shape."
 11. Given Arjun turns "Piece tags" off in Settings, then the tags are gone in both views, and tapping a piece still shows the name line.
 12. Given Priya uses the classic pieces, then there are no tags and no name line.
 13. Failure: given the game screen is open and the app is closed by the system, when Arjun returns, then no move is lost and the game is where he left it.

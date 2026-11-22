@@ -67,9 +67,19 @@ async function newPage(vp, p, o) {
   await page.goto(URL);
   try { await page.waitForFunction(() => window.__coach && window.Placement); }
   catch (e) { throw new Error('app did not start: ' + e.message.split('\n')[0] + ' | page errors: ' + JSON.stringify(page.errors)); }
+  if (vp.width <= 860 && o.board !== false) await toBoard(page);
   if (o.v3d) await wait3d(page);
   return page;
 }
+// G2a: on a phone (up to 860px wide) the app opens on Home and the tabs have no board. A game is opened from Play, as a
+// player does it: "Resume game" for a game with moves, "Start new game" for a fresh board. Wide screens need nothing.
+const toBoard = (page) => page.evaluate(() => {
+  document.getElementById('tab-play').click();
+  const r = document.querySelector('#resumePlay .rs-go');
+  if (r && r.getClientRects().length) r.click(); else document.getElementById('newBtn').click();
+});
+// The Settings gear the player can see: in the header, or on the board screen's Close bar (G-D24).
+const GEAR = '#settingsBtn:visible, #actGear:visible';
 const shot = async (page, vp, name) => { if (!SHOTS) return; await page.waitForTimeout(250); await page.screenshot({ path: path.join(SHOTS, vp.width + '_' + name + '.png') }); };
 const savedProf = (page) => page.evaluate((k) => JSON.parse(localStorage.getItem(k)), PKEY);
 const themed = (page) => page.evaluate(() => Object.keys(window.Avatar.SETS).filter((s) => s !== 'classic'));
@@ -143,7 +153,7 @@ const cases = [
   }],
   ['C8 flat: the tag is the same on a dragged piece, and the set previews in "Coach and pieces" keep it', async (vp) => {
     const page = await newPage(vp, club(), { set: 'heroes' });
-    await page.locator('#settingsBtn').click();
+    await page.locator(GEAR).click();
     const pv = await page.evaluate(() => [...document.querySelectorAll('#lookSet [data-set="heroes"] .pv svg')].map((s) => { const t = s.querySelector('.ptag'); return t ? t.dataset.role : null; }));
     assert.deepEqual(pv, ['k', 'q', 'n', 'k'], 'previews: king, queen, knight and the other king, each with its tag');
     assert.equal(await page.evaluate(() => document.querySelectorAll('#lookSet [data-set="classic"] .pv svg').length), 0, 'the classic preview has no tokens and no tags');
@@ -531,7 +541,7 @@ const cases = [
   ['Fix 3 note: Coach and pieces says how to tell the pieces apart, in the agreed words', async (vp) => {
     const page = await newPage(vp, club(), { set: 'heroes', tab: 'coach' });
     const WANT = 'Every themed piece carries a small chess symbol. Tap a piece to see its name and how it moves.';
-    await page.locator('#settingsBtn').click();
+    await page.locator(GEAR).click();
     assert.equal(await page.evaluate(() => document.querySelector('#lookSet .setnote').textContent), WANT, 'in Settings');
     assert.equal(await page.evaluate(() => document.querySelector('#lookCard .setnote').textContent), WANT, 'on Home’s card');
     assert.ok(!/Hover over|long-press|in its corner/.test(await page.evaluate(() => document.body.textContent)), 'the old note is gone');
@@ -542,7 +552,7 @@ const cases = [
   ['S11 switch: "Piece tags" is in Coach and pieces, on by default; off removes the tags in both views and keeps the name line', async (vp) => {
     const page = await newPage(vp, club(), { set: 'heroes' });
     assert.equal((await savedProf(page)).pieceTags, undefined, 'the seeded save is from before the setting');
-    await page.locator('#settingsBtn').click();
+    await page.locator(GEAR).click();
     const sw = page.locator('#lookSet [data-act="tags"]');
     await sw.scrollIntoViewIfNeeded();
     assert.equal((await sw.innerText()).trim(), 'Piece tags', 'the label, exactly');
@@ -580,7 +590,7 @@ const cases = [
     await page.waitForFunction(() => !window.__coach.st.busy && window.__coach.hist().length >= 2, null, { timeout: 30000 });
     assert.ok((await tags3d(page)).every((t) => !t.visible));
     // back on, in 3D, with a click
-    await page.locator('#settingsBtn').click();
+    await page.locator(GEAR).click();
     await sw.click();
     assert.equal(await sw.getAttribute('aria-checked'), 'true');
     assert.equal((await savedProf(page)).pieceTags, true);
@@ -592,17 +602,17 @@ const cases = [
   ['C11 restart: the choice survives closing and opening the app, in both views', async (vp) => {
     const page = await newPage(vp, club({ pieceTags: false }), { set: 'heroes' });
     assert.ok((await flatTags(page)).every((p) => p.token && !p.tag), 'off from the saved profile');
-    await page.reload(); await page.waitForFunction(() => window.__coach && window.Placement);
+    await page.reload(); await page.waitForFunction(() => window.__coach && window.Placement); if (vp.width <= 860) await toBoard(page); // G2a: a phone restarts on Home
     assert.ok((await flatTags(page)).every((p) => p.token && !p.tag), 'still off after a restart');
     assert.equal((await savedProf(page)).pieceTags, false);
-    await page.locator('#settingsBtn').click();
+    await page.locator(GEAR).click();
     const sw = page.locator('#lookSet [data-act="tags"]');
     assert.equal(await sw.getAttribute('aria-checked'), 'false');
     await sw.click();
     await page.keyboard.press('Escape');
     await page.locator('#v3dBtn').click(); await wait3d(page);
     assert.equal((await tags3d(page)).filter((t) => t.visible).length, 32);
-    await page.reload(); await page.waitForFunction(() => window.__coach && window.Placement); await wait3d(page);
+    await page.reload(); await page.waitForFunction(() => window.__coach && window.Placement); if (vp.width <= 860) await toBoard(page); await wait3d(page);
     assert.equal((await savedProf(page)).pieceTags, true);
     assert.equal((await tags3d(page)).filter((t) => t.visible).length, 32, 'on again after a restart, in 3D');
     assert.equal((await flatTags(page)).filter((p) => p.tag).length, 32);
@@ -627,7 +637,7 @@ const cases = [
     assert.equal(await page.evaluate(() => document.querySelectorAll('#lookCard [data-act="tags"], #lookCard [role="switch"]').length), 0, 'no switch on Home');
     assert.ok(!/Piece tags/.test(await page.evaluate(() => document.getElementById('panel-coach').textContent)), 'and no new words on Home');
     assert.equal(await page.evaluate(() => document.querySelectorAll('#lookCard [data-set="heroes"] .pv .ptag').length), 4, 'previews with tags');
-    await page.locator('#settingsBtn').click();
+    await page.locator(GEAR).click();
     assert.equal(await page.evaluate(() => document.querySelectorAll('#settingsSheet [data-act="tags"]').length), 1, 'one switch, in Settings');
     await page.locator('#lookSet [data-act="tags"]').click();
     assert.equal(await page.evaluate(() => document.querySelectorAll('#lookCard [data-set="heroes"] .pv .ptag').length), 0, 'Home\u2019s previews follow the switch');

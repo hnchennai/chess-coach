@@ -1,6 +1,6 @@
 # Board screens and piece tags, G (product spec)
 
-Size: L. Status: approved by Suresh (2026-11-21): decisions, scenarios and wording. G1 is built first.
+Size: L. Status: approved by Suresh (2026-11-21): decisions, scenarios and wording. G1 shipped in PR #12 (v1.0.44). G2 design pass done; G-D18 to G-D26 added after it.
 Builds on: `flow-rework.product.md` (F-D1 to F-D33), `beginner-flow.product.md` (D38), `ads.product.md` (A-D1 to A-D19).
 
 ## Problem
@@ -18,7 +18,9 @@ Builds on: `flow-rework.product.md` (F-D1 to F-D33), `beginner-flow.product.md` 
 | Slice | What | Size |
 |---|---|---|
 | G1 | Piece tags in the flat and 3D views, the name line for a tapped piece, the Settings switch | M |
-| G2 | Phone layout: tab pages without the board, the activity screen with Close, Play as a start page, Resume cards | L, design pass first |
+| G2a | Phone layout: tab pages without the board, the board screen with the Close bar, tabs back on end cards, Play as a start page, Resume game on Play and every Home, start on Home, the tip and banner rule | L. Design: `board-screens.tech.md` |
+| G2b | One thing waits per tab; lessons, sets and drills saved on the device so Resume survives a restart | M |
+| G2c | The phone's back button acts as Close (`@capacitor/app`) | S, phone test |
 
 ## Decisions
 | # | Decision | Source |
@@ -40,11 +42,26 @@ Builds on: `flow-rework.product.md` (F-D1 to F-D33), `beginner-flow.product.md` 
 | G-D15 | Settings, in "Coach and pieces": a switch "Piece tags", on by default. It turns the tags off in both views. The name line for a tapped piece stays | Suresh, 2026-11-21 |
 | G-D16 | The tag is readable at 360px wide: at least 14px across in the flat view, and it never hides the emblem or a neighbour's emblem by more than a corner | Delegated to Claude |
 | G-D17 | The level check, Settings and Rani's notes do not change | Scope |
+| G-D18 | The phone's back button acts as Close through the official `@capacitor/app` library, pinned. It ships as its own last slice (G2c) with its own phone test. Refines G-D9 | Suresh, 2026-11-21 |
+| G-D19 | A lesson in progress and a puzzle set or drill in progress are saved on the device (not in the profile, not in the cloud), so their Resume cards survive an app restart. Slice G2b | Suresh, 2026-11-21 |
+| G-D20 | One thing can wait per tab: a game on Play, a lesson on Learn, a set or drill on Train. Opening one never ends another. This replaces D50 on phones. Slice G2b; until then opening the game still ends an open lesson or set, as today | Suresh, 2026-11-21 |
+| G-D21 | Every level's Home shows the "Resume game" card while a game is unfinished. Beginner Home's "Back to my game" button is retired. This changes F-D15 for that one button | Suresh, 2026-11-21 |
+| G-D22 | The Resume game card's line reads "Move 12, your turn" or "Move 12, engine to move" | Suresh, 2026-11-21 |
+| G-D23 | Closing a review returns the player to where it was opened: Progress for a past game opened there, Play for a review opened from a game's end card. Refines G-D4 | Suresh, 2026-11-21 |
+| G-D24 | The Close bar has the Settings gear at its top right, so pieces, 3D and Piece tags can be changed without closing | Suresh, 2026-11-21 |
+| G-D25 | On a phone the app always opens on Home, whatever tab it was closed on | Suresh, 2026-11-21 |
+| G-D26 | A drill's card reads "Resume drill" | Delegated to Claude |
+| G-D27 | Closing a review that was opened in the middle of a game returns to that game. A second Close goes to Play | Suresh, 2026-11-21 |
+| G-D28 | For a Beginner the Resume game card reads "Move 12, Rani's partner to move" when it is not their move (Beginners never see "engine") | Suresh, 2026-11-21 |
+| G-D29 | "Back to my game" is renamed "Resume game" everywhere. When the Continue card's own button is already the game, Home shows no second Resume game card | Suresh, 2026-11-21; second sentence delegated to Claude |
+| G-D30 | Resume card lines: "Lesson · step 2 of 5", "Puzzle 3 of 10", "Endgame drill". Close bar for a game: "Your game" with the move line | Suresh, 2026-11-21 |
+| G-D31 | On an end card the tip and banner show only if the board on screen is not a game in progress. A move played under an end card ends the end card at once. A drill closes to the tab it was started from | Delegated to Claude (review, 2026-11-22; follows G-D11) |
 
 ## New wording (all of it)
 - Button, top left of the activity screen: "Close" (spoken label; the button shows an X)
 - Card title and button: "Resume game"; card line: "Move 12, your turn" (the real move number)
-- Card title and button for a lesson or set: "Resume lesson", "Resume puzzles"
+- Card title and button for a lesson, set or drill: "Resume lesson", "Resume puzzles", "Resume drill"
+- Resume game card line when it is not the player's move: "Move 12, engine to move"
 - Play tab card heading: "Recent games"
 - Settings switch: "Piece tags"
 - Name line roles, after the emblem's name and a colon:
@@ -103,7 +120,7 @@ Builds on: `flow-rework.product.md` (F-D1 to F-D33), `beginner-flow.product.md` 
 - Confirmed by Suresh: G-D1 to G-D7, G-D10 to G-D15.
 - Delegated to Claude: G-D8, G-D9, G-D16, the name line wording.
 - Verified by tool: an unfinished game is already saved on every move; themed sets already carry an emblem name and a role per piece; the 3D pieces already carry a small symbol plaque on the base.
-- Not verified: whether an unfinished lesson or puzzle set survives an app restart today. If it does not, "Resume lesson" and "Resume puzzles" last until the app is closed, and the spec says so before the build.
+- Verified by the design pass: a game survives an app restart; a lesson step, a set's place and a review do not (memory only). Every puzzle result and rating is saved when answered. G-D19 adds the saving.
 
 ## Open questions
 - None.

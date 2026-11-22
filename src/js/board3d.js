@@ -8,6 +8,7 @@ var Board3D = (function () {
   var renderer, scene, cam, boardMesh, texCoords, texPlain, hlGroup, arGroup, pcGroup;
   var pieces = [], state = null, theme = null, white = true;
   var az = 0, azGoal = 0, pol = 0.6, zoom = 1, raf = 0, anims = [], dirty = true, sizeW = 0;
+  var lost = false, lostTimer = 0, lostN = 0, restoredN = 0, LOST_MS = 4000;
   var geoCache = {}, matCache = {};
   var GLY = { k: '♚', q: '♛', r: '♜', b: '♝', n: '♞', p: '♟' };
 
@@ -365,7 +366,7 @@ var Board3D = (function () {
     boardMesh = new T.Mesh(new T.BoxGeometry(9, 0.35, 9), [side, side, top, side, side, side]); boardMesh.position.y = -0.175; boardMesh.receiveShadow = true; scene.add(boardMesh);
     hlGroup = new T.Group(); arGroup = new T.Group(); pcGroup = new T.Group(); scene.add(hlGroup, arGroup, pcGroup);
     var cv = renderer.domElement; cv.className = 'b3dcanvas'; host.appendChild(cv);
-    bindInput(cv);
+    bindInput(cv); bindContext(cv);
     if (window.ResizeObserver) new ResizeObserver(function () { if (on) { sizeW = 0; kick(); } }).observe(host);
     loadHeir();
   }
@@ -507,7 +508,7 @@ var Board3D = (function () {
     function up(e) {
       var wasTap = drag && !drag.moved && Object.keys(ptrs).length === 1;
       delete ptrs[e.pointerId];
-      if (!Object.keys(ptrs).length) { if (wasTap && e.type === 'pointerup') { var s = pick(e); if (s && opts.onTap) opts.onTap(s); } drag = null; pinch0 = 0; }
+      if (!Object.keys(ptrs).length) { if (wasTap && e.type === 'pointerup') tapSq(pick(e)); drag = null; pinch0 = 0; }
     }
     cv.addEventListener('pointerup', up); cv.addEventListener('pointercancel', up);
     cv.addEventListener('wheel', function (e) { e.preventDefault(); zoom = clamp(zoom * (e.deltaY > 0 ? 1.08 : 0.93), 0.6, 1.25); kick(); }, { passive: false });
@@ -594,9 +595,50 @@ var Board3D = (function () {
     });
     anims = live;
   }
-  function kick() { dirty = true; if (!raf) raf = requestAnimationFrame(loop); }
+  /* G2a: the board is hidden far more often now (every tab page on a phone), and Android's WebView can drop the WebGL
+     context of a canvas that stays hidden, or under memory pressure. Losing it must not break the page: drawing stops at
+     once. When the browser gives the context back, the 3D board is built again on a fresh canvas (a renderer that has lost
+     its context keeps stale handles) and the newest position is drawn. If it does not come back in a few seconds, or the
+     rebuild fails, the renderer is dropped and the app is told (opts.onLost): it goes back to the flat board, and the next
+     "3D view" builds a fresh one. The pieces' shapes and materials are plain data and are reused. */
+  function dropCanvas() {
+    clearTimeout(lostTimer); lostTimer = 0; lost = false;
+    if (raf) cancelAnimationFrame(raf); raf = 0;
+    var old = renderer; renderer = null; anims = []; sizeW = 0;
+    try { var cv = old.domElement, gl = old.getContext(); if (cv.parentNode) cv.parentNode.removeChild(cv); if (!gl.isContextLost()) { var x = gl.getExtension('WEBGL_lose_context'); if (x) x.loseContext(); } } catch (e) {} /* frees the old canvas's memory */
+  }
+  function dropRenderer() {
+    dropCanvas(); on = false;
+    if (opts.onLost) try { opts.onLost(); } catch (e) {}
+  }
+  function rebuild() {
+    dropCanvas();
+    try {
+      build();
+      if (heirBoard) { scene.add(heirBoard); boardMesh.visible = false; }
+      if (labels) scene.add(labels);
+      if (state) { var s = state; theme = null; state = null; sync(s, true); }
+      if (on) kick();
+    } catch (e) { renderer = null; on = false; if (opts.onLost) try { opts.onLost(); } catch (x) {} }
+  }
+  function bindContext(cv) {
+    var mine = renderer;
+    cv.addEventListener('webglcontextlost', function (e) {
+      e.preventDefault(); if (renderer !== mine) return;
+      lost = true; lostN++; if (raf) cancelAnimationFrame(raf); raf = 0;
+      clearTimeout(lostTimer); lostTimer = setTimeout(function () { if (lost && renderer === mine) dropRenderer(); }, LOST_MS);
+    }, false);
+    cv.addEventListener('webglcontextrestored', function () {
+      if (renderer !== mine) return;
+      restoredN++; rebuild();
+    }, false);
+  }
+  /* A tap on the 3D board. Ignored while the WebGL context is lost: the picture is stale until it is drawn again. */
+  function tapSq(s) { if (s && opts.onTap && !ctxLost()) opts.onTap(s); }
+  function ctxLost() { try { return lost || renderer.getContext().isContextLost(); } catch (e) { return true; } }
+  function kick() { dirty = true; if (!raf && !lost && renderer) raf = requestAnimationFrame(loop); }
   function loop(now) {
-    raf = 0; if (!on) return;
+    raf = 0; if (!on || !renderer || ctxLost()) return; /* never draw into a lost context (the event comes a moment after the loss) */
     if (!fit()) return;
     if (Math.abs(azGoal - az) > 0.001 && !drag) { az += (azGoal - az) * 0.18; dirty = true; }
     if (anims.length) { step(now); dirty = true; }
@@ -677,6 +719,9 @@ var Board3D = (function () {
       for (i = 0; i < n; i++) { placeCam(); renderer.render(scene, cam); gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px); }
       return (performance.now() - t0) / n;
     },
+    /* G2a: the canvas and how often its WebGL context was lost and came back */
+    tap: tapSq, /* a tap on a square, through the same gate as a finger's */
+    context: function () { return { canvas: renderer ? renderer.domElement : null, lost: lost, lostN: lostN, restoredN: restoredN, lostMs: LOST_MS, has: !!renderer }; },
     info: function () {
       var tags = 0, geos = {}, ms = {};
       pcGroup.children.forEach(function (o) { var t = o.userData.tag; if (t) { tags++; geos[t.geometry.uuid] = 1; ms[t.material.uuid] = 1; } });

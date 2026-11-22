@@ -77,7 +77,36 @@ async function newPage(vp, init, extra, opts) {
   return page;
 }
 // o: { game, tab, coach ('rani' | 'gaja'), extra (another init script), ctx (context options, e.g. colorScheme) }
-const seeded = (vp, p, o) => { o = o || {}; return newPage(vp, { fn: seedFn, arg: [PKEY, p, GKEY, o.game || null, TKEY, o.tab || null, CKEY, o.coach || null] }, o.extra, o.ctx); };
+const seeded = async (vp, p, o) => {
+  o = o || {};
+  const page = await newPage(vp, { fn: seedFn, arg: [PKEY, p, GKEY, o.game || null, TKEY, o.tab || null, CKEY, o.coach || null] }, o.extra, o.ctx);
+  if (col1(vp) && o.tab === 'play' && o.board !== false) await openGame(page);
+  return page;
+};
+// G2a: up to 860px wide (one column) the tabs are pages with no board, and the app always opens on Home. A test that
+// starts "on Play, in the game" opens the game as a player does: the Play tab, then "Resume game" (when a game is unfinished).
+const col1 = (vp) => vp.width <= 860;
+const openGame = (page) => page.evaluate(() => {
+  document.getElementById('tab-play').click();
+  const r = document.querySelector('#resumePlay .rs-go');
+  if (r && r.getClientRects().length) r.click();
+});
+// The board screen's Close button (phones), which replaces "Resume game" and "Close review" in the mode bar.
+const closeX = (page) => page.locator('#actClose').click();
+// Going to a tab. On a phone's board screen the bottom tabs are hidden (G-D3), so the player taps Close first (twice from a
+// review opened in the middle of a game: the first Close goes back to the game). A tap on the tab that is already selected
+// did nothing before G2 and does nothing here: the board screen of that tab stays open.
+const goTab = async (page, t) => {
+  for (let i = 0; i < 3; i++) {
+    const s = await page.evaluate(() => { const b = document.getElementById('actClose'); return { open: !!b && b.getClientRects().length > 0, tabs: document.querySelector('.tabs').getClientRects().length > 0, tab: window.__coach.st.tab }; });
+    if (!s.open) break;        // a tab page (or a wide screen): tap the tab
+    if (s.tab === t) return;   // already on that tab, with its board screen open
+    if (s.tabs) break;         // an end card is up, so the tabs are back (G-D8): tap one
+    await page.locator('#actClose').click();
+  }
+  await page.locator('#tab-' + t).click();
+};
+const GEAR = '#settingsBtn:visible, #actGear:visible';
 // Same stand-in for the Claude account runtime as s1/s2a (window.claude), so the cloud path runs offline.
 function cloudMock(arg) {
   if (sessionStorage.getItem('cloudMockSeeded')) { const c = JSON.parse(sessionStorage.getItem('cloudMock')); window.__cloud = c; arg = Object.assign({}, arg, { hold: false }); }
@@ -153,7 +182,8 @@ async function beginnerHome(page, vp, why) {
 async function fullHome(page, vp, why, look) {
   assert.equal((await block(page)).shown, false, why + ': Beginner Home block hidden');
   for (const s of HOME_CARDS) assert.equal(await vis(page, s), true, why + ': ' + s + ' shown');
-  assert.equal(await vis(page, '.boardcol'), true, why + ': board shown');
+  // G2a (G-D1, G-D7): up to 860px wide the full Home is a page with no board above its cards; wide keeps the board
+  assert.equal(await vis(page, '.boardcol'), !col1(vp), why + ': board ' + (col1(vp) ? 'not on a phone’s Home' : 'shown'));
 }
 // AC10: on phones every part of the block, both buttons included, is on the first screen above the fixed nav.
 async function fitsFirstScreen(page, vp, why) {
@@ -253,20 +283,30 @@ const cases = [
     await shot(page, vp, 'beginner_home_karthik');
     return page;
   }],
-  ['S2b-4 / D44: Back to my game opens the unfinished game on Play, nothing abandoned; Just play a game starts a partner game', async (vp) => {
+  ['S2b-4 / D44: Resume game opens the unfinished game on Play, nothing abandoned; Just play a game starts a partner game', async (vp) => {
     let page = await seeded(vp, prof({ course: done('rules') }), { game: GAME_OPEN, tab: 'coach' });
     await beginnerHome(page, vp, 'unfinished game');
     let b = await block(page);
-    assert.equal(b.second, 'Back to my game'); assert.equal(b.button, 'Start lesson', 'the card stays on the next lesson');
-    if (phone(vp)) await fitsFirstScreen(page, vp, 'S2b-4');
-    await shot(page, vp, 'beginner_home_back_to_game');
+    assert.equal(b.button, 'Start lesson', 'the card stays on the next lesson');
     const before = await page.evaluate(() => window.__coach.hist());
-    await page.locator('#bhome .bh-alt').click();
+    if (col1(vp)) {
+      // G-D21 (phones): the second button "Resume game" is retired; the "Resume game" card under the Continue card opens the game
+      assert.equal(b.second, null, 'no second button while a game is going');
+      assert.deepEqual(await page.evaluate(() => { const c = document.getElementById('resumeBHome'); return [c.querySelector('.bh-title').textContent, c.querySelector('.rs-line').textContent, c.querySelector('.rs-go').textContent]; }), ['Resume game', 'Move 3, your turn', 'Resume game']);
+      await fitsFirstScreen(page, vp, 'S2b-4');
+      await shot(page, vp, 'beginner_home_back_to_game');
+      await page.locator('#resumeBHome .rs-go').click();
+    } else {
+      assert.equal(b.second, 'Resume game');
+      await shot(page, vp, 'beginner_home_back_to_game');
+      await page.locator('#bhome .bh-alt').click();
+    }
     assert.equal(await st(page, 'tab'), 'play'); assert.equal(await st(page, 'mode'), 'play');
     assert.deepEqual(await page.evaluate(() => window.__coach.hist()), before, 'the same game');
     assert.equal(await vis(page, '#newConfirm'), false, 'no "tap again" warning');
     assert.equal(await vis(page, '#board'), true, 'the game is on the board');
-    assert.equal(await page.locator('#modeText').innerText(), 'Your game vs ' + PARTNER + ', you play White');
+    if (col1(vp)) assert.equal(await page.locator('#actName').innerText(), 'Your game'); // the Close bar names it; the mode bar is wide only
+    else assert.equal(await page.locator('#modeText').innerText(), 'Your game vs ' + PARTNER + ', you play White');
     await page.context().close();
     page = await seeded(vp, prof({ course: done('rules') }));
     b = await block(page);
@@ -295,7 +335,8 @@ const cases = [
     await page.context().close();
     page = await seeded(vp, prof({ levelT: NOW - DAY, levelOfferT: NOW - DAY, course: done(...FOUND) }), { game: GAME_OPEN });
     b = await block(page);
-    assert.equal(b.button, 'Back to my game'); assert.equal(b.second, null);
+    assert.equal(b.button, 'Resume game'); assert.equal(b.second, null); // fix round 1: the old "Back to my game" reads "Resume game"
+    if (col1(vp)) assert.equal(await page.locator('#bhome .rs-card').count(), 0, 'the Continue card is the game: no second card for it');
     const before = await page.evaluate(() => window.__coach.hist());
     await page.locator('#bhome .bh-go').click();
     assert.equal(await st(page, 'tab'), 'play'); assert.deepEqual(await page.evaluate(() => window.__coach.hist()), before, 'the unfinished game opens');
@@ -318,7 +359,7 @@ const cases = [
     assert.equal(await page.evaluate(() => window.__coach.st.ses.rated), true, 'puzzles at their level');
     assert.equal(await page.evaluate(() => window.__coach.st.ses.title), 'Puzzles at your level');
     assert.equal(await st(page, 'tab'), 'train');
-    await page.locator('#tab-path').click();
+    await goTab(page, 'path');
     if (await vis(page, '#unitView')) await page.locator('#unitView [data-act="units"]').click();
     assert.equal(await page.locator('#levels [data-unit="fork"]').count(), 1, 'Forks still open in Learn');
     // A week later the offer comes back at app start; Yes gives the Improver Home.
@@ -334,7 +375,7 @@ const cases = [
     await page.locator('#raniNote [data-act="offeryes"]').click();
     await closeNote(page);
     assert.equal((await getProf(page)).level, 'improver');
-    await page.locator('#tab-coach').click();
+    await goTab(page, 'coach');
     await fullHome(page, vp, 'Improver after Yes');
     // F1 (F-D10): the Next step is on the Continue card
     assert.equal((await page.locator('#contCard .bh-title').innerText()).trim(), 'Forks');
@@ -344,7 +385,7 @@ const cases = [
   ['S2b-7 / D40: Show everything shows the full Home with the board; off brings Rani’s Home back, no reload', async (vp) => {
     const page = await seeded(vp, prof({ course: done('rules') }));
     await beginnerHome(page, vp, 'before');
-    await page.locator('#settingsBtn').click();
+    await page.locator(GEAR).click();
     await page.locator('#levelCard [data-act="showall"]').click();
     await page.keyboard.press('Escape');
     await fullHome(page, vp, 'Show everything');
@@ -356,7 +397,7 @@ const cases = [
     assert.ok(/Rating band/.test(hero), 'like an Improver at her stage: scores shown');
     assert.ok((await page.locator('#today h3').innerText()).length > 0);
     await shot(page, vp, 'beginner_showall_full_home');
-    await page.locator('#settingsBtn').click();
+    await page.locator(GEAR).click();
     await page.locator('#levelCard [data-act="showall"]').click();
     await page.keyboard.press('Escape');
     await beginnerHome(page, vp, 'Show everything off');
@@ -388,7 +429,7 @@ const cases = [
     for (const [r, key, lvl] of [[950, 'v4improver', 'improver'], [1350, 'v4club', 'club']]) {
       page = await seeded(vp, Object.assign({}, v4, { rating: r }));
       assert.equal((await getProf(page)).level, lvl);
-      await page.locator('#tab-coach').click();
+      await goTab(page, 'coach');
       assert.equal(await homeText(page), beforeText(vp.width + ':' + key), key + ' Home text unchanged');
       await fullHome(page, vp, key);
       if (r === 1350) return page;
@@ -399,7 +440,7 @@ const cases = [
     let page = await seeded(vp, prof({ course: Object.assign(done('rules', 'special', 'board', 'values', 'mate'), { opening: { learn: NOW - DAY } }) }));
     let b = await block(page);
     assert.equal(b.head, 'Now try it in a real game.'); assert.equal(b.line, 'You’ll play my practice partner.');
-    await page.locator('#settingsBtn').click();
+    await page.locator(GEAR).click();
     let sheet = page.locator('#settingsSheet');
     await sheet.waitFor({ state: 'visible' });
     assert.ok((await sheet.innerText()).includes('Coach and pieces'), 'section heading');
@@ -451,7 +492,7 @@ const cases = [
     page = await seeded(vp, prof({ level: 'club', start: 'kq', rating: 1300 }));
     assert.equal(await vis(page, '#lookCard'), true, 'Club Home keeps Coach and pieces');
     sheet = page.locator('#settingsSheet');
-    await page.locator('#settingsBtn').click();
+    await page.locator(GEAR).click();
     await sheet.waitFor({ state: 'visible' });
     assert.ok((await sheet.innerText()).includes('Coach and pieces'));
     await shot(page, vp, 'settings_look_club');
@@ -483,12 +524,12 @@ const cases = [
   ['S2b-12: Improver to Beginner in Settings switches to Rani’s Home at once, and back', async (vp) => {
     const page = await seeded(vp, prof({ level: 'improver', start: 'fork', rating: 1000, course: done('rules') }));
     await fullHome(page, vp, 'Improver');
-    await page.locator('#settingsBtn').click();
+    await page.locator(GEAR).click();
     await page.locator('#levelCard [data-lvset="beginner"]').click();
     await page.keyboard.press('Escape');
     await beginnerHome(page, vp, 'now Beginner');
     assert.equal((await block(page)).kicker, 'Lesson 2 of 7', 'Beginner from Settings counts from How the pieces move');
-    await page.locator('#settingsBtn').click();
+    await page.locator(GEAR).click();
     await page.locator('#levelCard [data-lvset="improver"]').click();
     await page.keyboard.press('Escape');
     await fullHome(page, vp, 'Improver again');
@@ -499,29 +540,44 @@ const cases = [
     const saved = await page.evaluate((k) => localStorage.getItem(k), GKEY), hist = await page.evaluate(() => window.__coach.hist());
     await beginnerHome(page, vp, 'Home');
     for (const t of ['play', 'path', 'coach', 'play', 'coach']) {
-      await page.locator('#tab-' + t).click();
+      await goTab(page, t);
+      // G2a (G-D1): up to 860px wide no tab page has the board (it is on the board screen); wide: D38 as it was
+      if (col1(vp)) { assert.equal(await vis(page, '.boardcol'), false, t + ': a tab page has no board'); continue; }
       assert.equal(await vis(page, '.boardcol'), t !== 'coach' || !oneCol(vp), t + ': board ' + (t === 'coach' && oneCol(vp) ? 'hidden' : 'shown'));
       if (t !== 'coach') assert.equal(await vis(page, '#modebar'), true, t + ': mode bar shown');
     }
+    if (col1(vp)) { // the game opens from Play, untouched, and closes again
+      await openGame(page);
+      assert.equal(await vis(page, '.boardcol'), true, 'the board screen shows the game');
+      assert.deepEqual(await page.evaluate(() => window.__coach.hist()), hist);
+      await closeX(page);
+    }
     assert.deepEqual(await page.evaluate(() => window.__coach.hist()), hist, 'game kept');
-    assert.equal(await page.evaluate((k) => localStorage.getItem(k), GKEY), saved, 'nothing saved over the game');
+    // fix round 1: Close writes the game once more as it stands (a new time stamp); the game itself is the same
+    const strip = (x) => { const o = JSON.parse(x); return JSON.stringify(['sans', 'user', 'level', 'ann', 'notes', 'tags', 'fb', 'opp'].map((k) => o[k])); }; // the game, without the time stamp and the fields a save fills in
+    if (col1(vp)) assert.equal(strip(await page.evaluate((k) => localStorage.getItem(k), GKEY)), strip(saved), 'nothing saved over the game');
+    else assert.equal(await page.evaluate((k) => localStorage.getItem(k), GKEY), saved, 'nothing saved over the game');
     assert.equal(await st(page, 'mode'), 'play');
     // A lesson: Home and back keeps the step.
     await page.evaluate(() => window.__coach.startPart('values', 'learn'));
     await page.locator('#navNext').click();
-    await page.locator('#tab-coach').click();
+    await goTab(page, 'coach');
     assert.equal(await vis(page, '.boardcol'), !oneCol(vp));
     assert.equal(await st(page, 'mode'), 'lesson'); assert.equal(await page.evaluate(() => window.__coach.st.ls.i), 1, 'lesson step kept');
-    await page.locator('#tab-path').click();
+    await goTab(page, 'path');
     assert.equal(await page.evaluate(() => window.__coach.st.ls.i), 1);
+    if (col1(vp)) { // the step card is on the board screen: "Resume lesson" on Learn opens it at the same step
+      assert.ok(/step 2 of/i.test(await page.locator('#resumePath .rs-line').innerText()), 'the Resume card names step 2');
+      await page.locator('#resumePath .rs-go').click();
+    }
     assert.ok(/step 2 of/i.test(await page.locator('#unitView .lessoncard').innerText()), 'still on step 2');
     // A puzzle session (Train is open after 3 lessons): Home and back keeps the item.
     await page.evaluate(() => window.__coach.trainStart('rated'));
     await page.waitForFunction(() => window.__coach.st.mode === 'puzzle');
     const item = await page.evaluate(() => window.__coach.st.ses.items[0].id);
-    await page.locator('#tab-coach').click();
+    await goTab(page, 'coach');
     assert.equal(await vis(page, '.boardcol'), !oneCol(vp));
-    await page.locator('#tab-train').click();
+    await goTab(page, 'train');
     assert.equal(await st(page, 'mode'), 'puzzle'); assert.equal(await page.evaluate(() => window.__coach.st.ses.items[0].id), item, 'same session');
     assert.deepEqual(await page.evaluate(() => window.__coach.hist()), hist, 'game still kept');
     return page;
@@ -531,23 +587,23 @@ const cases = [
     let page = await seeded(vp, prof());
     await page.locator('#bhome .bh-go').click();
     await finishLesson(page);
-    await page.locator('#tab-coach').click();
+    await goTab(page, 'coach');
     let b = await block(page);
     assert.equal(b.head, 'Now let’s practise.'); assert.equal(b.button, 'Continue'); assert.equal(b.chip, '1 day', 'the lesson counts for the streak');
     await page.context().close();
     // A game ending: Beat state, mate in one. On desktop the board plays next to Home; on phones via Play.
     page = await seeded(vp, prof({ levelT: NOW - DAY, levelOfferT: NOW - DAY, course: done(...FOUND) }), { game: GAME_MATE1, tab: 'coach' });
     b = await block(page);
-    assert.equal(b.title, 'Beat Rani’s practice partner'); assert.equal(b.button, 'Back to my game');
-    if (oneCol(vp)) await page.locator('#tab-play').click();
+    assert.equal(b.title, 'Beat Rani’s practice partner'); assert.equal(b.button, 'Resume game');
+    if (col1(vp)) await openGame(page); else if (oneCol(vp)) await goTab(page, 'play');
     await page.waitForFunction(() => !window.__coach.st.busy);
     await page.locator('#board .sq[data-sq="h5"]').click();
     await page.locator('#board .sq[data-sq="f7"]').click();
     await page.waitForFunction(() => window.__coach.getProf().games.length === 1, null, { timeout: 20000 });
-    if (oneCol(vp)) await page.locator('#tab-coach').click();
+    if (oneCol(vp)) await goTab(page, 'coach');
     await page.waitForFunction(() => document.querySelector('#bhome .bh-title') && document.querySelector('#bhome .bh-title').textContent === 'Puzzles at your level');
     b = await block(page);
-    assert.equal(b.kicker, 'Practice'); assert.equal(b.second, 'Just play a game', 'the game is over: no "Back to my game"');
+    assert.equal(b.kicker, 'Practice'); assert.equal(b.second, 'Just play a game', 'the game is over: no "Resume game"');
     await page.context().close();
     // A cloud merge brings a finished lesson: Home moves on without a reload.
     const local = prof();
@@ -593,11 +649,12 @@ const cases = [
     await shot(page, vp, 'beginner_home_gaja');
     return page;
   }],
-  ['S2b-13 / D49: with a game going, Continue on a lesson game asks first; Back to my game, Start the lesson game, Esc keeps the game', async (vp) => {
+  ['S2b-13 / D49: with a game going, Continue on a lesson game asks first; Resume game, Start the lesson game, Esc keeps the game', async (vp) => {
     const p = prof({ course: Object.assign(done('rules', 'special', 'board', 'values', 'mate'), { opening: { learn: NOW - DAY } }) });
     let page = await seeded(vp, p, { game: GAME_OPEN });
     let b = await block(page);
-    assert.equal(b.head, 'Now try it in a real game.'); assert.equal(b.button, 'Continue'); assert.equal(b.second, 'Back to my game');
+    assert.equal(b.head, 'Now try it in a real game.'); assert.equal(b.button, 'Continue'); assert.equal(b.second, col1(vp) ? null : 'Resume game'); // G-D21: retired on phones (the Resume game card is there)
+    if (col1(vp)) assert.equal(await vis(page, '#resumeBHome'), true);
     const hist = await page.evaluate(() => window.__coach.hist()), keep = await page.evaluate(([g, k]) => [localStorage.getItem(g), localStorage.getItem(k)], [GKEY, PKEY]);
     const ask = async () => {
       await page.locator('#bhome .bh-go').click();
@@ -607,7 +664,7 @@ const cases = [
       assert.deepEqual(await page.evaluate(() => window.__coach.hist()), hist, 'the old game is still there');
     };
     await ask();
-    assert.equal((await page.locator('#raniNote [data-act="askback"]').innerText()).trim(), 'Back to my game');
+    assert.equal((await page.locator('#raniNote [data-act="askback"]').innerText()).trim(), 'Resume game');
     assert.equal((await page.locator('#raniNote [data-act="askgo"]').innerText()).trim(), 'Start the lesson game');
     await page.waitForFunction(() => document.activeElement && document.activeElement.dataset.act === 'askback');
     if (phone(vp)) {
@@ -621,14 +678,14 @@ const cases = [
     assert.equal(await st(page, 'tab'), 'coach'); assert.equal(await st(page, 'mode'), 'play');
     assert.deepEqual(await page.evaluate(() => window.__coach.hist()), hist);
     assert.deepEqual(await page.evaluate(([g, k]) => [localStorage.getItem(g), localStorage.getItem(k)], [GKEY, PKEY]), keep, 'nothing saved');
-    // Back to my game: the old game on Play.
+    // Resume game: the old game on Play.
     await ask();
     await page.locator('#raniNote [data-act="askback"]').click();
     assert.equal(await page.locator('#raniNote').isHidden(), true);
     assert.equal(await st(page, 'tab'), 'play'); assert.deepEqual(await page.evaluate(() => window.__coach.hist()), hist, 'the old game opens');
     assert.equal(await st(page, 'goal'), null);
     // Start the lesson game: as Continue does with no game going.
-    await page.locator('#tab-coach').click();
+    await goTab(page, 'coach');
     await ask();
     await page.locator('#raniNote [data-act="askgo"]').click();
     assert.equal(await page.locator('#raniNote').isHidden(), true);
@@ -645,14 +702,14 @@ const cases = [
     await page.context().close();
     // Learn's Start button does not change (D49).
     page = await seeded(vp, p, { game: GAME_OPEN });
-    await page.locator('#tab-path').click();
+    await goTab(page, 'path');
     await page.locator('#levels [data-unit="opening"]').click();
     await page.locator('#unitView [data-part="apply"]').click();
     assert.equal(await page.evaluate(() => window.__coach.st.goal && window.__coach.st.goal.unit), 'opening', 'Learn starts the game task directly');
     assert.equal(await page.locator('#raniNote').isHidden(), true);
     return page;
   }],
-  ['S2b-4b / D50: Back to my game ends an open puzzle set; the puzzles already answered are kept', async (vp) => {
+  ['S2b-4b / D50: Resume game ends an open puzzle set; the puzzles already answered are kept', async (vp) => {
     const page = await seeded(vp, prof({ course: done('rules', 'special', 'board') }), { game: GAME_OPEN });
     const hist = await page.evaluate(() => window.__coach.hist());
     await page.evaluate(() => window.__coach.trainStart('rated'));
@@ -660,9 +717,14 @@ const cases = [
     const id = await page.evaluate(() => window.__coach.st.ses.items[0].id);
     await solvePuzzle(page);
     assert.equal((await getProf(page)).puz[id].n, 1, 'the answer is recorded');
-    await page.locator('#tab-coach').click();
-    assert.equal((await block(page)).second, 'Back to my game');
-    await page.locator('#bhome .bh-alt').click();
+    await goTab(page, 'coach');
+    if (col1(vp)) { // G-D21: the Resume game card does what the second button did. Until slice G2b it still ends the open set (D50).
+      assert.equal((await block(page)).second, null);
+      await page.locator('#resumeBHome .rs-go').click();
+    } else {
+      assert.equal((await block(page)).second, 'Resume game');
+      await page.locator('#bhome .bh-alt').click();
+    }
     assert.equal(await st(page, 'tab'), 'play'); assert.equal(await st(page, 'mode'), 'play');
     assert.equal(await st(page, 'ses'), null, 'the puzzle set ended');
     assert.deepEqual(await page.evaluate(() => window.__coach.hist()), hist, 'the old game is on the board');
@@ -691,11 +753,11 @@ const cases = [
       assert.ok(r.hero.bottom <= r.card.top && r.card.bottom <= r.h + 60, why + ': Rani above the card');
       if (k === 'midlesson') await shot(page, v, 'beginner_home_sideways');
       if (v.width === 915 && k === 'new') {
-        await page.locator('#tab-play').click();
+        await goTab(page, 'play');
         assert.equal(await vis(page, '.boardcol'), true, 'Play keeps the board sideways');
-        await page.locator('#tab-path').click();
+        await goTab(page, 'path');
         assert.equal(await vis(page, '.boardcol'), true, 'Learn keeps the board sideways');
-        await page.locator('#tab-coach').click();
+        await goTab(page, 'coach');
         assert.equal(await vis(page, '.boardcol'), false);
       }
       await page.context().close();
@@ -719,14 +781,14 @@ const cases = [
     await page.evaluate(() => { window.__draws = 0; const o = CanvasRenderingContext2D.prototype.drawImage; CanvasRenderingContext2D.prototype.drawImage = function () { if (this.canvas && this.canvas.classList.contains('q3d')) window.__draws++; return o.apply(this, arguments); }; });
     await page.waitForTimeout(1500);
     assert.equal(await page.evaluate(() => window.__draws), 0, 'no redraws while nothing changes');
-    await page.locator('#tab-play').click(); // the Play coach (another size) was drawn once at start, while hidden
+    await goTab(page, 'play'); // the Play coach (another size) was drawn once at start, while hidden
     await page.waitForTimeout(1500);
     const playPx = await page.evaluate(() => { const c = document.querySelector('#coachAv canvas.q3d'), d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; let k = 0; for (let i = 3; i < d.length; i += 4) if (d[i]) k++; return k; });
     assert.ok(playPx > 200, 'the Play coach is drawn: ' + playPx);
     const n = await page.evaluate(() => window.__draws);
     assert.equal(n, 0, 'showing an already drawn Rani does not redraw her');
-    await page.locator('#tab-coach').click();
-    await page.locator('#settingsBtn').click();
+    await goTab(page, 'coach');
+    await page.locator(GEAR).click();
     await page.locator('#lookSet [data-coach="gaja"]').click();
     await page.locator('#lookSet [data-coach="rani"]').click(); // a new canvas: drawn once
     await page.keyboard.press('Escape');

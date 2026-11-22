@@ -7,9 +7,12 @@
   'use strict';
   var COPY = {
     home: 'Home', practice: 'Start practice', lessonGame: 'Play the lesson game', nextLesson: 'Start next lesson', more: '10 more puzzles', tryAgain: 'Try again', keep: 'Keep playing',
-    review: 'Review this game', newGame: 'New game', again: 'Go again', cont: 'Continue', startLesson: 'Start lesson', play: 'Play now', puzzles: 'Start 10 puzzles', back: 'Back to my game',
+    review: 'Review this game', newGame: 'New game', again: 'Go again', cont: 'Continue', startLesson: 'Start lesson', play: 'Play now', puzzles: 'Start 10 puzzles', back: 'Resume game',
     toPractice: 'Next: practise it.', toGame: 'Next: play it in a real game.', toStep: 'Next: one more step.', nextIs: 'Next lesson: ', whole: 'That’s the whole game.',
-    kicker: 'Continue', lessonOf: 'Continue · Lesson ', reach: 'Puzzles to reach ', sharp: 'Keep sharp: rated puzzles'
+    kicker: 'Continue', lessonOf: 'Continue · Lesson ', reach: 'Puzzles to reach ', sharp: 'Keep sharp: rated puzzles',
+    /* G2a (board-screens.product.md, "New wording") */
+    close: 'Close', resumeGame: 'Resume game', resumeLesson: 'Resume lesson', resumePuzzles: 'Resume puzzles', resumeDrill: 'Resume drill',
+    move: 'Move ', yourTurn: ', your turn', engineTurn: ', engine to move', recent: 'Recent games'
   };
   /* go names the action the app wires to a button: review, newgame, home, nextlesson (the next lesson's next part), tryagain
      (the lesson game again), again (the same step again), part (the lesson's next part), more (10 more puzzles), step (the
@@ -85,5 +88,73 @@
   /* D49: a main button that would start a lesson game while another game is unfinished asks first. */
   function asks(part, applyType, ongoing) { return !!(ongoing && part === 'apply' && applyType === 'game'); }
 
-  return { afterGame: afterGame, goalCard: goalCard, afterReview: afterReview, afterStep: afterStep, cont: cont, asks: asks, COPY: COPY };
+  /* ---------- G2a: the board screen on phones (docs/specs/board-screens.product.md). On the one-column layout the tabs are
+     full pages with no board, and a game, lesson, set, drill or review opens the board screen. Wide screens (board left,
+     panel right) never have one. s.scr: 'tabs' | 'act', kept in memory by the app at every width. ---------- */
+  function actOpen(s) { return !!s && s.wide === false && s.scr === 'act'; }
+  /* G-D3, G-D8: the bottom tabs are hidden on the board screen and come back whenever an end card is on it. */
+  function tabsHidden(s) { return actOpen(s) && !s.end; }
+  /* No dead end: the board screen is only kept while the selected tab is the activity's own tab, or the Learn end card is
+     up (the board is back on the game by then, the tab is still Learn). Anything else falls back to the tab page. */
+  function keepsScreen(s) { return !!s && (s.tab === s.zoneTab || (!!s.learnEnd && s.tab === 'path')); }
+  /* THE RULE FOR "A BOARD IS IN USE" (criterion 7, G-D11). Phones: only while the board screen is open with no end card on
+     it; a saved game or a lesson the player has closed does not count. Wide: the board is always on screen, so today's rule
+     (F-D4): a lesson, review, unfinished set or unfinished game. The level check counts everywhere. A missing fact means yes.
+     s: { wide, open (the board screen), end (an end card is up), busy (wide's rule), check (the level check is open) } */
+  function inUse(s) {
+    if (!s || typeof s !== 'object' || typeof s.wide !== 'boolean') return true;
+    if (s.check !== false) return true;
+    if (s.wide) return s.busy !== false;
+    if (typeof s.open !== 'boolean' || typeof s.end !== 'boolean') return true;
+    return s.open && !s.end;
+  }
+  /* THE SLOT RULE (criterion 7): the one function that decides the tip slot, and through it the ad banner (ads.js mayShow
+     needs this to say yes first). place: 'home' | 'progress' | 'game' | 'learn' | 'step' (the three end cards).
+     s.day: the first-day rule allows it (F-D5). s.inUse: inUse() above. Unknown facts mean no slot.
+     Phones (G-D11): never while the board is in use; a closed, saved game hides nothing; an end card also needs the board
+     on screen not to be a game in progress (s.live). Wide keeps F-D17 and F-D32:
+     Home and Progress while nothing is in use, an end card while no game is unfinished. */
+  var SLOT_PLACES = { home: 'page', progress: 'page', game: 'card', learn: 'card', step: 'card' };
+  function slotOk(s) {
+    if (!s || typeof s !== 'object' || s.day !== true || typeof s.inUse !== 'boolean' || typeof s.wide !== 'boolean') return false;
+    var k = SLOT_PLACES[s.place]; if (!k) return false;
+    if (k === 'page') return !s.inUse;
+    if (s.wide) return s.gameOn === false;
+    /* Fix round 1: an end card has no slot while the board on the screen is a game in progress (s.live: the Learn end card,
+       where the board is back on the player's unfinished game). The fact must be known. */
+    return !s.inUse && s.live === false;
+  }
+  /* G-D22: the Resume game card's line. n: the move number the game is on. */
+  function resumeLine(n, yourTurn) { n = Math.floor(+n) || 0; return COPY.move + (n < 1 ? 1 : n) + (yourTurn ? COPY.yourTurn : COPY.engineTurn); }
+  /* G-D5, G-D26: kind: 'game' | 'lesson' | a set's kind. The board drill, the piece drill, an opening drill and an endgame
+     drill read "Resume drill"; puzzles and Safe or blunder read "Resume puzzles". */
+  function resumeTitle(kind) {
+    if (kind === 'game') return COPY.resumeGame;
+    if (kind === 'lesson') return COPY.resumeLesson;
+    return kind === 'drill' || kind === 'book' || kind === 'squares' || kind === 'reach' ? COPY.resumeDrill : COPY.resumePuzzles;
+  }
+  /* G-D25: on a phone the app always opens on Home. Wide: the stored tab, except Learn, as before. has(tab): the tab exists. */
+  function startTab(stored, wide, has) { return wide && stored && stored !== 'path' && has(stored) ? stored : 'coach'; }
+  /* G-D4, G-D23: the tab Close lands on. s: { mode, zoneTab, learnEnd, past (a past game's review), from (the tab a past
+     game was opened on) } */
+  function closeTab(s) {
+    if (s.mode === 'review') return s.past && s.from === 'progress' ? 'progress' : 'play';
+    return s.learnEnd ? 'path' : s.zoneTab;
+  }
+
+  /* Fix round 1 (G-D20's wording: "a set or drill on Train"): on a phone a drill started from Train's list belongs to Train
+     (it closes to Train, and its Resume card is there). Started anywhere else it stays with its lesson, on Learn (null). */
+  function drillZone(from, wide) { return !wide && from === 'train' ? 'train' : null; }
+  /* Home's Continue card resumes a lesson that is waiting, at its step, instead of starting it again.
+     c: the card's { go, unit (id), part }. w: the waiting lesson { unit (id), part: 'learn' } or null. */
+  function resumesLesson(c, w) { return !!(c && w && c.go === 'part' && c.unit === w.unit && c.part === w.part); }
+  /* The room an end card keeps free at the bottom for a banner that is on its way (ads criterion 5): the banner's reported
+     height, else 64, plus the gap above the fixed tab bar. s: { expected, h, fixedTabs } */
+  function bannerRoom(s) {
+    if (!s || !s.expected) return 0;
+    return Math.ceil(+s.h > 0 ? +s.h : 64) + (s.fixedTabs ? 8 : 0);
+  }
+
+  return { drillZone: drillZone, resumesLesson: resumesLesson, bannerRoom: bannerRoom, actOpen: actOpen, tabsHidden: tabsHidden, keepsScreen: keepsScreen, inUse: inUse, slotOk: slotOk, resumeLine: resumeLine, resumeTitle: resumeTitle, startTab: startTab, closeTab: closeTab,
+    afterGame: afterGame, goalCard: goalCard, afterReview: afterReview, afterStep: afterStep, cont: cont, asks: asks, COPY: COPY };
 });

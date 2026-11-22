@@ -16,6 +16,11 @@ const ONLY = process.env.S1_ONLY ? new RegExp(process.env.S1_ONLY) : null;
 
 let browser, results = [], failures = 0;
 
+// G2a: up to 860px wide (one column) the tabs are pages with no board; a lesson, game or set opens the board screen, with a
+// Close button and the Settings gear on its bar (the header and the bottom tabs are hidden there).
+const col1 = (vp) => vp.width <= 860;
+const closeX = (page) => page.locator('#actClose').click();
+const GEAR = '#settingsBtn:visible, #actGear:visible';
 async function newPage(vp, init) {
   const ctx = await browser.newContext({ viewport: vp, deviceScaleFactor: 1 });
   await ctx.route(/fonts\.(googleapis|gstatic)\.com/, (r) => r.fulfill({ status: 200, contentType: 'text/css', body: '' }));
@@ -220,7 +225,7 @@ const cases = [
     await page.locator('[data-pl-path="never"]').click();
     await start(page);
     assert.equal(await page.locator('#panel-coach #levelCard').count(), 0, 'level card no longer on Home');
-    const gear = page.locator('#settingsBtn');
+    const gear = page.locator(GEAR); // phones: a Beginner is in the first lesson by now, so the gear is on the Close bar (G-D24)
     assert.equal(await gear.getAttribute('aria-label'), 'Settings');
     const gb = await gear.boundingBox(); assert.ok(gb.width >= 44 && gb.height >= 44, 'gear is 44px');
     await gear.click();
@@ -251,7 +256,7 @@ const cases = [
     assert.equal((await prof(page)).level, 'beginner', 'Show everything keeps the level');
     await page.keyboard.press('Escape');
     await sheet.waitFor({ state: 'hidden' });
-    assert.equal(await page.evaluate(() => document.activeElement && document.activeElement.id), 'settingsBtn', 'focus back on the gear');
+    assert.equal(await page.evaluate(() => document.activeElement && document.activeElement.id), col1(vp) ? 'actGear' : 'settingsBtn', 'focus back on the gear');
     await page.reload(); await page.waitForFunction(() => window.__coach);
     assert.equal(await page.evaluate(() => document.documentElement.dataset.showall), '1', 'survives restart');
     assert.equal(await page.evaluate(() => document.documentElement.dataset.level), 'beginner');
@@ -437,11 +442,16 @@ const cases = [
     const page = await newPage(vp);
     await page.locator('[data-pl="skip0"]').click();
     await page.locator('#raniNote [data-act="notedone"]').click();
-    await page.locator('#tab-play').click();
-    await page.locator('#panel-play [data-act="close"]').click();
+    if (col1(vp)) { // G2a: Close the lesson's board screen, then Play's start page, "Start new game"
+      await closeX(page); await page.locator('#tab-play').click(); await page.locator('#newBtn').click();
+    } else {
+      await page.locator('#tab-play').click();
+      await page.locator('#panel-play [data-act="close"]').click();
+    }
     await page.locator('#board .sq[data-sq="e2"]').click();
     await page.locator('#board .sq[data-sq="e4"]').click();
     await page.waitForFunction(() => window.__coach.st.mode === 'play' && !window.__coach.st.busy && document.querySelectorAll('#moves td.clk').length >= 2, null, { timeout: 20000 });
+    if (col1(vp)) await closeX(page);
     await page.locator('#tab-path').click();
     if (await page.locator('#levels').isVisible()) await page.locator('#levels [data-unit="board"]').first().click();
     await page.locator('#panel-path [data-part="learn"]:visible').first().click();

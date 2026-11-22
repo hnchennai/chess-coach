@@ -57,7 +57,35 @@ async function newPage(vp, init, extra) {
   catch (e) { throw new Error('app did not start: ' + e.message.split('\n')[0] + ' | page errors: ' + JSON.stringify(page.errors)); }
   return page;
 }
-const seeded = (vp, p, game, tab, extra) => newPage(vp, { fn: seedFn, arg: [PKEY, p, GKEY, game || null, TKEY, tab || null] }, extra);
+const seeded = async (vp, p, game, tab, extra) => {
+  const page = await newPage(vp, { fn: seedFn, arg: [PKEY, p, GKEY, game || null, TKEY, tab || null] }, extra);
+  if (col1(vp) && tab === 'play') await openGame(page);
+  return page;
+};
+// G2a: up to 860px wide (one column) the tabs are pages with no board, and the app always opens on Home. A test that
+// starts "on Play, in the game" opens the game as a player does: the Play tab, then "Resume game" (when a game is unfinished).
+const col1 = (vp) => vp.width <= 860;
+const openGame = (page) => page.evaluate(() => {
+  document.getElementById('tab-play').click();
+  const r = document.querySelector('#resumePlay .rs-go');
+  if (r && r.getClientRects().length) r.click();
+});
+// The board screen's Close button (phones), which replaces "Resume game" and "Close review" in the mode bar.
+const closeX = (page) => page.locator('#actClose').click();
+// Going to a tab. On a phone's board screen the bottom tabs are hidden (G-D3), so the player taps Close first (twice from a
+// review opened in the middle of a game: the first Close goes back to the game). A tap on the tab that is already selected
+// did nothing before G2 and does nothing here: the board screen of that tab stays open.
+const goTab = async (page, t) => {
+  for (let i = 0; i < 3; i++) {
+    const s = await page.evaluate(() => { const b = document.getElementById('actClose'); return { open: !!b && b.getClientRects().length > 0, tabs: document.querySelector('.tabs').getClientRects().length > 0, tab: window.__coach.st.tab }; });
+    if (!s.open) break;        // a tab page (or a wide screen): tap the tab
+    if (s.tab === t) return;   // already on that tab, with its board screen open
+    if (s.tabs) break;         // an end card is up, so the tabs are back (G-D8): tap one
+    await page.locator('#actClose').click();
+  }
+  await page.locator('#tab-' + t).click();
+};
+const GEAR = '#settingsBtn:visible, #actGear:visible';
 // Same stand-in for the Claude account runtime as s1.spec.js (window.claude), so the cloud path runs offline.
 function cloudMock(arg) {
   if (sessionStorage.getItem('cloudMockSeeded')) { const c = JSON.parse(sessionStorage.getItem('cloudMock')); window.__cloud = c; arg = Object.assign({}, arg, { hold: false, failFirst: false, delay: 0 }); }
@@ -80,13 +108,39 @@ const noteText = async (page) => (await page.locator('#raniNote p').innerText())
 async function tabsShown(page) { return page.evaluate(() => ['coach', 'path', 'play', 'train', 'progress'].filter((t) => { const b = document.getElementById('tab-' + t); return b && b.offsetParent !== null; })); }
 async function closeNote(page) { if (await vis(page, '#raniNote')) await page.locator('#raniNote [data-act="notedone"]').click(); }
 // Everything a Beginner must not see: eval strip, engine pill, Moves card, opponent picker and rating tag.
+// G2a: on phones (up to 860px wide) Play is a start page and the game is on the board screen, so the parts a level shows or
+// hides live on two screens: the engine pill (header) and the opponent picker (New game card) on Play's page; the eval strip,
+// the Moves card and the opponent's rating tag on the board screen. playParts() reads each one where it lives and ends on the
+// board screen (it opens the game as a player does). Wide screens, and a review, have them on the one screen that is open.
+const isCol1 = (page) => page.viewportSize().width <= 860;
+const FOUR = ['#evalbar', '#enginePill', '#movesCard', '#oppPick'], ON_PAGE = ['#enginePill', '#oppPick'];
+const openBoard = (page) => page.evaluate(() => {
+  document.getElementById('tab-play').click();
+  const r = document.querySelector('#resumePlay .rs-go');
+  if (r && r.getClientRects().length) r.click(); else if (!window.__coach.hist().length) document.getElementById('newBtn').click();
+});
+// The line that names the activity: the mode bar on wide screens, the Close bar's first line on phones.
+const barText = (page) => page.locator(isCol1(page) ? '#actName' : '#modeText').innerText();
+async function playParts(page, sels) {
+  const out = {};
+  if (isCol1(page) && (await st(page, 'mode')) === 'play') {
+    if ((await st(page, 'scr')) === 'act') await closeX(page);
+    await page.locator('#tab-play').click();
+    for (const s of sels) if (ON_PAGE.includes(s)) out[s] = await vis(page, s);
+    await openBoard(page);
+    for (const s of sels) if (!(s in out)) out[s] = await vis(page, s);
+  } else for (const s of sels) out[s] = await vis(page, s);
+  return out;
+}
 async function hiddenForBeginner(page, why) {
-  for (const sel of ['#evalbar', '#enginePill', '#movesCard', '#oppPick']) assert.equal(await vis(page, sel), false, why + ': ' + sel + ' hidden');
+  const p = await playParts(page, FOUR);
+  for (const sel of FOUR) assert.equal(p[sel], false, why + ': ' + sel + ' hidden');
   assert.equal((await page.locator('#oppLevel').innerText()).trim(), '', why + ': no rating tag');
 }
 async function shownAll(page, why) {
-  await page.locator('#tab-play').click();
-  for (const sel of ['#evalbar', '#enginePill', '#movesCard', '#oppPick']) assert.equal(await vis(page, sel), true, why + ': ' + sel + ' shown');
+  await goTab(page, 'play');
+  const p = await playParts(page, FOUR);
+  for (const sel of FOUR) assert.equal(p[sel], true, why + ': ' + sel + ' shown');
   assert.ok(/~\d+|max/.test(await page.locator('#oppLevel').innerText()), why + ': rating tag shown');
 }
 // No SAN anywhere visible (chips show only a piece icon and a square, like "×d2").
@@ -100,10 +154,11 @@ async function finishLesson(page) {
 const cases = [
   ['Scenario 1: Beginner Play: no eval, engine pill, rating, Moves card or picker; partner name; 3 tabs', async (vp) => {
     const page = await seeded(vp, prof());
-    await page.locator('#tab-play').click();
+    await goTab(page, 'play');
     await hiddenForBeginner(page, 'Beginner');
     assert.equal(await page.locator('#oppName').innerText(), PARTNER);
     assert.equal(await page.locator('#modeText').innerText(), 'New game vs ' + PARTNER + ', you play White');
+    if (col1(vp)) await closeX(page); // G2a: the New game card and the tabs are on Play's start page
     assert.equal(await vis(page, '#colorSel'), true, 'Play as stays');
     assert.deepEqual(await tabsShown(page), ['coach', 'path', 'play']);
     const nav = await page.locator('.tabs').boundingBox();
@@ -123,7 +178,7 @@ const cases = [
   }],
   ['Scenario 2: the partner takes your bishop with check, in plain words, no notation', async (vp) => {
     const page = await seeded(vp, prof({ course: done('rules', 'special') }), GAME_CHECK, 'play');
-    await page.locator('#tab-play').click();
+    await goTab(page, 'play');
     const sentence = 'Rani’s partner took your bishop. Check!';
     assert.equal(await page.locator('#modeText').innerText(), 'Your game vs ' + PARTNER + ', you play White', 'mid-game mode bar');
     if (vp.width <= 860) {
@@ -142,7 +197,7 @@ const cases = [
   }],
   ['Scenario 3: Beginner review: Next says "You moved a pawn forward.", no eval, no move list', async (vp) => {
     const page = await seeded(vp, prof(), GAME_OPEN, 'play');
-    await page.locator('#tab-play').click();
+    await goTab(page, 'play');
     await page.locator('#reviewBtn').click();
     assert.equal(await st(page, 'mode'), 'review');
     await page.locator('#navFirst').click();
@@ -174,7 +229,7 @@ const cases = [
     }
     await shot(page, vp, 'unlock_note');
     await closeNote(page);
-    await page.locator('#tab-train').click();
+    await goTab(page, 'train');
     const train = await page.locator('#panel-train').innerText();
     assert.equal((await page.locator('#ratedHead').textContent()).trim(), 'Puzzles at your level');
     assert.equal((await page.locator('#ratedLede').textContent()).trim(), 'Puzzles picked for you. Solve them to get stronger.');
@@ -190,25 +245,25 @@ const cases = [
   }],
   ['Scenario 5: Show everything shows every hidden element and all tabs; level stays; off hides again', async (vp) => {
     const page = await seeded(vp, prof());
-    await page.locator('#settingsBtn').click();
+    await page.locator(GEAR).click();
     await page.locator('#levelCard [data-act="showall"]').click();
     assert.deepEqual(await tabsShown(page), ['coach', 'path', 'play', 'train', 'progress']);
     await page.keyboard.press('Escape');
     await shownAll(page, 'showAll');
-    assert.ok(/~\d+/.test(await page.locator('#modeText').innerText()), 'mode bar rating');
+    if (!col1(vp)) assert.ok(/~\d+/.test(await page.locator('#modeText').innerText()), 'mode bar rating'); // phones have no mode bar; the rating tag above the board is checked in shownAll
     assert.notEqual(await page.locator('#oppName').innerText(), PARTNER, 'real opponent name');
     assert.equal((await getProf(page)).level, 'beginner');
     assert.equal((await getProf(page)).start, 'rules', 'course unchanged');
     assert.equal(await page.locator('#raniNote').isHidden(), true, 'Show everything never shows the unlock note');
-    await page.locator('#tab-train').click();
+    await goTab(page, 'train');
     assert.ok((await page.locator('#panel-train').innerText()).includes('Start 10 rated puzzles'), 'normal Train card with Show everything');
     await shot(page, vp, 'beginner_showall');
-    await page.locator('#settingsBtn').click();
+    await page.locator(GEAR).click();
     await page.locator('#levelCard [data-act="showall"]').click();
     await page.keyboard.press('Escape');
     assert.equal(await st(page, 'tab'), 'coach', 'a hidden tab falls back to Home');
     assert.deepEqual(await tabsShown(page), ['coach', 'path', 'play']);
-    await page.locator('#tab-play').click();
+    await goTab(page, 'play');
     await hiddenForBeginner(page, 'showAll off');
     return page;
   }],
@@ -272,12 +327,13 @@ const cases = [
   ['Scenario 7: Improver: engine pill hidden, eval, Moves card and ratings shown; Home starts at level 2', async (vp) => {
     const page = await seeded(vp, prof({ level: 'improver', start: 'fork', rating: 1000 }));
     assert.equal(await vis(page, '#enginePill'), false, 'engine pill hidden');
-    await page.locator('#tab-play').click();
-    for (const sel of ['#evalbar', '#movesCard', '#oppPick']) assert.equal(await vis(page, sel), true, sel);
-    assert.ok(/~\d+/.test(await page.locator('#oppLevel').innerText()));
+    await goTab(page, 'play');
     assert.deepEqual(await tabsShown(page), ['coach', 'path', 'play', 'train', 'progress']);
+    const parts = await playParts(page, ['#evalbar', '#movesCard', '#oppPick']);
+    for (const sel of ['#evalbar', '#movesCard', '#oppPick']) assert.equal(parts[sel], true, sel);
+    assert.ok(/~\d+/.test(await page.locator('#oppLevel').innerText()));
     await shot(page, vp, 'improver_play');
-    await page.locator('#tab-coach').click();
+    await goTab(page, 'coach');
     const hero = await page.locator('#stageHero').innerText(), today = await page.locator('#today').innerText(), road = await page.locator('#roadCard .roadrow.cur').innerText();
     // F1 (F-D10): the Next step moved from the stage card's button to the Continue card
     const cont = await page.locator('#contCard').innerText();
@@ -319,7 +375,7 @@ const cases = [
     assert.ok(n.y + n.height <= t.y + 0.5, 'note above the nav: ' + JSON.stringify([n, t]));
     await shot(page, vp, 'club_note_above_nav');
     await closeNote(page);
-    await page.locator('#tab-play').click(); await page.evaluate(() => window.scrollTo(0, 0));
+    await goTab(page, 'play'); await page.evaluate(() => window.scrollTo(0, 0));
     await shot(page, vp, 'club_play');
     for (const tab of ['coach', 'path', 'play', 'train', 'progress']) {
       await page.locator('#tab-' + tab).click();
@@ -334,18 +390,21 @@ const cases = [
   }],
   ['Scenario 9: Beginner switches to Club mid-game: everything appears at once, game carries on', async (vp) => {
     const page = await seeded(vp, prof({ course: done('rules') }), GAME_OPEN, 'play');
-    await page.locator('#tab-play').click();
+    await goTab(page, 'play');
     await hiddenForBeginner(page, 'before');
     const before = await page.evaluate(() => window.__coach.hist());
-    await page.locator('#settingsBtn').click();
+    await page.locator(GEAR).click();
     await page.locator('#levelCard [data-lvset="club"]').click();
-    for (const sel of ['#evalbar', '#enginePill', '#movesCard', '#oppPick']) assert.equal(await vis(page, sel), true, sel + ' shown at once');
+    // G2a: on a phone the game is on the board screen: the eval strip and the Moves card are there; the engine pill and the
+    // opponent picker belong to Play's start page (checked after Close, below)
+    for (const sel of col1(vp) ? ['#evalbar', '#movesCard'] : FOUR) assert.equal(await vis(page, sel), true, sel + ' shown at once');
     assert.ok(/~\d+/.test(await page.locator('#oppLevel').innerText()), 'rating tag at once');
-    assert.ok(/~\d+/.test(await page.locator('#modeText').innerText()), 'mode bar rating at once');
+    if (!col1(vp)) assert.ok(/~\d+/.test(await page.locator('#modeText').innerText()), 'mode bar rating at once');
     assert.equal((await page.locator('#moves').innerText()).includes('Nc6') || (await page.locator('#moves td.clk').count()) === 4, true, 'move list has the game');
     await page.keyboard.press('Escape');
     assert.deepEqual(await page.evaluate(() => window.__coach.hist()), before, 'game kept');
     assert.equal(await st(page, 'mode'), 'play');
+    if (col1(vp)) { await closeX(page); for (const sel of ON_PAGE) assert.equal(await vis(page, sel), true, sel + ' on Play’s start page'); }
     assert.deepEqual(await tabsShown(page), ['coach', 'path', 'play', 'train', 'progress']);
     return page;
   }],
@@ -359,28 +418,28 @@ const cases = [
       assert.ok(!bad.test(t), tab + ' leaks: ' + (t.match(bad) || [])[0]);
     }
     assert.ok((await page.locator('#history').innerText()).includes(PARTNER), 'past games name the partner');
-    await page.locator('#settingsBtn').click(); await page.locator('#levelCard [data-lvset="improver"]').click(); await page.keyboard.press('Escape');
-    await page.locator('#tab-coach').click();
+    await page.locator(GEAR).click(); await page.locator('#levelCard [data-lvset="improver"]').click(); await page.keyboard.press('Escape');
+    await goTab(page, 'coach');
     assert.ok(/637/.test(await page.locator('.app').innerText()), 'Improver sees the rating');
-    await page.locator('#tab-progress').click();
+    await goTab(page, 'progress');
     assert.ok(/~\d+/.test(await page.locator('#focus').innerText()), 'Improver sees the suggested opponent rating');
     return page;
   }],
   ['Beginner New game plays the partner; Improver and Show everything keep the picker', async (vp) => {
     let page = await seeded(vp, prof());
-    await page.locator('#tab-play').click();
+    await goTab(page, 'play');
     await page.evaluate(() => { document.getElementById('levelSel').value = '5'; });
     await page.locator('#newBtn').click();
     assert.equal(await st(page, 'level'), 1, 'Beginner: Beginner bot');
     await page.context().close();
     page = await seeded(vp, prof({ level: 'improver', start: 'fork', rating: 1000 }));
-    await page.locator('#tab-play').click();
+    await goTab(page, 'play');
     await page.locator('#levelSel').selectOption('4');
     await page.locator('#newBtn').click();
     assert.equal(await st(page, 'level'), 4, 'Improver: the picked opponent');
     await page.context().close();
     page = await seeded(vp, prof({ showAll: true }));
-    await page.locator('#tab-play').click();
+    await goTab(page, 'play');
     await page.locator('#levelSel').selectOption('3');
     await page.locator('#newBtn').click();
     assert.equal(await st(page, 'level'), 3, 'Show everything: the picked opponent');
@@ -392,8 +451,9 @@ const cases = [
     assert.equal(await vis(page, '#panel-train'), false);
     await page.context().close();
     page = await seeded(vp, prof({ level: 'club', start: 'kq', rating: 1300 }), null, 'train');
+    if (col1(vp)) { assert.equal(await st(page, 'tab'), 'coach', 'G-D25: a phone always opens on Home'); await goTab(page, 'train'); }
     assert.equal(await st(page, 'tab'), 'train');
-    await page.locator('#settingsBtn').click(); await page.locator('#levelCard [data-lvset="beginner"]').click(); await page.keyboard.press('Escape');
+    await page.locator(GEAR).click(); await page.locator('#levelCard [data-lvset="beginner"]').click(); await page.keyboard.press('Escape');
     assert.equal(await st(page, 'tab'), 'coach');
     assert.deepEqual(await tabsShown(page), ['coach', 'path', 'play']);
     assert.equal(await page.locator('#raniNote').isHidden(), true, 'no unlock note from a level change');
@@ -401,8 +461,8 @@ const cases = [
   }],
   ['Settings sheet over the nav; Esc closes only the sheet, a sticky move tip stays', async (vp) => {
     const page = await seeded(vp, prof({ level: 'improver', start: 'fork', rating: 1000 }), GAME_OPEN, 'play');
-    await page.locator('#tab-play').click();
-    await page.locator('#settingsBtn').click();
+    await goTab(page, 'play');
+    await page.locator(GEAR).click();
     await page.locator('#settingsSheet').waitFor({ state: 'visible' });
     if (phone(vp)) {
       const top = await page.evaluate(() => { const r = document.querySelector('.tabs').getBoundingClientRect(); const el = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2); return !!(el && el.closest('#settingsSheet')); });
@@ -424,10 +484,11 @@ const cases = [
     let page = await newPage(vp);
     await page.locator('[data-pl-path="never"]').click();
     await page.locator('#placement [data-pl="start"]').click();
-    assert.equal(await page.evaluate(() => document.activeElement && document.activeElement.id), 'tab-' + (await st(page, 'tab')), 'focus on the selected tab, not body');
+    // G2a: a Beginner goes straight into the first lesson; on a phone that is the board screen, where the tabs are hidden and focus goes to the Close bar's text
+    assert.equal(await page.evaluate(() => document.activeElement && document.activeElement.id), col1(vp) ? 'actText' : 'tab-' + (await st(page, 'tab')), 'focus on the selected tab, not body');
     await page.context().close();
     page = await seeded(vp, prof({ level: 'improver', start: 'fork', rating: 1000 }));
-    await page.locator('#settingsBtn').click(); await page.locator('#levelCard [data-act="recheck"]').click();
+    await page.locator(GEAR).click(); await page.locator('#levelCard [data-act="recheck"]').click();
     const xWel = await page.locator('#placement .pl-x').boundingBox();
     await page.locator('[data-pl-path="never"]').click();
     const xRes = await page.locator('#placement .pl-x').boundingBox();
@@ -435,7 +496,7 @@ const cases = [
     const card = await page.locator('#placement .pl-card').boundingBox();
     assert.ok(xRes.x + xRes.width > card.x + card.width - 30, 'top right');
     await page.locator('#placement [data-pl="start"]').click();
-    assert.equal(await page.evaluate(() => document.activeElement && document.activeElement.id), 'tab-' + (await st(page, 'tab')), 'focus after a retake');
+    assert.equal(await page.evaluate(() => document.activeElement && document.activeElement.id), col1(vp) ? 'actText' : 'tab-' + (await st(page, 'tab')), 'focus after a retake');
     return page;
   }],
   ['Phone layout: nothing hides behind the nav at the bottom of a page', async (vp) => {
@@ -469,7 +530,7 @@ const cases = [
   // ---------------- Fix round 1 ----------------
   ['S1-8: the 3D view keeps a Beginner’s eval strip, engine pill and Moves card hidden', async (vp) => {
     const page = await seeded(vp, prof(), GAME_OPEN, 'play');
-    await page.locator('#tab-play').click();
+    await goTab(page, 'play');
     await page.locator('#v3dBtn').click();
     await page.waitForFunction(() => { const b = document.getElementById('v3dBtn'); return /2D view|3D unavailable/.test(b.textContent) && !document.querySelector('.b3d.loading'); }, null, { timeout: 20000 });
     await hiddenForBeginner(page, '3D view (' + (await page.locator('#v3dBtn').innerText()) + ')');
@@ -479,7 +540,7 @@ const cases = [
     const page = await seeded(vp, prof({ start: 'board', levelT: NOW - 9 * DAY, course: done('board', 'values', 'mate', 'opening', 'blunder') }));
     await page.waitForSelector('#raniNote:not([hidden])');
     assert.equal(await noteText(page), OFFER_B);
-    await page.locator('#settingsBtn').click(); await page.locator('#levelCard [data-lvset="improver"]').click(); await page.keyboard.press('Escape');
+    await page.locator(GEAR).click(); await page.locator('#levelCard [data-lvset="improver"]').click(); await page.keyboard.press('Escape');
     assert.equal(await page.locator('#raniNote').isHidden(), true, 'stale offer dropped');
     const pr = await getProf(page);
     assert.equal(pr.level, 'improver'); assert.equal(pr.unlockAll, false, 'the offer was not applied'); assert.equal(pr.levelOfferT, 0);
@@ -498,7 +559,7 @@ const cases = [
     assert.equal(await page.evaluate(() => window.__coach.nextLabel()), 'Learn: Forks');
     assert.ok((await page.locator('#today .step3').first().innerText()).includes('Forks'), 'Today step 1 is Forks');
     assert.ok((await page.locator('#roadCard .roadrow.cur').innerText()).includes('2. Tactics'));
-    await page.locator('#tab-path').click();
+    await goTab(page, 'path');
     assert.equal(await page.locator('#levels .unitrow.next').getAttribute('data-unit'), 'fork', 'Learn marks Forks as next');
     assert.equal(await page.locator('#levels [data-unit="rules"]').count(), 1, 'earlier lessons stay open in Learn');
     return page;
@@ -533,15 +594,15 @@ const cases = [
   ['D26: no accuracy % for a Beginner in review or Progress; Improver keeps it', async (vp) => {
     const g = { id: 'g1', d: NOW - DAY, r: 'L', user: 'w', level: 2, acc: 72, counts: { best: 1, good: 0, inacc: 0, mist: 0, blund: 1 }, tags: {}, sans: ['e4', 'e5', 'Qh5', 'Nc6', 'Bc4', 'Nf6', 'Qxf7#'], ann: { 0: 'best', 2: 'blund' } };
     let page = await seeded(vp, prof({ course: done('rules', 'special', 'board'), games: [g] }), GAME_OPEN, 'play');
-    await page.locator('#tab-play').click(); await page.locator('#reviewBtn').click();
-    assert.ok(!/accuracy/i.test(await page.locator('#modeText').innerText()), 'review bar');
-    await page.locator('#tab-progress').click();
+    await goTab(page, 'play'); await page.locator('#reviewBtn').click();
+    assert.ok(/^Review: This game/.test(await barText(page)) && !/accuracy/i.test(await barText(page)), 'review bar: ' + (await barText(page)));
+    await goTab(page, 'progress');
     assert.ok(!/accuracy|\d+%/i.test(await page.locator('#history').innerText()), 'Progress history');
     await page.context().close();
     page = await seeded(vp, prof({ level: 'improver', start: 'fork', rating: 1000, games: [g] }), GAME_OPEN, 'play');
-    await page.locator('#tab-play').click(); await page.locator('#reviewBtn').click();
-    assert.ok(/Accuracy \d+%/.test(await page.locator('#modeText').innerText()), 'Improver review bar');
-    await page.locator('#tab-progress').click();
+    await goTab(page, 'play'); await page.locator('#reviewBtn').click();
+    assert.ok(/Accuracy \d+%/.test(await barText(page)), 'Improver review bar');
+    await goTab(page, 'progress');
     assert.ok(/accuracy 72%/.test(await page.locator('#history').innerText()));
     return page;
   }],
@@ -550,7 +611,7 @@ const cases = [
     const g = { id: 'g1', d: NOW - DAY, r: 'L', user: 'w', level: 1, acc: 50, counts: {}, tags: { hung: 3, allowedMate: 1 }, sans: ['f3', 'e5', 'g4', 'Qh4#'], ann: {} };
     const graded = Object.assign({}, GAME_OPEN, { fb: { cls: 'best', sym: '!', title: 'Best move', mv: 'You played Nf3', text: 'This develops your knight. Exactly what Stockfish would play.' }, notes: Object.assign({}, GAME_OPEN.notes, { 0: { side: 'u', cls: 'good', text: 'Solid. This claims space in the center. Stockfish slightly preferred ' + CHIP + '.', ev: 20 } }) });
     let page = await seeded(vp, prof({ course: done('rules', 'special', 'board'), games: [g] }), graded, 'play');
-    await page.locator('#tab-play').click();
+    await goTab(page, 'play');
     const vis1 = () => page.locator('.app').innerText();
     assert.ok((await page.locator('#vText').innerText()).includes('Exactly the move I’d play.'));
     assert.ok(!ENG.test(await vis1()), 'play: ' + (await vis1()).match(ENG));
@@ -559,21 +620,39 @@ const cases = [
     await page.locator('#navNext').click();
     await page.waitForFunction(() => document.getElementById('vText').innerText.includes('I slightly preferred'));
     assert.ok(!ENG.test(await vis1()), 'review');
-    await page.locator('#tab-progress').click();
+    await goTab(page, 'progress');
     const progress = await page.locator('#panel-progress').innerText(), credits = await page.locator('#panel-progress .credit').allInnerTexts();
     assert.ok(progress.includes('where Rani’s partner could take them'), 'Progress weak spot');
     assert.ok(!ENG.test(credits.reduce((t, c) => t.replace(c, ''), progress)), 'Progress (license credits aside)');
     await page.context().close();
     // A lost game: the banner and "Rani's partner to move".
+    if (col1(vp)) {
+      // G2a: a phone opens on Home and a finished game is not shown again, so the game is lost here: after f3 e5 the player
+      // plays g4 and Rani's partner mates on h4 (seeded at bot level 2, which always plays a mate in one; the Beginner bot can
+      // miss it. The words on the card come from the player's level).
+      page = await seeded(vp, prof(), { sans: ['f3', 'e5'], user: 'w', level: 2, ann: {}, notes: {}, tags: {}, fb: null, opp: null, evalW: 0, t: NOW }, 'play');
+      await page.waitForFunction(() => !window.__coach.st.busy);
+      await page.locator('#board .sq[data-sq="g2"]').click(); await page.locator('#board .sq[data-sq="g4"]').click();
+      await page.waitForFunction(() => !document.getElementById('gameEnd').hidden && !!document.querySelector('#gameEnd .ec-text'), null, { timeout: 30000 });
+      assert.deepEqual((await page.evaluate(() => window.__coach.hist())).slice(-1), ['Qh4#']);
+      assert.ok((await page.locator('#gameEnd').innerText()).includes('Rani’s partner wins this one. Review it to find the turning point.'));
+      await page.context().close();
+      // "to move": a new game as Black from Play's start page, read in the same step as the tap (the partner moves a moment later)
+      page = await seeded(vp, prof(), null, 'play');
+      const title = await page.evaluate(() => { document.getElementById('colorSel').value = 'b'; document.getElementById('newBtn').click(); return document.getElementById('vTitle').innerText.trim(); });
+      assert.equal(title, 'Rani’s partner to move');
+      await page.context().close();
+    } else {
     page = await seeded(vp, prof(), { sans: ['f3', 'e5', 'g4', 'Qh4#'], user: 'w', level: 1, ann: {}, notes: {}, tags: {}, fb: null, opp: null, evalW: 0, t: NOW }, 'play');
-    await page.locator('#tab-play').click();
+    await goTab(page, 'play');
     // F1 (F-D9): the result is a card under the board, not a box over it
     assert.ok((await page.locator('#gameEnd').innerText()).includes('Rani’s partner wins this one. Review it to find the turning point.'));
     await page.context().close();
     page = await seeded(vp, prof(), { sans: [], user: 'b', level: 1, ann: {}, notes: {}, tags: {}, fb: { cls: 'info', sym: '♙', title: 'Engine to move', mv: 'You play Black', noSan: true }, opp: null, evalW: 0, t: NOW }, 'play');
-    await page.locator('#tab-play').click();
+    await goTab(page, 'play');
     assert.equal((await page.locator('#vTitle').innerText()).trim(), 'Rani’s partner to move');
     await page.context().close();
+    }
     // Safe or blunder (D24) and an endgame drill.
     page = await seeded(vp, prof({ course: done('rules', 'special', 'board') }));
     await page.evaluate(() => window.__coach.trainStart('safety'));
@@ -600,7 +679,7 @@ const cases = [
     const g = Object.assign({}, GAME_OPEN, { fb: { cls: 'good', sym: '✓', title: 'Good move', mv: 'You played Nf3', text: 'Solid. Better was ' + CHIP + '.' } });
     // a themed set (character names on pieces), so the preview tag would repeat the piece (R2-3)
     const page = await seeded(vp, prof(), g, 'play', { fn: () => localStorage.setItem('suresh-chess-coach.pieces', '"ramayana"') });
-    await page.locator('#tab-play').click();
+    await goTab(page, 'play');
     const chip = page.locator('#vText .mvc');
     await page.waitForFunction(() => { const c = document.querySelector('#vText .mvc'); return c && c.dataset.dc; });
     assert.equal(await chip.getAttribute('title'), 'White knight to f3. Tap to see it on the board.');
@@ -609,7 +688,7 @@ const cases = [
     const tag = await page.locator('#pvTag').innerText();
     assert.ok(!/Nf3/.test(tag) && tag.startsWith('White knight to f3') && !/\(/.test(tag), 'R2-3 preview label without the repeat: ' + tag);
     assert.equal(await page.locator('.santip').count() === 0 || !(await page.locator('.santip').isVisible()), true, 'no notation tip');
-    await page.locator('#settingsBtn').click(); await page.locator('#levelCard [data-act="showall"]').click(); await page.keyboard.press('Escape');
+    await page.locator(GEAR).click(); await page.locator('#levelCard [data-act="showall"]').click(); await page.keyboard.press('Escape');
     assert.equal(await page.locator('#vText .mvc').getAttribute('title'), 'Nf3: White knight to f3. Tap to see it on the board.');
     assert.equal(await page.locator('#vText .mvc').getAttribute('aria-label'), 'White knight to f3 (Nf3)');
     return page;
@@ -674,7 +753,7 @@ const cases = [
   ['D-3: a retake open at the first pull does not lose the start offer', async (vp) => {
     const local = prof({ start: 'board', levelT: NOW - 9 * DAY, course: done('board', 'values', 'mate', 'opening', 'blunder') });
     const page = await seeded(vp, local, null, null, { fn: cloudMock, arg: { prof: local, hold: true } });
-    await page.locator('#settingsBtn').click(); await page.locator('#levelCard [data-act="recheck"]').click();
+    await page.locator(GEAR).click(); await page.locator('#levelCard [data-act="recheck"]').click();
     assert.equal(await page.evaluate(() => window.Placement.isOpen()), true);
     await page.evaluate(() => window.__release());
     await page.waitForFunction(() => window.__cloud.gets >= 2);
@@ -694,7 +773,7 @@ const cases = [
     await page.waitForFunction(() => window.__cloud.gets >= 2);
     await page.waitForTimeout(800);
     assert.equal(await page.locator('#raniNote').isHidden(), true, 'held during the lesson');
-    await page.locator('#tab-coach').click();
+    await goTab(page, 'coach');
     await page.waitForSelector('#raniNote:not([hidden])');
     assert.equal(await noteText(page), OFFER_B, 'shown when Home opens');
     return page;
@@ -710,7 +789,7 @@ const cases = [
     await page.locator('#bhome .bh-go').click();
     await page.waitForFunction(() => window.__coach.st.mode === 'puzzle');
     assert.notEqual(await st(page, 'level'), 3, 'never starts an Improver (OPP 3) game');
-    await page.locator('#tab-coach').click();
+    await goTab(page, 'coach');
     await page.locator('#bhome .bh-alt').click();
     assert.equal(await st(page, 'level'), 1, 'Just play a game: Rani’s practice partner');
     await page.context().close();
@@ -722,11 +801,11 @@ const cases = [
   }],
   ['R2-5: Show everything off re-decorates the strip chips without notation', async (vp) => {
     const page = await seeded(vp, prof({ showAll: true }));
-    await page.locator('#tab-play').click();
+    await goTab(page, 'play');
     await page.locator('#newBtn').click();
     await page.waitForFunction(() => { const c = document.querySelector('#coachStrip .mvc'); return c && c.dataset.dc; });
     assert.ok(/^e4: /.test(await page.locator('#coachStrip .mvc').first().getAttribute('title')), 'Show everything: notation');
-    await page.locator('#settingsBtn').click(); await page.locator('#levelCard [data-act="showall"]').click(); await page.keyboard.press('Escape');
+    await page.locator(GEAR).click(); await page.locator('#levelCard [data-act="showall"]').click(); await page.keyboard.press('Escape');
     const chips = await page.locator('#coachStrip .mvc').evaluateAll((els) => els.map((e) => [e.title, e.getAttribute('aria-label')]));
     assert.ok(chips.length >= 1);
     for (const [t, a] of chips) assert.ok(!/\b[a-h][1-8]:|\(\w*[a-h][1-8]\)/.test(t + ' ' + a), 'no SAN: ' + t + ' | ' + a);
@@ -735,7 +814,7 @@ const cases = [
   ['R2-6: an open Settings sheet follows a cloud pull (level and Show everything)', async (vp) => {
     const local = prof();
     const page = await seeded(vp, local, null, null, { fn: cloudMock, arg: { prof: Object.assign({}, local, { level: 'club', start: 'kq', placed: 'chosen', levelT: NOW + 60000, showAll: true, t: NOW + 60000 }), hold: true } });
-    await page.locator('#settingsBtn').click();
+    await page.locator(GEAR).click();
     await page.locator('#levelCard [data-lvset="beginner"]').focus();
     await page.evaluate(() => window.__release());
     await page.waitForFunction(() => window.__coach.getProf().level === 'club');
@@ -750,7 +829,7 @@ const cases = [
     const local = prof({ level: 'club', start: 'kq', rating: 1300, games: [gA] });
     const page = await seeded(vp, local, null, 'progress', { fn: cloudMock, arg: { prof: local, hold: false } });
     await page.waitForFunction(() => window.__cloud.gets >= 2);
-    await page.locator('#tab-progress').click();
+    await goTab(page, 'progress');
     await page.locator('#history [data-review="0"]').focus();
     const gets = await page.evaluate(() => window.__cloud.gets);
     await page.evaluate((g) => { window.__cloud.prof = Object.assign({}, window.__cloud.prof, { games: [g].concat(window.__cloud.prof.games || []) }); document.dispatchEvent(new Event('visibilitychange')); }, gB);
@@ -787,7 +866,7 @@ const cases = [
   ['U-2: Beginner strip reads grade, feedback, then the partner’s move, nothing cut off', async (vp) => {
     if (vp.width > 860) return newPage(vp);
     const page = await seeded(vp, prof({ course: done('rules', 'special') }), GAME_CHECK, 'play');
-    await page.locator('#tab-play').click();
+    await goTab(page, 'play');
     const b = (await page.locator('#coachStrip .bub b').innerText()).trim(), sp = (await page.locator('#coachStrip .bub span').innerText()).trim();
     assert.equal(b, 'Blunder.', 'line 1 is the grade');
     assert.equal(sp, 'This gives away material or position. Rani’s partner took your bishop. Check!', 'feedback, then the partner');
@@ -801,21 +880,23 @@ const cases = [
     const page = await seeded(vp, prof({ level: 'club', start: 'kq', rating: 1300 }));
     await page.evaluate(() => window.__coach.trainStart('rated'));
     await page.waitForFunction(() => window.__coach.st.mode === 'puzzle');
-    await page.locator('#settingsBtn').click(); await page.locator('#levelCard [data-lvset="beginner"]').click(); await page.keyboard.press('Escape');
+    await page.locator(GEAR).click(); await page.locator('#levelCard [data-lvset="beginner"]').click(); await page.keyboard.press('Escape');
     assert.equal(await page.evaluate(() => window.__coach.st.ses), null, 'session ended');
     assert.equal(await st(page, 'mode'), 'play'); assert.equal(await st(page, 'tab'), 'coach');
     assert.ok(!/Rated puzzles/.test(await page.locator('.app').innerText()), 'no stale Train session text');
     return page;
   }],
   ['U-6: a Beginner’s win banner says "Great finish. Review it."', async (vp) => {
-    const page = await seeded(vp, prof(), { sans: ['f3', 'e5', 'g4', 'Qh4#'], user: 'b', level: 1, ann: {}, notes: {}, tags: {}, fb: null, opp: null, evalW: 0, t: NOW }, 'play');
-    await page.locator('#tab-play').click();
+    // G2a: on a phone a finished game is not shown again after a restart, so the mate is played here (Black, one move from mate)
+    const page = await seeded(vp, prof(), { sans: col1(vp) ? ['f3', 'e5', 'g4'] : ['f3', 'e5', 'g4', 'Qh4#'], user: 'b', level: 1, ann: {}, notes: {}, tags: {}, fb: null, opp: null, evalW: 0, t: NOW }, 'play');
+    await goTab(page, 'play');
+    if (col1(vp)) { await page.waitForFunction(() => !window.__coach.st.busy); await page.locator('#board .sq[data-sq="d8"]').click(); await page.locator('#board .sq[data-sq="h4"]').click(); }
     assert.equal((await page.locator('#gameEnd .ec-text').innerText()).trim(), 'Great finish. Review it.'); // F1 (F-D9): the result card under the board
     return page;
   }],
   ['U-7: a Beginner’s Progress tiles have no orphan', async (vp) => {
     const page = await seeded(vp, prof({ course: done('rules', 'special', 'board') }));
-    await page.locator('#tab-progress').click();
+    await goTab(page, 'progress');
     const tops = await page.locator('#stats > div').evaluateAll((els) => els.map((e) => Math.round(e.getBoundingClientRect().top)));
     assert.equal(tops.length, 3);
     assert.equal(new Set(tops).size, 1, 'one row of 3: ' + tops);
@@ -825,7 +906,8 @@ const cases = [
     const page = await seeded(vp, prof({ level: 'club', start: 'kq', rating: 1300 }));
     for (const n of ['Home', 'Learn', 'Train', 'Play', 'Progress']) assert.equal(await page.getByRole('tab', { name: n, exact: true }).count(), 1, n);
     const desc = await page.evaluate(() => { const t = document.getElementById('tab-play'), id = t.getAttribute('aria-describedby'); return id && document.getElementById(id) ? document.getElementById(id).textContent : null; });
-    assert.equal(desc, 'The board is here');
+    // G2a: a phone's tab pages have no board, so no tab says "The board is here" (the Resume cards do that job); wide: as it was
+    assert.equal(desc, col1(vp) ? null : 'The board is here');
     return page;
   }],
   // ---------------- Fix round 3 ----------------
@@ -844,7 +926,7 @@ const cases = [
     if (!phone(vp)) return newPage(vp);
     for (const p of [prof({ course: done('rules', 'special', 'board') }), prof({ level: 'club', start: 'kq', rating: 1300 })]) {
       const page = await seeded(vp, p);
-      await page.locator('#tab-progress').click();
+      await goTab(page, 'progress');
       const tiles = await page.locator('#stats > div').evaluateAll((els) => els.map((d) => { const s = d.querySelector('span'), b = d.getBoundingClientRect(), r = s.getBoundingClientRect(); return { t: s.textContent, lines: s.getClientRects().length, over: r.right > b.right - 1 || r.left < b.left }; }));
       for (const t of tiles) { assert.equal(t.lines, 1, p.level + ': one line: ' + t.t); assert.equal(t.over, false, p.level + ': no overflow: ' + t.t); }
       if (p.level === 'club') return page;

@@ -5,6 +5,13 @@
     <p class="engine-pill" id="enginePill" role="status" aria-label="Loading Stockfish…" data-state="loading"><i aria-hidden="true"></i><span>Loading Stockfish…</span></p>
     <button class="iconbtn" id="settingsBtn" type="button" data-act="settings" aria-label="Settings" title="Settings"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></button>
   </header>
+  <!-- G2a (G-D3, G-D24): the board screen's Close bar. Phones only (CSS shows it while html[data-scr] is set, up to 860px wide):
+       Close at the left, the activity's name and the player's place in it, the Settings gear at the right. Sticky. -->
+  <div class="actbar" id="actBar">
+    <button class="iconbtn" id="actClose" type="button" data-act="actclose" aria-label="Close" title="Close"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6 L18 18 M18 6 L6 18"/></svg></button>
+    <div class="acttext" id="actText" tabindex="-1" role="group"><b id="actName" role="heading" aria-level="1"></b><span id="actPlace"></span></div>
+    <button class="iconbtn" id="actGear" type="button" data-act="settings" aria-label="Settings" title="Settings"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></button>
+  </div>
 
   <div class="app">
     <section class="boardcol" aria-label="Board">
@@ -72,6 +79,8 @@
         <div class="bhome" id="bhome" hidden></div>
         <!-- F1 (F-D8): the Continue card, first on Improver and Club Home (the Beginner card's look) -->
         <div class="card bh-card" id="contCard"></div>
+        <!-- G2a (G-D5, G-D21): "Resume game" under the Continue card, on phones, while a game is unfinished (Beginner Home draws its own) -->
+        <div class="card bh-card rs-card" id="resumeHome" hidden></div>
         <div class="card stagehero" id="stageHero"></div>
         <div class="card today" id="today"></div>
         <div class="card" id="stageCard"></div>
@@ -84,6 +93,8 @@
 
       <!-- LEARN -->
       <div class="panel" id="panel-path" role="tabpanel" aria-labelledby="tab-path" hidden>
+        <!-- G2a (G-D5): "Resume lesson" (or puzzles, or drill) first on Learn, on phones, while one is open in memory -->
+        <div class="card bh-card rs-card" id="resumePath" hidden></div>
         <div class="znote" id="znote-path" hidden></div>
         <!-- F1: the end card after the Learn part of a lesson; the course stays open under it -->
         <div class="card endcard" id="learnEnd" hidden></div>
@@ -117,6 +128,8 @@
           <div class="legend"><span><b>!</b>best</span><span><b>✓</b>good</span><span><b>?!</b>inaccuracy</span><span><b>?</b>mistake</span><span><b>??</b>blunder</span></div>
           <p class="sanhint">Tip: hover or tap any move, like <span class="san" tabindex="0" data-san="Nf3"><span class="fig">♞︎</span>f3</span>, to see how to read it.</p>
         </div>
+        <!-- G2a (G-D6): on phones Play is a start page: Resume game (when a game is unfinished), New game, Recent games -->
+        <div class="card bh-card rs-card" id="resumePlay" hidden></div>
         <div class="card" id="newCard">
           <p class="eyebrow">New game</p>
           <div class="settings">
@@ -130,10 +143,12 @@
           </div>
           <p class="note" id="newConfirm" hidden>Your current game isn't finished. Tap again to abandon it.</p>
         </div>
+        <div class="card" id="recentPlay" hidden><p class="eyebrow">Recent games</p><div id="recentList"></div></div>
       </div>
 
       <!-- TRAIN -->
       <div class="panel" id="panel-train" role="tabpanel" aria-labelledby="tab-train" hidden>
+        <div class="card bh-card rs-card" id="resumeTrain" hidden></div>
         <div class="znote" id="znote-train" hidden></div>
         <div class="card session" id="sessionCard" hidden></div>
         <div class="card">

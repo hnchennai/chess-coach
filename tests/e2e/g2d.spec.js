@@ -54,12 +54,30 @@ function seedFn([pk, p, gk, g, tk, tab, sk, set, k3, v3d]) {
   if (v3d) localStorage.setItem(k3, 'true');
   sessionStorage.setItem('seeded', '1');
 }
-// o: { game, tab, set, v3d }. p: the saved profile, or null for an install with nothing saved at all.
+// A small fake of the native ads plugin (as in g2.spec.js): enough to see when a banner is on screen.
+function fakeAds() {
+  const A = window.__ad = { calls: [], ls: {}, view: false, visible: false, loaded: false };
+  Object.defineProperty(A, 'shown', { get() { return A.view && A.visible && A.loaded; } });
+  const fire = (n, d) => (A.ls[n] || []).slice().forEach((f) => f(d));
+  const size = (on) => fire('bannerAdSizeChanged', on ? { width: window.innerWidth, height: 64 } : { width: 0, height: 0 });
+  const info = () => ({ status: 'NOT_REQUIRED', isConsentFormAvailable: false, canRequestAds: true, privacyOptionsRequirementStatus: 'NOT_REQUIRED' });
+  const P = {
+    addListener(n, f) { (A.ls[n] = A.ls[n] || []).push(f); return Promise.resolve({ remove() {} }); },
+    requestConsentInfo() { return Promise.resolve(info()); }, showConsentForm() { return Promise.resolve(info()); }, showPrivacyOptionsForm() { return Promise.resolve(); }, initialize() { return Promise.resolve(); },
+    showBanner() { A.calls.push('showBanner'); if (A.view) return Promise.resolve(); A.view = true; A.visible = true; A.loaded = false; setTimeout(() => { if (!A.view) return; A.loaded = true; size(true); fire('bannerAdLoaded', {}); }, 30); return Promise.resolve(); },
+    hideBanner() { if (!A.view) return Promise.reject(new Error('never shown')); A.visible = false; setTimeout(() => size(false), 0); return Promise.resolve(); },
+    resumeBanner() { if (A.view) setTimeout(() => { A.visible = true; size(true); }, 0); return Promise.resolve(); },
+    removeBanner() { A.view = false; A.visible = false; A.loaded = false; setTimeout(() => size(false), 0); return Promise.resolve(); }
+  };
+  window.Capacitor = { isNativePlatform: () => true, getPlatform: () => 'android', Plugins: { AdMob: P } };
+}
+// o: { game, tab, set, v3d, ads (true: the fake ads plugin) }. p: the saved profile, or null for an install with nothing saved at all.
 async function newPage(vp, p, o) {
   o = o || {};
   const ctx = await browser.newContext({ viewport: vp, deviceScaleFactor: 1 });
   await ctx.route(/fonts\.(googleapis|gstatic)\.com/, (r) => r.fulfill({ status: 200, contentType: 'text/css', body: '' }));
   await ctx.addInitScript(seedFn, [PKEY, p, GKEY, o.game || null, TKEY, o.tab || null, SKEY, o.set || null, K3D, !!o.v3d]);
+  if (o.ads) await ctx.addInitScript(fakeAds);
   const page = await ctx.newPage();
   page.errors = []; page.outside = []; page.dialogs = [];
   page.on('console', (m) => { if ((m.type() === 'error' || m.type() === 'warning') && !/GL Driver Message|WebGL context was lost|THREE\.WebGLRenderer: Context (Lost|Restored)/.test(m.text())) page.errors.push(m.type() + ': ' + m.text()); });
@@ -244,6 +262,49 @@ const cases = [
     assert.equal(Z.page.tab, 'coach');
     assert.equal(Z.board, null);
     assert.ok(Z.tabs && Z.header, 'the tab page: header and tabs');
+    return page;
+  }],
+  // ---------- fix round 1 ----------
+  ['Fix 1: the sideways layout is for screens under 500px high only; at exactly 500px (where a banner is allowed) the board is not pinned', async (vp) => {
+    if (vp.width !== 780) return newPage(vp, prof(), {});
+    const mate = async (size) => {
+      const page = await newPage(size, prof(), { game: MATE1, tab: 'play', ads: true });
+      await toGame(page, size); await idle(page);
+      const pos = await page.evaluate(() => getComputedStyle(document.getElementById('board')).position);
+      await page.locator('#board .sq[data-sq="h5"]').click(); await page.locator('#board .sq[data-sq="f7"]').click();
+      await page.waitForFunction(() => { const e = document.getElementById('gameEnd'); return e && !e.hidden && document.documentElement.dataset.scrend; });
+      await page.waitForTimeout(2500); // the banner's one second, and its load
+      const R = await page.evaluate(() => { const p = document.getElementById('adPad'); return { shown: window.__ad.shown, asked: window.__ad.calls.length, pad: !p.hidden && p.getBoundingClientRect().height > 0, room: window.__coach.ads().h }; });
+      return { page, pos, R };
+    };
+    const low = await mate({ width: 780, height: 499 });
+    assert.equal(low.pos, 'fixed', '780x499: sideways, the board is pinned');
+    await sideways(low.page, { width: 780, height: 499 }, 'end card at 499', ['gameEnd']);
+    assert.deepEqual(low.R, { shown: false, asked: 0, pad: false, room: 0 }, '780x499: no banner, and no room kept for one');
+    assert.deepEqual(low.page.errors, []);
+    await low.page.context().close();
+    const at = await mate({ width: 780, height: 500 });
+    assert.equal(at.pos, 'relative', '780x500: the upright layout, the board is in the page and nothing is pinned');
+    assert.equal(at.R.shown, true, '780x500: the banner is allowed on the end card (A-D4), and no pinned board is under it');
+    assert.equal(await at.page.evaluate(() => getComputedStyle(document.getElementById('board')).position), 'relative');
+    return at.page;
+  }],
+  ['Fix 2: turning the phone upright with the column scrolled starts the upright board screen at the top', async (vp) => {
+    const page = await newPage(vp, prof(), { game: GAME, tab: 'play' });
+    if (!SIDE(vp)) return page;
+    await toGame(page, vp); await idle(page);
+    await page.evaluate(() => window.scrollTo(0, 400));
+    assert.ok(await page.evaluate(() => window.scrollY) > 100, 'the column is scrolled');
+    await page.setViewportSize({ width: vp.height, height: vp.width });
+    await page.waitForFunction((w) => window.innerWidth === w, vp.height);
+    await page.waitForTimeout(300);
+    const B = await boxes(page, BASE);
+    assert.equal(B.page.scrollY, 0, 'upright: the page is back at the top');
+    assert.ok(B.board.t >= B.bar.b && B.board.b <= B.page.vh, 'the whole board is on screen under the Close bar ' + arr(B.board));
+    // the other way keeps the player's place: upright scrolled, then sideways, the board is pinned and on screen anyway
+    await page.evaluate(() => window.scrollTo(0, 300));
+    await page.setViewportSize(vp); await page.waitForFunction((w) => window.innerWidth === w, vp.width);
+    await sideways(page, vp, 'turned sideways from a scrolled page', ['ctl']);
     return page;
   }],
   // ---------- G-D33 ----------

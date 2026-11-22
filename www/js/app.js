@@ -1,4 +1,4 @@
-/* ---------- Suresh's Chess Coach v4: course + coach ---------- */
+/* ---------- Chess Coach v4: course + coach ---------- */
 (function () {
   'use strict';
   var G = new Chess();
@@ -788,6 +788,7 @@
     if (on) de.dataset.scr = 'act'; else delete de.dataset.scr;
     if (end) de.dataset.scrend = '1'; else delete de.dataset.scrend;
     renderActBar(); renderResume();
+    wasPinned = pinned(); /* G2d fix round 1: what the resize handler compares with */
     /* Fix round 2: whatever opens on the board screen starts at the top of the page (an end card's scroll is not kept) */
     if (scrTop && !scrHold) { scrTop = false; if (on && on === scrOn && window.scrollY > 0) window.scrollTo(0, 0); }
     if (on === scrOn) return;
@@ -913,6 +914,11 @@
   }
   /* When the window turns from phone to desktop layout or back, the slot moves between its place and the strip. */
   var wasWide = null;
+  /* G2d fix round 1: a phone turned upright with the sideways column scrolled would show the upright page scrolled, the board
+     off the top. When the board stops being pinned on the board screen, the page starts at the top. */
+  var wasPinned = false;
+  function pinned() { var b = $('board'); return !!b && b.getClientRects().length > 0 && getComputedStyle(b).position === 'fixed'; }
+  window.addEventListener('resize', function () { var p = pinned(); if (wasPinned && !p && actOpen() && window.scrollY > 0) window.scrollTo(0, 0); wasPinned = p; });
   window.addEventListener('resize', function () { var w = wide(); if (w === wasWide) return; wasWide = w; if (!booted) return; render(); if (st.end) renderPath(); });
 
   /* ---------- ADS GLUE (F3b, docs/specs/ads.product.md). The only code that talks to the native ads plugin. The rules are in

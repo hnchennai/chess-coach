@@ -294,7 +294,7 @@ Counts are estimates from reading and pattern matching. The suites were not run.
 ## 14. Slice G2d: sideways phone, first-time look, the name (G-D32 to G-D34)
 
 ### Sideways board screen (G-D32)
-- One media query, `(max-width: 860px) and (max-height: 500px)`, and every rule under `html[data-scr]`. Upright phones and wide screens match none of it. It replaces the G2a rule that only capped the board row.
+- One media query, `(max-width: 860px) and (max-height: 499.98px)` (under 500px: from 500px a banner is allowed), and every rule under `html[data-scr]`. Upright phones and wide screens match none of it. It replaces the G2a rule that only capped the board row.
 - The board (`.boardrow > .board`) is `position: fixed` under the Close bar. Its side is `--bs`: the screen height less the bar (49px here, Close still 44px), 8px above and below and the top and bottom safe areas, and never more than `60vw`.
 - `.app` gets `padding-left: var(--bs) + 12px`. So the rest of `.boardcol` (opponent line, eval strip, coach strip, the You line with the piece name line, `#gameEnd`, the buttons, `#reviewEnd`) and then `.side` (the tabs when an end card is up, Rani's card, the moves, a lesson's step card, `#sessionCard`, `#learnEnd`) form one column on the right, in DOM order. Nothing moves in the DOM.
 - The column is the page: it scrolls under the sticky bar and the board stays put. So `revealEnd()`, `boardUp()` and the open and close scroll keep working. `boardRoom(el)` in `app.js` is the one change: with a pinned board the scroll limit is the card's own top (it stays under the bar), not the board's top.

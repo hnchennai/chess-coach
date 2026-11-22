@@ -322,7 +322,7 @@ test('Fix 1: on a phone an end card has no slot (so no banner) while the board o
   assert.equal(F.slotOk({ place: 'learn', day: true, inUse: false, wide: true, gameOn: true, live: true }), false, 'wide: F-D32, as before');
 });
 
-test('Fix 5: "Back to my game" reads "Resume game" on the Continue card', () => {
+test('Fix 5: the old "Back to my game" reads "Resume game" on the Continue card', () => {
   assert.equal(F.COPY.back, 'Resume game');
   assert.equal(F.cont({ kind: 'beat', name: 'Club' }, true).button, 'Resume game');
   assert.equal(F.cont({ kind: 'beat', name: 'Club' }, false).button, 'Play now');

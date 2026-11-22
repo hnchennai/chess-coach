@@ -47,7 +47,7 @@
      ongoing: an unfinished game (D44). go / alt name the action the app wires to the main and second button. */
   function lines(s, coach, ongoing) {
     var partner = coach === 'gaja' ? 'Rani’s practice partner' : 'my practice partner';
-    var back = { second: 'Back to my game', alt: 'back' }, play = { second: 'Just play a game', alt: 'game' }, two = ongoing ? back : play;
+    var back = { second: 'Resume game', alt: 'back' }, play = { second: 'Just play a game', alt: 'game' }, two = ongoing ? back : play;
     if (s.kind === 'beat') {
       return { head: 'You finished every Foundations lesson!', line: 'Now beat ' + partner + '.', kicker: 'Next step', title: 'Beat Rani’s practice partner',
         bar: null, button: ongoing ? 'Resume game' : 'Play now', go: ongoing ? 'back' : 'game', second: null, alt: null, icon: 'k', zone: 'play' };

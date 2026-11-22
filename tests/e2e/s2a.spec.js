@@ -70,7 +70,7 @@ const openGame = (page) => page.evaluate(() => {
   const r = document.querySelector('#resumePlay .rs-go');
   if (r && r.getClientRects().length) r.click();
 });
-// The board screen's Close button (phones), which replaces "Back to my game" and "Close review" in the mode bar.
+// The board screen's Close button (phones), which replaces "Resume game" and "Close review" in the mode bar.
 const closeX = (page) => page.locator('#actClose').click();
 // Going to a tab. On a phone's board screen the bottom tabs are hidden (G-D3), so the player taps Close first (twice from a
 // review opened in the middle of a game: the first Close goes back to the game). A tap on the tab that is already selected

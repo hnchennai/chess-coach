@@ -140,7 +140,7 @@ test('Scenario 6 / D39: Foundations done and the partner beaten: Practice, Puzzl
     assert.equal(l.button, 'Start 10 puzzles'); assert.equal(l.go, 'puzzles');
     assert.equal(l.second, 'Just play a game'); assert.equal(l.alt, 'game');
   }
-  assert.equal(H.lines(s, 'rani', true).second, 'Back to my game');
+  assert.equal(H.lines(s, 'rani', true).second, 'Resume game');
   assert.equal(H.lines(s, 'rani', true).alt, 'back');
 });
 
@@ -157,7 +157,7 @@ test('A win without Foundations done still shows the next lesson', () => {
 
 test('D44: second button follows an unfinished game in the lesson state', () => {
   const s = state('rules', {});
-  assert.deepEqual([H.lines(s, 'rani', true).second, H.lines(s, 'rani', true).alt], ['Back to my game', 'back']);
+  assert.deepEqual([H.lines(s, 'rani', true).second, H.lines(s, 'rani', true).alt], ['Resume game', 'back']);
   assert.equal(H.lines(s, 'rani', true).button, 'Start lesson', 'the card itself does not change');
 });
 
@@ -230,6 +230,6 @@ test('D49: Continue asks first only for a lesson game with an unfinished game go
   assert.equal(H.askFirst(practice, true), false, 'a practice part never asks');
   assert.equal(H.lines(practice, 'rani', true).go, 'part');
   assert.equal(H.askFirst(state('rules', {}), true), false, 'a Learn part never asks');
-  assert.equal(H.askFirst(state('rules', done(...FOUND)), true), false, 'the Beat card has Back to my game itself');
+  assert.equal(H.askFirst(state('rules', done(...FOUND)), true), false, 'the Beat card has Resume game itself');
   assert.equal(H.askFirst(state('rules', done(...FOUND), true), true), false, 'Keep practising never asks');
 });

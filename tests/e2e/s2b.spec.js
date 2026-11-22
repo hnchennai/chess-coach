@@ -91,7 +91,7 @@ const openGame = (page) => page.evaluate(() => {
   const r = document.querySelector('#resumePlay .rs-go');
   if (r && r.getClientRects().length) r.click();
 });
-// The board screen's Close button (phones), which replaces "Back to my game" and "Close review" in the mode bar.
+// The board screen's Close button (phones), which replaces "Resume game" and "Close review" in the mode bar.
 const closeX = (page) => page.locator('#actClose').click();
 // Going to a tab. On a phone's board screen the bottom tabs are hidden (G-D3), so the player taps Close first (twice from a
 // review opened in the middle of a game: the first Close goes back to the game). A tap on the tab that is already selected
@@ -283,21 +283,21 @@ const cases = [
     await shot(page, vp, 'beginner_home_karthik');
     return page;
   }],
-  ['S2b-4 / D44: Back to my game opens the unfinished game on Play, nothing abandoned; Just play a game starts a partner game', async (vp) => {
+  ['S2b-4 / D44: Resume game opens the unfinished game on Play, nothing abandoned; Just play a game starts a partner game', async (vp) => {
     let page = await seeded(vp, prof({ course: done('rules') }), { game: GAME_OPEN, tab: 'coach' });
     await beginnerHome(page, vp, 'unfinished game');
     let b = await block(page);
     assert.equal(b.button, 'Start lesson', 'the card stays on the next lesson');
     const before = await page.evaluate(() => window.__coach.hist());
     if (col1(vp)) {
-      // G-D21 (phones): the second button "Back to my game" is retired; the "Resume game" card under the Continue card opens the game
+      // G-D21 (phones): the second button "Resume game" is retired; the "Resume game" card under the Continue card opens the game
       assert.equal(b.second, null, 'no second button while a game is going');
       assert.deepEqual(await page.evaluate(() => { const c = document.getElementById('resumeBHome'); return [c.querySelector('.bh-title').textContent, c.querySelector('.rs-line').textContent, c.querySelector('.rs-go').textContent]; }), ['Resume game', 'Move 3, your turn', 'Resume game']);
       await fitsFirstScreen(page, vp, 'S2b-4');
       await shot(page, vp, 'beginner_home_back_to_game');
       await page.locator('#resumeBHome .rs-go').click();
     } else {
-      assert.equal(b.second, 'Back to my game');
+      assert.equal(b.second, 'Resume game');
       await shot(page, vp, 'beginner_home_back_to_game');
       await page.locator('#bhome .bh-alt').click();
     }
@@ -335,7 +335,7 @@ const cases = [
     await page.context().close();
     page = await seeded(vp, prof({ levelT: NOW - DAY, levelOfferT: NOW - DAY, course: done(...FOUND) }), { game: GAME_OPEN });
     b = await block(page);
-    assert.equal(b.button, 'Resume game'); assert.equal(b.second, null); // fix round 1: "Back to my game" reads "Resume game"
+    assert.equal(b.button, 'Resume game'); assert.equal(b.second, null); // fix round 1: the old "Back to my game" reads "Resume game"
     if (col1(vp)) assert.equal(await page.locator('#bhome .rs-card').count(), 0, 'the Continue card is the game: no second card for it');
     const before = await page.evaluate(() => window.__coach.hist());
     await page.locator('#bhome .bh-go').click();
@@ -603,7 +603,7 @@ const cases = [
     if (oneCol(vp)) await goTab(page, 'coach');
     await page.waitForFunction(() => document.querySelector('#bhome .bh-title') && document.querySelector('#bhome .bh-title').textContent === 'Puzzles at your level');
     b = await block(page);
-    assert.equal(b.kicker, 'Practice'); assert.equal(b.second, 'Just play a game', 'the game is over: no "Back to my game"');
+    assert.equal(b.kicker, 'Practice'); assert.equal(b.second, 'Just play a game', 'the game is over: no "Resume game"');
     await page.context().close();
     // A cloud merge brings a finished lesson: Home moves on without a reload.
     const local = prof();
@@ -649,11 +649,11 @@ const cases = [
     await shot(page, vp, 'beginner_home_gaja');
     return page;
   }],
-  ['S2b-13 / D49: with a game going, Continue on a lesson game asks first; Back to my game, Start the lesson game, Esc keeps the game', async (vp) => {
+  ['S2b-13 / D49: with a game going, Continue on a lesson game asks first; Resume game, Start the lesson game, Esc keeps the game', async (vp) => {
     const p = prof({ course: Object.assign(done('rules', 'special', 'board', 'values', 'mate'), { opening: { learn: NOW - DAY } }) });
     let page = await seeded(vp, p, { game: GAME_OPEN });
     let b = await block(page);
-    assert.equal(b.head, 'Now try it in a real game.'); assert.equal(b.button, 'Continue'); assert.equal(b.second, col1(vp) ? null : 'Back to my game'); // G-D21: retired on phones (the Resume game card is there)
+    assert.equal(b.head, 'Now try it in a real game.'); assert.equal(b.button, 'Continue'); assert.equal(b.second, col1(vp) ? null : 'Resume game'); // G-D21: retired on phones (the Resume game card is there)
     if (col1(vp)) assert.equal(await vis(page, '#resumeBHome'), true);
     const hist = await page.evaluate(() => window.__coach.hist()), keep = await page.evaluate(([g, k]) => [localStorage.getItem(g), localStorage.getItem(k)], [GKEY, PKEY]);
     const ask = async () => {
@@ -678,7 +678,7 @@ const cases = [
     assert.equal(await st(page, 'tab'), 'coach'); assert.equal(await st(page, 'mode'), 'play');
     assert.deepEqual(await page.evaluate(() => window.__coach.hist()), hist);
     assert.deepEqual(await page.evaluate(([g, k]) => [localStorage.getItem(g), localStorage.getItem(k)], [GKEY, PKEY]), keep, 'nothing saved');
-    // Back to my game: the old game on Play.
+    // Resume game: the old game on Play.
     await ask();
     await page.locator('#raniNote [data-act="askback"]').click();
     assert.equal(await page.locator('#raniNote').isHidden(), true);
@@ -709,7 +709,7 @@ const cases = [
     assert.equal(await page.locator('#raniNote').isHidden(), true);
     return page;
   }],
-  ['S2b-4b / D50: Back to my game ends an open puzzle set; the puzzles already answered are kept', async (vp) => {
+  ['S2b-4b / D50: Resume game ends an open puzzle set; the puzzles already answered are kept', async (vp) => {
     const page = await seeded(vp, prof({ course: done('rules', 'special', 'board') }), { game: GAME_OPEN });
     const hist = await page.evaluate(() => window.__coach.hist());
     await page.evaluate(() => window.__coach.trainStart('rated'));
@@ -718,11 +718,11 @@ const cases = [
     await solvePuzzle(page);
     assert.equal((await getProf(page)).puz[id].n, 1, 'the answer is recorded');
     await goTab(page, 'coach');
-    if (col1(vp)) { // G-D21: "Resume game" does what "Back to my game" did. Until slice G2b it still ends the open set (D50).
+    if (col1(vp)) { // G-D21: the Resume game card does what the second button did. Until slice G2b it still ends the open set (D50).
       assert.equal((await block(page)).second, null);
       await page.locator('#resumeBHome .rs-go').click();
     } else {
-      assert.equal((await block(page)).second, 'Back to my game');
+      assert.equal((await block(page)).second, 'Resume game');
       await page.locator('#bhome .bh-alt').click();
     }
     assert.equal(await st(page, 'tab'), 'play'); assert.equal(await st(page, 'mode'), 'play');

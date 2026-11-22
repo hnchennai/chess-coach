@@ -90,7 +90,7 @@ const openGame = (page) => page.evaluate(() => {
   const r = document.querySelector('#resumePlay .rs-go');
   if (r && r.getClientRects().length) r.click();
 });
-// The board screen's Close button (phones), which replaces "Back to my game" and "Close review" in the mode bar.
+// The board screen's Close button (phones), which replaces "Resume game" and "Close review" in the mode bar.
 const closeX = (page) => page.locator('#actClose').click();
 // Going to a tab. On a phone's board screen the bottom tabs are hidden (G-D3), so the player taps Close first (twice from a
 // review opened in the middle of a game: the first Close goes back to the game). A tap on the tab that is already selected
@@ -342,7 +342,7 @@ const cases = [
     await homeRules(page, 'migrated Improver Home');
     return page;
   }],
-  ['F1-2 / Scenario 2: Continue card for a puzzle goal, a game goal (and Back to my game), and a finished roadmap', async (vp) => {
+  ['F1-2 / Scenario 2: Continue card for a puzzle goal, a game goal (and Resume game), and a finished roadmap', async (vp) => {
     let page = await seeded(vp, improver({ course: done(...TACTICS) }), { tab: 'coach' });
     let c = await cont(page);
     assert.equal(c.kicker, 'Continue'); assert.equal(c.title, 'Puzzles to reach 1200'); assert.equal(c.button, 'Start 10 puzzles'); assert.equal(c.bar, null);
@@ -360,10 +360,10 @@ const cases = [
     await page.waitForFunction(() => window.__coach.st.tab === 'play');
     assert.equal(await st(page, 'level'), 3, 'a game against the stage opponent'); assert.deepEqual(await page.evaluate(() => window.__coach.hist()), []);
     await page.context().close();
-    // with an unfinished game: Back to my game, and the game is kept
+    // with an unfinished game: Resume game, and the game is kept
     page = await seeded(vp, improver({ course: done(...TACTICS), rating: 1250, rn: 30 }), { tab: 'coach', game: Object.assign({}, GAME_OPEN, { level: 3 }) });
     c = await cont(page);
-    assert.equal(c.title, 'Beat the Improver engine'); assert.equal(c.button, 'Resume game'); // fix round 1: "Back to my game" reads "Resume game"
+    assert.equal(c.title, 'Beat the Improver engine'); assert.equal(c.button, 'Resume game'); // fix round 1: the old "Back to my game" reads "Resume game"
     await homeRules(page, 'game goal with a game going');
     await page.locator('#contCard .bh-go').click();
     assert.equal(await st(page, 'tab'), 'play'); assert.deepEqual(await page.evaluate(() => window.__coach.hist()), GAME_OPEN.sans);
@@ -999,7 +999,7 @@ const cases = [
     const s = await slot(page, '#homeSlot');
     slotRules(s, BEGINNER, 'Rani', 'Beginner Home'); beginnerWords({ all: s.text }, 'Beginner Home tip'); assert.equal(s.last, true);
     await shot(page, vp, 'home-beginner-slot', '#homeSlot');
-    // with a game going, "Back to my game" replaces the second button and Home drops the slot (never beside a game in progress)
+    // with a game going, "Resume game" replaces the second button and Home drops the slot (never beside a game in progress)
     await page.locator('#bhome .bh-alt').click(); await page.waitForFunction(() => window.__coach.st.tab === 'play');
     await page.waitForFunction(() => !window.__coach.st.busy);
     await page.locator('#board .sq[data-sq="e2"]').click(); await page.locator('#board .sq[data-sq="e4"]').click();
@@ -1007,7 +1007,7 @@ const cases = [
     await goTab(page, 'coach');
     if (col1(vp)) { // G-D21: the second button is retired, the Resume game card is there; G-D11: a saved, closed game no longer hides the slot
       assert.equal(await page.locator('#bhome .bh-alt').count(), 0); assert.equal(await vis(page, '#resumeBHome'), true); assert.equal(await anySlot(page), 1);
-    } else { assert.equal((await page.locator('#bhome .bh-alt').textContent()).trim(), 'Back to my game'); assert.equal(await anySlot(page), 0); }
+    } else { assert.equal((await page.locator('#bhome .bh-alt').textContent()).trim(), 'Resume game'); assert.equal(await anySlot(page), 0); }
     return page;
   }],
   ['F2-8 / AC8: the slot has one fixed height (76px or more) for every tip, nothing is cut off, and it is a note, not a control', async (vp) => {

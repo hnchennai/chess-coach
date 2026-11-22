@@ -496,7 +496,7 @@ const cases = [
     L = await look(page);
     assert.deepEqual([L.board, L.scr, L.mode], [true, 'act', 'lesson']);
     assert.equal(await page.evaluate(() => window.__coach.st.ls.i), 1, 'criterion 3: the same step');
-    // until G2b, opening the game ends the open lesson, exactly as "Back to my game" does today (D50)
+    // until G2b, opening the game ends the open lesson, exactly as "Resume game" does today (D50)
     await closeX(page); await goTab(page, 'play');
     await page.locator('#resumePlay .rs-go').click();
     L = await look(page);
@@ -557,16 +557,16 @@ const cases = [
     return page;
   }],
   // ---------- G-D21 ----------
-  ['G-D21: every level’s Home shows "Resume game" under the Continue card; Beginner Home’s "Back to my game" button is retired', async (vp) => {
+  ['G-D21: every level’s Home shows "Resume game" under the Continue card; Beginner Home’s second button is retired', async (vp) => {
     const page = await newPage(vp, prof(), { game: game(['e4', 'e5', 'Nf3', 'Nc6'], { level: 1 }) });
     const alt = await page.locator('#bhome .bh-alt').count();
     if (!PH(vp)) {
-      assert.equal(await page.locator('#bhome .bh-alt').innerText(), 'Back to my game', 'wide: D44 as it is');
+      assert.equal(await page.locator('#bhome .bh-alt').innerText(), 'Resume game', 'wide: D44 as it is, with the new words');
       assert.equal(await page.locator('#bhome .rs-card').count(), 0);
       return page;
     }
     assert.equal(alt, 0, 'no second button while a game is going');
-    assert.ok(!/Back to my game/.test(await page.locator('#bhome').innerText()));
+    assert.ok(!/Back to my/.test(await page.locator('#bhome').innerText()));
     const R = await resume(page, 'resumeBHome');
     assert.deepEqual([R.title, R.line, R.button], [WORDS.game, 'Move 3, your turn', WORDS.game]);
     assert.ok(R.h >= 44);
@@ -604,7 +604,7 @@ const cases = [
     assert.deepEqual([L.scr, L.bar, L.tabs, L.header], [null, false, true, true], 'an activity opens no board screen');
     await goTab(page, 'play');
     assert.equal(await page.locator('#znote-play').isVisible(), true, 'the note that the board is on Train');
-    assert.equal(await page.locator('#modeExit').innerText(), 'Back to my game');
+    assert.equal(await page.locator('#modeExit').innerText(), 'Resume game');
     await goTab(page, 'coach');
     assert.equal(await page.locator('#contCard').isVisible(), true);
     await page.locator('#modeExit').click();
@@ -952,7 +952,7 @@ const cases = [
     assert.equal(await page.evaluate(() => window.__coach.st.ls.unit.id + window.__coach.st.ls.i), 'kr0', 'starting another lesson ends the waiting one (until G2b)');
     return page;
   }],
-  ['Fix 5: "Back to my game" reads "Resume game" (Continue card, Today, Rani’s question); no separate Resume card when Continue is the game', async (vp) => {
+  ['Fix 5: the old "Back to my game" reads "Resume game" (Continue card, Today, Rani’s question); no separate Resume card when Continue is the game', async (vp) => {
     const FOUND = ['rules', 'special', 'board', 'values', 'mate', 'opening', 'blunder'], TACTICS = ['fork', 'pin', 'disc', 'patterns', 'check2'];
     const open4 = game(['e4', 'e5', 'Nf3', 'Nc6']);
     const count = (page, sel, t) => page.evaluate(([s, x]) => [...document.querySelectorAll(s)].filter((b) => b.getClientRects().length > 0 && b.textContent.trim() === x).length, [sel, t]);
@@ -962,7 +962,7 @@ const cases = [
     assert.equal(await page.locator('#bhome .bh-go').innerText(), 'Resume game');
     assert.equal(await count(page, '#panel-coach button', 'Resume game'), 1, 'one button for the one action');
     assert.equal(await page.locator('#bhome .rs-card').count(), 0); assert.equal(await page.locator('#bhome .bh-alt').count(), 0);
-    assert.ok(!/Back to my game/.test(await page.locator('#panel-coach').innerText()));
+    assert.ok(!/Back to my/.test(await page.locator('#panel-coach').innerText()));
     await page.locator('#bhome .bh-go').click();
     assert.deepEqual(await hist(page), open4.sans); assert.equal(await st(page, 'tab'), 'play');
     if (PH(vp)) assert.equal((await look(page)).scr, 'act');
@@ -972,7 +972,7 @@ const cases = [
     assert.equal(await page.locator('#contCard .bh-go').innerText(), 'Resume game');
     assert.equal(await page.locator('#today .step3.z-play .zb').innerText(), 'Resume game', 'Today’s Play step');
     assert.equal(await page.locator('#resumeHome').isVisible(), false, 'no separate Resume card');
-    assert.ok(!/Back to my game/.test(await page.locator('#panel-coach').innerText()));
+    assert.ok(!/Back to my/.test(await page.locator('#panel-coach').innerText()));
     assert.equal(await count(page, '#panel-coach .btn.primary', 'Resume game'), 1);
     await page.locator('#today .step3.z-play .zb').click();
     assert.deepEqual(await hist(page), open4.sans); assert.equal(await st(page, 'tab'), 'play');

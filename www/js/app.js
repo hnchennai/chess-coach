@@ -599,8 +599,8 @@
       if (ph || z === 'play' || pz === z) { el.hidden = true; return; }
       el.hidden = false; el.className = 'znote z-' + z;
       el.innerHTML = '<p><span class="ztag">' + ZNAME[z] + '</span> The board is on <b>' + esc(zoneLabel()) + '</b>.' + (t === 'play' ? ' Your game is paused and saved.' : '') + '</p><div class="row2">' +
-        (t === 'play' ? '<button class="btn primary" type="button" data-act="close">\u25B6 Back to my game</button><button class="btn" type="button" data-zgo="' + ZTAB[z] + '">Continue ' + ZNAME[z] + '</button>'
-          : '<button class="btn primary" type="button" data-zgo="' + ZTAB[z] + '">Continue ' + ZNAME[z] + '</button><button class="btn" type="button" data-act="close">Stop, back to my game</button>') + '</div>';
+        (t === 'play' ? '<button class="btn primary" type="button" data-act="close">\u25B6 Resume game</button><button class="btn" type="button" data-zgo="' + ZTAB[z] + '">Continue ' + ZNAME[z] + '</button>'
+          : '<button class="btn primary" type="button" data-zgo="' + ZTAB[z] + '">Continue ' + ZNAME[z] + '</button><button class="btn" type="button" data-act="close">Stop, resume game</button>') + '</div>';
     });
   }
   function renderMode() {
@@ -628,7 +628,7 @@
     else if (st.mode === 'reach') { tag = 'Piece drill'; text = 'Tap every square the ' + PNAME[st.rc.type] + ' can reach'; }
     else if (st.mode === 'quiz') { tag = 'Safe or blunder?'; text = (st.qz.side === 'w' ? 'White' : 'Black') + ' to move'; }
     $('modeTag').textContent = ZNAME[z]; $('modeText').textContent = tag + (text ? ': ' + text : '');
-    $('modeExit').textContent = st.mode === 'review' ? (st.rv.past ? 'Close review' : 'Back to my game') : 'Back to my game'; $('modeExit').dataset.zone = z;
+    $('modeExit').textContent = st.mode === 'review' ? (st.rv.past ? 'Close review' : 'Resume game') : 'Resume game'; $('modeExit').dataset.zone = z;
   }
 
   /* ---------- Play panel ---------- */
@@ -845,7 +845,7 @@
       rc.hidden = false;
     }
   }
-  /* Resume: the board screen opens on what is waiting. The game: as "Back to my game" (until G2b that ends a lesson or set
+  /* Resume: the board screen opens on what is waiting. The game: as "Resume game" (until G2b that ends a lesson or set
      that is open, D50). A lesson or set: it never left memory, so only the screen opens. */
   function resumeAct(zone) {
     if (zone === 'play') { if (st.mode !== 'play') { exitMode(true); return; } openAct(); switchTab('play'); render(); return; }
@@ -2336,12 +2336,12 @@
     var el = $('bhome'); if (!el || !plain()) return;
     var s = homeState(), coach = Coach3D.get(), on = gameOn(), L = Home.lines(s, coach, on), sk = Home.streak(streakDays());
     /* G-D21: on phones every Home shows the "Resume game" card under the Continue card while a game is unfinished, and
-       Beginner Home's second button "Back to my game" is retired (wide screens keep D44 as it is). */
+       Beginner Home's second button "Resume game" is retired (wide screens keep D44 as it is). */
     var rs = on && phone();
     if (rs && L.alt === 'back') L.second = null;
     if (rs && L.go === 'back') rs = false; /* the Continue card's own button is the game: no second button for the same action */
     var rl = Flow.resumesLesson({ go: L.go, unit: s.unit && s.unit.id, part: s.part }, waitingLesson());
-    /* D50: "Back to my game" is exitMode(true), as today's Home button: an open lesson or puzzle set ends (the lesson starts
+    /* D50: "Resume game" is exitMode(true), as today's Home button: an open lesson or puzzle set ends (the lesson starts
        again at step 1; puzzle results so far are already saved). D49: a lesson game with a game going asks first. */
     var act = bhAttr(s);
     var html = '<div class="bh-hero"><div class="bh-av">' + Avatar.coach(s.kind === 'lesson' ? 'happy' : 'proud', 112) + '</div>' +

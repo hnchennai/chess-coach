@@ -335,7 +335,8 @@ const cases = [
     await page.context().close();
     page = await seeded(vp, prof({ levelT: NOW - DAY, levelOfferT: NOW - DAY, course: done(...FOUND) }), { game: GAME_OPEN });
     b = await block(page);
-    assert.equal(b.button, 'Back to my game'); assert.equal(b.second, null);
+    assert.equal(b.button, 'Resume game'); assert.equal(b.second, null); // fix round 1: "Back to my game" reads "Resume game"
+    if (col1(vp)) assert.equal(await page.locator('#bhome .rs-card').count(), 0, 'the Continue card is the game: no second card for it');
     const before = await page.evaluate(() => window.__coach.hist());
     await page.locator('#bhome .bh-go').click();
     assert.equal(await st(page, 'tab'), 'play'); assert.deepEqual(await page.evaluate(() => window.__coach.hist()), before, 'the unfinished game opens');
@@ -552,7 +553,10 @@ const cases = [
       await closeX(page);
     }
     assert.deepEqual(await page.evaluate(() => window.__coach.hist()), hist, 'game kept');
-    assert.equal(await page.evaluate((k) => localStorage.getItem(k), GKEY), saved, 'nothing saved over the game');
+    // fix round 1: Close writes the game once more as it stands (a new time stamp); the game itself is the same
+    const strip = (x) => { const o = JSON.parse(x); return JSON.stringify(['sans', 'user', 'level', 'ann', 'notes', 'tags', 'fb', 'opp'].map((k) => o[k])); }; // the game, without the time stamp and the fields a save fills in
+    if (col1(vp)) assert.equal(strip(await page.evaluate((k) => localStorage.getItem(k), GKEY)), strip(saved), 'nothing saved over the game');
+    else assert.equal(await page.evaluate((k) => localStorage.getItem(k), GKEY), saved, 'nothing saved over the game');
     assert.equal(await st(page, 'mode'), 'play');
     // A lesson: Home and back keeps the step.
     await page.evaluate(() => window.__coach.startPart('values', 'learn'));
@@ -590,7 +594,7 @@ const cases = [
     // A game ending: Beat state, mate in one. On desktop the board plays next to Home; on phones via Play.
     page = await seeded(vp, prof({ levelT: NOW - DAY, levelOfferT: NOW - DAY, course: done(...FOUND) }), { game: GAME_MATE1, tab: 'coach' });
     b = await block(page);
-    assert.equal(b.title, 'Beat Rani’s practice partner'); assert.equal(b.button, 'Back to my game');
+    assert.equal(b.title, 'Beat Rani’s practice partner'); assert.equal(b.button, 'Resume game');
     if (col1(vp)) await openGame(page); else if (oneCol(vp)) await goTab(page, 'play');
     await page.waitForFunction(() => !window.__coach.st.busy);
     await page.locator('#board .sq[data-sq="h5"]').click();
@@ -660,7 +664,7 @@ const cases = [
       assert.deepEqual(await page.evaluate(() => window.__coach.hist()), hist, 'the old game is still there');
     };
     await ask();
-    assert.equal((await page.locator('#raniNote [data-act="askback"]').innerText()).trim(), 'Back to my game');
+    assert.equal((await page.locator('#raniNote [data-act="askback"]').innerText()).trim(), 'Resume game');
     assert.equal((await page.locator('#raniNote [data-act="askgo"]').innerText()).trim(), 'Start the lesson game');
     await page.waitForFunction(() => document.activeElement && document.activeElement.dataset.act === 'askback');
     if (phone(vp)) {

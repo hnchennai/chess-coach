@@ -59,7 +59,7 @@ function seedFn([pk, p, gk, g, tk, tab, sk, set, k3, v3d]) {
 function fakeAds() {
   const A = window.__ad = { calls: [], ls: {}, view: false, visible: false, loaded: false };
   Object.defineProperty(A, 'shown', { get() { return A.view && A.visible && A.loaded; } });
-  const rec = (m) => A.calls.push({ m, t: performance.now(), scr: document.documentElement.dataset.scr || null });
+  const rec = (m) => A.calls.push({ m, t: performance.now(), scr: document.documentElement.dataset.scr || null, scrend: document.documentElement.dataset.scrend || null }); // the screen at the moment of the call
   const fire = (n, d) => (A.ls[n] || []).slice().forEach((f) => f(d));
   const size = (on) => fire('bannerAdSizeChanged', on ? { width: window.innerWidth, height: 64 } : { width: 0, height: 0 });
   const info = () => ({ status: 'NOT_REQUIRED', isConsentFormAvailable: false, canRequestAds: true, privacyOptionsRequirementStatus: 'NOT_REQUIRED' });
@@ -504,19 +504,16 @@ const cases = [
     assert.deepEqual(await hist(page), SANS22);
     await closeX(page); await goTab(page, 'path');
     assert.equal(await resume(page, 'resumePath'), null, 'the lesson ended (G2b will keep it)');
-    // a drill: a lesson's task, so its board screen is on Learn and it waits there
+    // a drill from Train's list (fix round 1: it belongs to Train; the Fix 6 case has the rest)
     await goTab(page, 'train');
     await page.locator('#drillList [data-drill]').first().click();
     await idle(page);
     L = await look(page);
-    assert.deepEqual([L.board, L.scr, L.tab, L.mode], [true, 'act', 'path', 'drill']);
-    assert.equal(await page.locator('#sessionCard').isVisible(), true, 'the drill’s card is under the board');
+    assert.deepEqual([L.board, L.scr, L.tab, L.mode], [true, 'act', 'train', 'drill']);
     assert.match((await bar(page)).name, /^Drill: .+ · move 0 of \d+$/); assert.equal((await bar(page)).place, 'Endgame drill');
     await closeX(page);
-    assert.equal((await look(page)).tab, 'path');
-    R = await resume(page, 'resumePath');
+    R = await resume(page, 'resumeTrain');
     assert.deepEqual([R.title, R.button], [WORDS.drill, WORDS.drill]);
-    await goTab(page, 'train');
     await page.locator('#bookList [data-book]').first().click();
     await closeX(page);
     assert.equal((await resume(page, 'resumeTrain')).title, WORDS.drill, 'an opening drill too');
@@ -652,19 +649,22 @@ const cases = [
     await page.waitForFunction(() => window.__ad.shown, null, { timeout: 5000 });
     assert.ok(Date.now() - t0 >= 900, 'the banner waited about a second: ' + (Date.now() - t0));
     // every banner call that showed one was made on a tab page or under an end card
-    const bad = await page.evaluate(() => window.__ad.calls.filter((c) => (c.m === 'showBanner' || c.m === 'resumeBanner') && c.scr && !document.documentElement.dataset.scrend).length);
+    const bad = await page.evaluate(() => window.__ad.calls.filter((c) => (c.m === 'showBanner' || c.m === 'resumeBanner') && c.scr && !c.scrend).length);
     assert.equal(bad, 0);
     return page;
   }],
   ['C7: on an end card the tip and the banner show, with a saved game too (G-D11); never on the first day', async (vp) => {
-    // a Learn end card with an unfinished game saved: wide keeps F-D32 (no slot), phones show it
+    // a set's end card with an unfinished game saved and closed: wide keeps F-D32 (no slot), phones show it.
+    // (A Learn end card is different: the board under it is the game itself. See the Fix 1 case.)
     let page = await newPage(vp, club(), { game: GAME12, tab: 'progress', ads: true });
-    await page.evaluate(() => window.__coach.startPart('kq', 'learn'));
-    await finishLesson(page);
+    await page.evaluate(() => window.__coach.trainStart('rated'));
+    await page.evaluate(() => { const s = window.__coach.st.ses; s.count = s.i + 1; });
+    await solvePuzzle(page); await page.locator('#sessionCard [data-act="next"]').click();
+    await page.waitForFunction(() => window.__coach.st.ses && window.__coach.st.ses.finished);
     await page.waitForTimeout(1500);
-    assert.equal((await endCard(page, '#learnEnd')).shown, true);
+    assert.equal((await endCard(page, '#sessionCard')).shown, true);
     if (PH(vp)) {
-      assert.equal(await slotOn(page, '#learnEnd .tipslot'), true, 'the tip is on the end card');
+      assert.equal(await slotOn(page, '#sessionCard .tipslot'), true, 'the tip is on the end card');
       await page.waitForFunction(() => window.__ad.shown, null, { timeout: 5000 });
       assert.equal((await look(page)).tabs, true);
     } else {
@@ -830,6 +830,291 @@ const cases = [
     }));
     assert.ok(lines.includes('Move 13, Rani’s partner to move'), 'the Beginner’s line: ' + JSON.stringify(lines));
     assert.ok(!lines.some((l) => /engine/i.test(l)), JSON.stringify(lines));
+    return page;
+  }],
+  // ---------- fix round 1 (.crew/g2a-fix-round-1.md) ----------
+  ['Fix 1: a Learn end card over the unfinished game has no tip and no banner; a move on that board ends the end card in the same step', async (vp) => {
+    const page = await newPage(vp, club(), { game: GAME12, tab: 'progress', ads: true });
+    if (PH(vp)) await page.waitForFunction(() => window.__ad.shown, null, { timeout: 5000 }); // Home: the banner is up (G-D12)
+    await page.evaluate(() => window.__coach.startPart('kq', 'learn'));
+    await finishLesson(page);
+    assert.equal((await endCard(page, '#learnEnd')).shown, true);
+    if (!PH(vp)) { await page.waitForTimeout(1500); assert.equal(await slotOn(page, '#slotStrip'), false, 'wide: F-D32'); assert.equal(await adShown(page), false); return page; }
+    let L = await look(page);
+    assert.deepEqual([L.board, L.tabs, L.end, L.tab, L.mode], [true, true, '1', 'path', 'play'], 'the end card is up, over the game');
+    const n0 = await page.evaluate(() => window.__ad.calls.length);
+    for (let i = 0; i < 8; i++) { await page.waitForTimeout(200); assert.equal(await adShown(page), false, 'no banner over a game in progress'); assert.deepEqual(await visibleIds(page, '.tipslot'), [], 'and no tip'); }
+    assert.deepEqual(await page.evaluate((n) => window.__ad.calls.slice(n).map((c) => c.m).filter((m) => m !== 'hideBanner'), n0), [], 'nothing asked for the banner');
+    let B = await bar(page);
+    assert.deepEqual([B.name, B.place], ['Your game', 'Move 12, your turn'], 'the bar names what the board shows, not the lesson');
+    // a move on that board: everything of the end card goes in the same step
+    const R = await page.evaluate(() => {
+      const tapSq = (s) => { const el = document.querySelector('.sq[data-sq="' + s + '"]'), r = el.getBoundingClientRect(), o = { bubbles: true, pointerId: 1, clientX: r.left + r.width / 2, clientY: r.top + r.height / 2 }; el.dispatchEvent(new PointerEvent('pointerdown', o)); el.dispatchEvent(new PointerEvent('pointerup', o)); };
+      tapSq('a2'); tapSq('a4');
+      const on = (e) => !!e && e.getClientRects().length > 0, de = document.documentElement, c = window.__coach.st;
+      return { end: de.dataset.scrend || null, scr: de.dataset.scr || null, tabs: on(document.querySelector('.tabs')), card: on(document.getElementById('learnEnd')), tab: c.tab, stEnd: c.end || null, tips: [...document.querySelectorAll('.tipslot')].filter(on).length,
+        ad: window.__ad.visible, name: document.getElementById('actName').textContent, place: document.getElementById('actPlace').textContent, last: window.__coach.hist().slice(-1)[0] };
+    });
+    assert.deepEqual(R, { end: null, scr: 'act', tabs: false, card: false, tab: 'play', stEnd: null, tips: 0, ad: false, name: 'Your game', place: 'Move 12, engine to move', last: 'a4' });
+    await idle(page);
+    // a set's end card: the saved game is closed and the board shows the last puzzle, so G-D11 gives the tip and the banner
+    await page.evaluate(() => window.__coach.trainStart('rated'));
+    await page.evaluate(() => { const s = window.__coach.st.ses; s.count = s.i + 1; });
+    await solvePuzzle(page); await page.locator('#sessionCard [data-act="next"]').click();
+    await page.waitForFunction(() => window.__coach.st.ses && window.__coach.st.ses.finished);
+    assert.equal(await slotOn(page, '#sessionCard .tipslot'), true, 'a set’s end card with a saved game has the tip');
+    await page.waitForFunction(() => window.__ad.shown, null, { timeout: 5000 });
+    assert.ok((await hist(page)).length >= 23, 'the game is still there');
+    return page;
+  }],
+  ['Fix 2: the banner never covers an end card’s buttons: the card is placed for it when it appears, and nothing moves when it arrives', async (vp) => {
+    if (!PH(vp)) return newPage(vp, club(), {});
+    const measure = (page, sel) => page.evaluate((s) => {
+      const fixed = getComputedStyle(document.querySelector('.tabs')).position === 'fixed', margin = fixed ? 64 : 0, zone = { top: window.innerHeight - margin - 64, bottom: window.innerHeight - margin };
+      const btns = [...document.querySelectorAll(s + ' button')].filter((b) => b.getClientRects().length > 0).map((b) => { const r = b.getBoundingClientRect(); return { t: b.textContent.trim(), top: r.top, bottom: r.bottom }; });
+      const pad = document.getElementById('adPad');
+      return { zone, btns, y: window.scrollY, pad: pad.hidden ? 0 : pad.getBoundingClientRect().height, shown: window.__ad.shown };
+    }, sel);
+    const check = async (page, sel, why) => {
+      await page.waitForTimeout(600); // the card's own scroll
+      const a = await measure(page, sel);
+      assert.equal(a.shown, false, why + ': measured before the banner is up');
+      assert.ok(a.btns.length >= 2, why + ': buttons measured');
+      for (const b of a.btns) assert.ok(b.top >= 0 && b.bottom <= a.zone.top + 0.5, why + ': "' + b.t + '" is above the banner’s zone (' + Math.round(b.bottom) + ' vs ' + a.zone.top + ')');
+      assert.equal(a.pad, 72, why + ': the page padding is already there');
+      await page.waitForFunction(() => window.__ad.shown, null, { timeout: 5000 }); await page.waitForTimeout(300);
+      const b = await measure(page, sel);
+      assert.equal(b.y, a.y, why + ': the page did not move when the banner came'); assert.equal(b.pad, a.pad, why + ': nor did the padding change');
+      assert.deepEqual(b.btns, a.btns, why + ': every button is where it was');
+    };
+    let page = await newPage(vp, club({ games: [] }), { game: MATE1, ads: true });
+    await page.waitForFunction(() => window.__ad.shown, null, { timeout: 5000 });
+    await goTab(page, 'play'); await page.locator('#resumePlay .rs-go').click(); await idle(page);
+    await page.locator('#board .sq[data-sq="h5"]').click(); await page.locator('#board .sq[data-sq="f7"]').click();
+    await page.waitForFunction(() => !!document.querySelector('#gameEnd .ec-main') && !window.__coach.st.busy, null, { timeout: 30000 });
+    await check(page, '#gameEnd', 'game end card');
+    assert.deepEqual(page.errors, []); await page.context().close();
+    page = await newPage(vp, club(), { ads: true });
+    await page.waitForFunction(() => window.__ad.shown, null, { timeout: 5000 });
+    await page.evaluate(() => window.__coach.startPart('kq', 'learn'));
+    await finishLesson(page);
+    await check(page, '#learnEnd', 'Learn end card');
+    return page;
+  }],
+  ['Fix 3, 10: "Start new game" asks whenever an unfinished game has moves, also with a lesson waiting; a new game started while the engine thinks is playable', async (vp) => {
+    const page = await newPage(vp, club(), { game: GAME12, tab: 'play' });
+    if (!PH(vp)) return page;
+    await page.evaluate(() => window.__coach.startPart('kq', 'learn'));
+    await closeX(page); await goTab(page, 'play');
+    await page.locator('#newBtn').click();
+    assert.equal(await page.locator('#newConfirm').isVisible(), true, 'the question: "Tap again to abandon it"');
+    assert.equal(await page.locator('#newConfirm').innerText(), "Your current game isn't finished. Tap again to abandon it.");
+    let L = await look(page);
+    assert.deepEqual([L.board, L.tab], [false, 'play']); assert.deepEqual(await hist(page), SANS22, 'nothing was abandoned');
+    assert.equal(await st(page, 'mode'), 'lesson', 'and the waiting lesson is still there');
+    // Resume instead: the engine is held back in the middle of its move, then a new game is started
+    await page.locator('#resumePlay .rs-go').click();
+    await page.evaluate(() => { window.__coach.st.level = 5; window.Brain.play = () => new Promise((r) => { window.__go = r; }); });
+    await page.locator('#board .sq[data-sq="h3"]').click(); await page.locator('#board .sq[data-sq="h4"]').click();
+    await page.waitForFunction(() => typeof window.__go === 'function' && window.__coach.st.busy, null, { timeout: 30000 });
+    await closeX(page);
+    await page.locator('#newBtn').click(); assert.equal(await page.locator('#newConfirm').isVisible(), true);
+    await page.locator('#newBtn').click();
+    L = await look(page);
+    assert.deepEqual([L.board, L.scr, L.mode], [true, 'act', 'play']); assert.deepEqual(await hist(page), []);
+    assert.equal(await st(page, 'busy'), false, 'the new game is not waiting for the old game’s engine');
+    await page.locator('#board .sq[data-sq="e2"]').click(); await page.locator('#board .sq[data-sq="e4"]').click();
+    await page.waitForFunction(() => window.__coach.hist()[0] === 'e4', null, { timeout: 5000 });
+    await page.evaluate(() => window.__go('a7a6')); await page.waitForTimeout(300); // the old game's reply arrives late: it is dropped
+    assert.equal((await hist(page))[0], 'e4'); assert.ok(!(await hist(page)).includes('a6'));
+    return page;
+  }],
+  ['Fix 4: a waiting lesson survives browsing (a unit page, All levels, Train’s lists); only starting another activity ends it', async (vp) => {
+    const page = await newPage(vp, club(), {});
+    if (!PH(vp)) return page;
+    await page.evaluate(() => window.__coach.startPart('kq', 'learn'));
+    await page.locator('#navNext').click();
+    assert.equal(await page.locator('#unitView .lessoncard').isVisible(), true);
+    assert.equal(await page.locator('#unitView .lessoncard .back').isVisible(), false, 'the step card’s own back button is not on the board screen: Close replaces it');
+    await closeX(page);
+    const waiting = async (why) => { assert.equal(await st(page, 'mode'), 'lesson', why); assert.equal(await page.evaluate(() => window.__coach.st.ls.i), 1, why + ': the step'); };
+    if (await page.locator('#unitView [data-act="units"]').isVisible()) await page.locator('#unitView [data-act="units"]').click();
+    await waiting('All levels');
+    await page.locator('#levels [data-unit="kr"]').click();
+    assert.equal(await page.locator('#unitView .unitcard').isVisible(), true, 'the other lesson’s page');
+    await waiting('another lesson’s page'); assert.equal((await resume(page, 'resumePath')).title, WORDS.lesson);
+    await page.locator('#unitView [data-act="units"]').click(); await waiting('All levels again');
+    await goTab(page, 'train'); await goTab(page, 'progress'); await goTab(page, 'path'); await waiting('the other tabs');
+    await page.locator('#resumePath .rs-go').click();
+    assert.equal((await look(page)).scr, 'act'); await waiting('resumed');
+    await closeX(page);
+    await page.locator('#levels [data-unit="kr"]').click(); await page.locator('#unitView [data-part="learn"]').click();
+    assert.equal(await page.evaluate(() => window.__coach.st.ls.unit.id + window.__coach.st.ls.i), 'kr0', 'starting another lesson ends the waiting one (until G2b)');
+    return page;
+  }],
+  ['Fix 5: "Back to my game" reads "Resume game" (Continue card, Today, Rani’s question); no separate Resume card when Continue is the game', async (vp) => {
+    const FOUND = ['rules', 'special', 'board', 'values', 'mate', 'opening', 'blunder'], TACTICS = ['fork', 'pin', 'disc', 'patterns', 'check2'];
+    const open4 = game(['e4', 'e5', 'Nf3', 'Nc6']);
+    const count = (page, sel, t) => page.evaluate(([s, x]) => [...document.querySelectorAll(s)].filter((b) => b.getClientRects().length > 0 && b.textContent.trim() === x).length, [sel, t]);
+    // a Beginner past Foundations with a game going: the Continue card is the game
+    let page = await newPage(vp, prof({ course: done(...FOUND), levelOfferT: NOW }), { game: open4 });
+    assert.equal(await page.locator('#bhome .bh-title').first().innerText(), 'Beat Rani’s practice partner');
+    assert.equal(await page.locator('#bhome .bh-go').innerText(), 'Resume game');
+    assert.equal(await count(page, '#panel-coach button', 'Resume game'), 1, 'one button for the one action');
+    assert.equal(await page.locator('#bhome .rs-card').count(), 0); assert.equal(await page.locator('#bhome .bh-alt').count(), 0);
+    assert.ok(!/Back to my game/.test(await page.locator('#panel-coach').innerText()));
+    await page.locator('#bhome .bh-go').click();
+    assert.deepEqual(await hist(page), open4.sans); assert.equal(await st(page, 'tab'), 'play');
+    if (PH(vp)) assert.equal((await look(page)).scr, 'act');
+    assert.deepEqual(page.errors, []); await page.context().close();
+    // an Improver whose next step is to beat the stage opponent, with a game going
+    page = await newPage(vp, improver({ course: done(...TACTICS), rating: 1250, rn: 30 }), { game: Object.assign({}, open4, { level: 3 }), tab: 'coach' });
+    assert.equal(await page.locator('#contCard .bh-go').innerText(), 'Resume game');
+    assert.equal(await page.locator('#today .step3.z-play .zb').innerText(), 'Resume game', 'Today’s Play step');
+    assert.equal(await page.locator('#resumeHome').isVisible(), false, 'no separate Resume card');
+    assert.ok(!/Back to my game/.test(await page.locator('#panel-coach').innerText()));
+    assert.equal(await count(page, '#panel-coach .btn.primary', 'Resume game'), 1);
+    await page.locator('#today .step3.z-play .zb').click();
+    assert.deepEqual(await hist(page), open4.sans); assert.equal(await st(page, 'tab'), 'play');
+    assert.deepEqual(page.errors, []); await page.context().close();
+    // Rani's question before a lesson game
+    page = await newPage(vp, prof({ course: Object.assign(done('rules', 'special', 'board', 'values', 'mate'), { opening: { learn: NOW - DAY } }) }), { game: open4 });
+    await page.locator('#bhome .bh-go').click();
+    await page.waitForSelector('#raniNote:not([hidden])');
+    assert.equal((await page.locator('#raniNote [data-act="askback"]').innerText()).trim(), 'Resume game');
+    await page.locator('#raniNote [data-act="askback"]').click();
+    assert.deepEqual(await hist(page), open4.sans); assert.equal(await st(page, 'tab'), 'play');
+    return page;
+  }],
+  ['Fix 6: a drill started from Train closes to Train with "Resume drill" first there; started as a lesson’s task it stays with Learn', async (vp) => {
+    const page = await newPage(vp, club(), {});
+    if (!PH(vp)) return page;
+    await goTab(page, 'train');
+    await page.locator('#drillList [data-drill]').first().click(); await idle(page);
+    let L = await look(page);
+    assert.deepEqual([L.board, L.scr, L.tab, L.mode], [true, 'act', 'train', 'drill']);
+    assert.equal(await page.locator('#sessionCard').isVisible(), true, 'the drill’s card is under the board');
+    await closeX(page);
+    L = await look(page); assert.deepEqual([L.tab, L.board], ['train', false]);
+    assert.equal((await visibleIds(page, '#panel-train > *'))[0], 'resumeTrain');
+    assert.equal((await resume(page, 'resumeTrain')).title, WORDS.drill);
+    await goTab(page, 'path'); assert.equal(await resume(page, 'resumePath'), null, 'nothing waits on Learn');
+    await goTab(page, 'train'); await page.locator('#resumeTrain .rs-go').click();
+    L = await look(page); assert.deepEqual([L.scr, L.tab, L.mode], ['act', 'train', 'drill']);
+    // out of moves, then "Go again": still Train's drill
+    await page.evaluate(() => { const d = window.__coach.st.dr; d.moves = d.limit - 1; });
+    await page.locator('#board .sq[data-sq="a1"]').click(); await page.locator('#board .sq[data-sq="a2"]').click();
+    await page.waitForFunction(() => window.__coach.st.dr && window.__coach.st.dr.done, null, { timeout: 20000 });
+    L = await look(page); assert.deepEqual([L.tab, L.tabs, L.end], ['train', true, '1'], 'its end card is on Train’s board screen');
+    await page.locator('#sessionCard .ec-main').click();
+    await page.waitForFunction(() => window.__coach.st.dr && !window.__coach.st.dr.done);
+    assert.equal((await look(page)).tab, 'train');
+    // the same drill as the lesson's task
+    await page.evaluate(() => window.__coach.startPart('kq', 'apply')); await idle(page);
+    L = await look(page); assert.deepEqual([L.scr, L.tab, L.mode], ['act', 'path', 'drill']);
+    await closeX(page);
+    assert.equal((await look(page)).tab, 'path'); assert.equal((await resume(page, 'resumePath')).title, WORDS.drill);
+    await goTab(page, 'train'); assert.equal(await resume(page, 'resumeTrain'), null);
+    return page;
+  }],
+  ['Fix 7: Home’s Continue button for a lesson that is waiting reads "Resume lesson" and resumes it at its step (Beginner and Improver)', async (vp) => {
+    let page;
+    for (const [who, p, sel, first] of [['Improver', improver(), '#contCard .bh-go', 'Start lesson'], ['Beginner', prof(), '#bhome .bh-go', 'Start lesson']]) {
+      if (page) { assert.deepEqual(page.errors, []); await page.context().close(); }
+      page = await newPage(vp, p, {});
+      if (!PH(vp)) continue;
+      assert.equal(await page.locator(sel).innerText(), first, who);
+      await page.locator(sel).click(); await page.waitForFunction(() => window.__coach.st.mode === 'lesson');
+      await page.locator('#navNext').click(); await page.locator('#navNext').click();
+      await closeX(page); await goTab(page, 'coach');
+      assert.equal(await page.locator(sel).innerText(), WORDS.lesson, who + ': the button reads Resume lesson');
+      const R = await page.evaluate((s) => { document.querySelector(s).click(); return { scr: document.documentElement.dataset.scr || null, i: window.__coach.st.ls ? window.__coach.st.ls.i : null, tab: window.__coach.st.tab }; }, sel);
+      assert.deepEqual(R, { scr: 'act', i: 2, tab: 'path' }, who + ': the same step');
+      await finishLesson(page); await page.locator('#learnEnd .ec-small', { hasText: 'Home' }).click();
+      assert.notEqual(await page.locator(sel).innerText(), WORDS.lesson, who + ': nothing waits after the lesson');
+    }
+    return page;
+  }],
+  ['Fix 8: a move is saved the moment it is made, and Close saves once more', async (vp) => {
+    const page = await newPage(vp, club(), { game: GAME12, tab: 'play' });
+    if (PH(vp)) { await goTab(page, 'play'); await page.locator('#resumePlay .rs-go').click(); }
+    await idle(page);
+    const saved = await page.evaluate((k) => {
+      const tapSq = (s) => { const el = document.querySelector('.sq[data-sq="' + s + '"]'), r = el.getBoundingClientRect(), o = { bubbles: true, pointerId: 1, clientX: r.left + r.width / 2, clientY: r.top + r.height / 2 }; el.dispatchEvent(new PointerEvent('pointerdown', o)); el.dispatchEvent(new PointerEvent('pointerup', o)); };
+      tapSq('a2'); tapSq('a4');
+      return JSON.parse(localStorage.getItem(k)).sans; // read in the same step as the tap: before the move is graded
+    }, GKEY);
+    assert.deepEqual(saved, SANS22.concat(['a4']), 'in storage at once');
+    await page.reload(); await page.waitForFunction(() => window.__coach && window.Placement);
+    assert.deepEqual((await hist(page)).slice(0, 23), SANS22.concat(['a4']), 'reloaded at once: the move is there');
+    await page.waitForFunction(() => window.__coach.hist().length === 24 && !window.__coach.st.busy, null, { timeout: 30000 });
+    if (!PH(vp)) return page;
+    await page.locator('#resumeHome .rs-go').click();
+    const t0 = (await savedGame(page)).t; await page.waitForTimeout(20);
+    await closeX(page);
+    const g = await savedGame(page);
+    assert.ok(g.t > t0, 'Close wrote the game again'); assert.equal(g.sans.length, 24);
+    return page;
+  }],
+  ['Fix 9: after "Next" on the board screen the board is back at the top, just under the Close bar (a puzzle set, a lesson)', async (vp) => {
+    const page = await newPage(vp, club(), { size: { width: vp.width, height: 640 } }); // a short phone, so the Next button is under the fold
+    if (!PH(vp)) return page;
+    const top = () => page.evaluate(() => ({ y: window.scrollY, board: document.getElementById('board').getBoundingClientRect().top, bar: document.getElementById('actBar').getBoundingClientRect().bottom }));
+    await goTab(page, 'train'); await page.locator('#ratedBtn').click();
+    await solvePuzzle(page);
+    await page.evaluate(() => window.scrollTo(0, 260)); await page.waitForTimeout(100);
+    assert.ok((await top()).y > 100, 'scrolled down to the Next button: ' + (await top()).y);
+    await page.locator('#sessionCard [data-act="next"]').click();
+    let T = await top();
+    assert.equal(T.y, 0, 'a new puzzle starts at the top'); assert.ok(T.board >= T.bar - 0.5, 'the whole board is under the bar');
+    await closeX(page);
+    await page.evaluate(() => window.__coach.startPart('kq', 'learn'));
+    await page.evaluate(() => window.scrollTo(0, 260)); await page.waitForTimeout(100);
+    assert.ok((await top()).y > 100);
+    await page.locator('#unitView [data-lnav="1"]').click();
+    T = await top();
+    assert.equal(T.y, 0, 'the next lesson step starts at the top'); assert.ok(T.board >= T.bar - 0.5);
+    return page;
+  }],
+  ['Fix 11: the Close bar is flush at 700px wide and is a heading with a label; a lesson, a set and a review open in the same frame', async (vp) => {
+    const page = await newPage(vp, club({ games: [PAST()] }), { game: GAME12, tab: 'play', size: vp.width === 412 ? { width: 700, height: 900 } : null });
+    if (!PH(vp)) return page;
+    const openNow = (sel) => page.evaluate((s) => { document.querySelector(s).click(); const on = (e) => !!e && e.getClientRects().length > 0, c = window.__coach.st; return { board: on(document.getElementById('board')), tabs: on(document.querySelector('.tabs')), header: on(document.querySelector('header')), bar: on(document.getElementById('actBar')), scr: document.documentElement.dataset.scr || null, mode: c.mode, tab: c.tab }; }, sel);
+    const OPEN = { board: true, tabs: false, header: false, bar: true, scr: 'act' };
+    // a review, from Play's Recent games
+    await goTab(page, 'play');
+    assert.deepEqual(await openNow('#recentPlay [data-review]'), Object.assign({ mode: 'review', tab: 'play' }, OPEN), 'a review');
+    const B = await bar(page), L = await look(page);
+    assert.ok(Math.abs(B.box.y) <= 0.5 && Math.abs(B.box.x) <= 0.5 && Math.abs(B.box.x + B.box.w - L.vw) <= 0.5, 'the bar is flush with the top and both sides: ' + JSON.stringify(B.box));
+    const A = await page.evaluate(() => { const n = document.getElementById('actName'), t = document.getElementById('actText'); return { role: n.getAttribute('role'), level: n.getAttribute('aria-level'), label: t.getAttribute('aria-label'), name: n.textContent, place: document.getElementById('actPlace').textContent, focus: document.activeElement.id }; });
+    assert.deepEqual([A.role, A.level], ['heading', '1']);
+    assert.equal(A.label, A.name + ', ' + A.place, 'what is read when the bar takes focus'); assert.ok(A.name.length > 0 && A.place.length > 0); assert.equal(A.focus, 'actText');
+    await closeX(page);
+    // a set
+    await goTab(page, 'train');
+    assert.deepEqual(await openNow('#ratedBtn'), Object.assign({ mode: 'puzzle', tab: 'train' }, OPEN), 'a puzzle set');
+    await closeX(page);
+    // a lesson
+    await goTab(page, 'path'); await page.locator('#levels [data-unit="kq"]').click();
+    assert.deepEqual(await openNow('#unitView [data-part="learn"]'), Object.assign({ mode: 'lesson', tab: 'path' }, OPEN), 'a lesson');
+    assert.equal(await page.evaluate(() => document.getElementById('actText').getAttribute('aria-label')), await page.evaluate(() => document.getElementById('actName').textContent + ', ' + document.getElementById('actPlace').textContent));
+    return page;
+  }],
+  ['Fix 11: taps on the 3D board are ignored while its WebGL context is lost, and work again when it is drawn again', async (vp) => {
+    const page = await newPage(vp, club(), { game: GAME12, tab: 'play', v3d: true });
+    if (PH(vp)) { await goTab(page, 'play'); await page.locator('#resumePlay .rs-go').click(); }
+    await wait3d(page); await idle(page);
+    await page.evaluate(() => window.Board3D.debug.tap('a2'));
+    assert.equal(await st(page, 'sel'), 'a2', 'a tap selects a piece');
+    await page.evaluate(() => { const cv = window.Board3D.debug.context().canvas, gl = cv.getContext('webgl2') || cv.getContext('webgl'); window.__ext = gl.getExtension('WEBGL_lose_context'); window.__ext.loseContext(); window.Board3D.debug.tap('b2'); });
+    assert.equal(await st(page, 'sel'), 'a2', 'ignored at once, before the lost event');
+    await page.waitForFunction(() => window.Board3D.debug.context().lostN === 1);
+    await page.evaluate(() => { window.Board3D.debug.tap('b2'); window.Board3D.debug.tap('a4'); });
+    assert.equal(await st(page, 'sel'), 'a2', 'ignored while lost'); assert.deepEqual(await hist(page), SANS22, 'and no move was made on a stale picture');
+    await page.evaluate(() => window.__ext.restoreContext());
+    await page.waitForFunction(() => window.Board3D.debug.context().restoredN === 1 && window.Board3D.debug.ready() && window.Board3D.debug.idle(), null, { timeout: 15000 });
+    await page.evaluate(() => window.Board3D.debug.tap('b2'));
+    assert.equal(await st(page, 'sel'), 'b2', 'taps work again');
     return page;
   }]
 ];

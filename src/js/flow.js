@@ -7,7 +7,7 @@
   'use strict';
   var COPY = {
     home: 'Home', practice: 'Start practice', lessonGame: 'Play the lesson game', nextLesson: 'Start next lesson', more: '10 more puzzles', tryAgain: 'Try again', keep: 'Keep playing',
-    review: 'Review this game', newGame: 'New game', again: 'Go again', cont: 'Continue', startLesson: 'Start lesson', play: 'Play now', puzzles: 'Start 10 puzzles', back: 'Back to my game',
+    review: 'Review this game', newGame: 'New game', again: 'Go again', cont: 'Continue', startLesson: 'Start lesson', play: 'Play now', puzzles: 'Start 10 puzzles', back: 'Resume game',
     toPractice: 'Next: practise it.', toGame: 'Next: play it in a real game.', toStep: 'Next: one more step.', nextIs: 'Next lesson: ', whole: 'That’s the whole game.',
     kicker: 'Continue', lessonOf: 'Continue · Lesson ', reach: 'Puzzles to reach ', sharp: 'Keep sharp: rated puzzles',
     /* G2a (board-screens.product.md, "New wording") */
@@ -111,14 +111,18 @@
   /* THE SLOT RULE (criterion 7): the one function that decides the tip slot, and through it the ad banner (ads.js mayShow
      needs this to say yes first). place: 'home' | 'progress' | 'game' | 'learn' | 'step' (the three end cards).
      s.day: the first-day rule allows it (F-D5). s.inUse: inUse() above. Unknown facts mean no slot.
-     Phones (G-D11): never while the board is in use; a closed, saved game hides nothing. Wide keeps F-D17 and F-D32:
+     Phones (G-D11): never while the board is in use; a closed, saved game hides nothing; an end card also needs the board
+     on screen not to be a game in progress (s.live). Wide keeps F-D17 and F-D32:
      Home and Progress while nothing is in use, an end card while no game is unfinished. */
   var SLOT_PLACES = { home: 'page', progress: 'page', game: 'card', learn: 'card', step: 'card' };
   function slotOk(s) {
     if (!s || typeof s !== 'object' || s.day !== true || typeof s.inUse !== 'boolean' || typeof s.wide !== 'boolean') return false;
     var k = SLOT_PLACES[s.place]; if (!k) return false;
-    if (k === 'page' || !s.wide) return !s.inUse;
-    return s.gameOn === false;
+    if (k === 'page') return !s.inUse;
+    if (s.wide) return s.gameOn === false;
+    /* Fix round 1: an end card has no slot while the board on the screen is a game in progress (s.live: the Learn end card,
+       where the board is back on the player's unfinished game). The fact must be known. */
+    return !s.inUse && s.live === false;
   }
   /* G-D22: the Resume game card's line. n: the move number the game is on. */
   function resumeLine(n, yourTurn) { n = Math.floor(+n) || 0; return COPY.move + (n < 1 ? 1 : n) + (yourTurn ? COPY.yourTurn : COPY.engineTurn); }
@@ -138,6 +142,19 @@
     return s.learnEnd ? 'path' : s.zoneTab;
   }
 
-  return { actOpen: actOpen, tabsHidden: tabsHidden, keepsScreen: keepsScreen, inUse: inUse, slotOk: slotOk, resumeLine: resumeLine, resumeTitle: resumeTitle, startTab: startTab, closeTab: closeTab,
+  /* Fix round 1 (G-D20's wording: "a set or drill on Train"): on a phone a drill started from Train's list belongs to Train
+     (it closes to Train, and its Resume card is there). Started anywhere else it stays with its lesson, on Learn (null). */
+  function drillZone(from, wide) { return !wide && from === 'train' ? 'train' : null; }
+  /* Home's Continue card resumes a lesson that is waiting, at its step, instead of starting it again.
+     c: the card's { go, unit (id), part }. w: the waiting lesson { unit (id), part: 'learn' } or null. */
+  function resumesLesson(c, w) { return !!(c && w && c.go === 'part' && c.unit === w.unit && c.part === w.part); }
+  /* The room an end card keeps free at the bottom for a banner that is on its way (ads criterion 5): the banner's reported
+     height, else 64, plus the gap above the fixed tab bar. s: { expected, h, fixedTabs } */
+  function bannerRoom(s) {
+    if (!s || !s.expected) return 0;
+    return Math.ceil(+s.h > 0 ? +s.h : 64) + (s.fixedTabs ? 8 : 0);
+  }
+
+  return { drillZone: drillZone, resumesLesson: resumesLesson, bannerRoom: bannerRoom, actOpen: actOpen, tabsHidden: tabsHidden, keepsScreen: keepsScreen, inUse: inUse, slotOk: slotOk, resumeLine: resumeLine, resumeTitle: resumeTitle, startTab: startTab, closeTab: closeTab,
     afterGame: afterGame, goalCard: goalCard, afterReview: afterReview, afterStep: afterStep, cont: cont, asks: asks, COPY: COPY };
 });

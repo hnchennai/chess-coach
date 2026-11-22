@@ -137,11 +137,11 @@ test('Continue card: rated puzzles to reach the stage target', () => {
   const c = F.cont({ kind: 'puzzles', target: 1200 }, false);
   assert.equal(c.kicker, 'Continue'); assert.equal(c.title, 'Puzzles to reach 1200'); assert.equal(c.button, 'Start 10 puzzles'); assert.equal(c.bar, null); assert.equal(c.go, 'next');
 });
-test('Continue card: beat the stage opponent: Play now, or Back to my game with an unfinished game', () => {
+test('Continue card: beat the stage opponent: Play now, or Resume game with an unfinished game', () => {
   let c = F.cont({ kind: 'beat', name: 'Improver' }, false);
   assert.equal(c.kicker, 'Continue'); assert.equal(c.title, 'Beat the Improver engine'); assert.equal(c.button, 'Play now'); assert.equal(c.go, 'next'); assert.equal(c.bar, null);
   c = F.cont({ kind: 'beat', name: 'Improver' }, true);
-  assert.equal(c.button, 'Back to my game'); assert.equal(c.go, 'back');
+  assert.equal(c.button, 'Resume game'); assert.equal(c.go, 'back');
 });
 test('Continue card: roadmap finished: Keep sharp: rated puzzles, Start 10 puzzles', () => {
   const c = F.cont({ kind: 'sharp' }, false);
@@ -250,9 +250,9 @@ test('Criterion 7: one function decides the tip slot (and so the banner): never 
   // phones (G-D11): a saved, closed game no longer hides the slot on Home, Progress or end cards
   assert.equal(F.slotOk({ place: 'home', day: true, inUse: false, wide: false, gameOn: true }), true);
   assert.equal(F.slotOk({ place: 'progress', day: true, inUse: false, wide: false, gameOn: true }), true);
-  for (const place of ['game', 'learn', 'step']) assert.equal(F.slotOk({ place, day: true, inUse: false, wide: false, gameOn: true }), true, place);
+  for (const place of ['game', 'learn', 'step']) assert.equal(F.slotOk({ place, day: true, inUse: false, wide: false, gameOn: true, live: false }), true, place);
   // an end card's slot never shows under a board screen that is still in use (no end card up)
-  for (const place of ['game', 'learn', 'step']) assert.equal(F.slotOk({ place, day: true, inUse: true, wide: false, gameOn: false }), false, place);
+  for (const place of ['game', 'learn', 'step']) assert.equal(F.slotOk({ place, day: true, inUse: true, wide: false, gameOn: false, live: false }), false, place);
   // wide keeps F-D32: an end card has no slot while a game is unfinished
   for (const place of ['game', 'learn', 'step']) {
     assert.equal(F.slotOk({ place, day: true, inUse: true, wide: true, gameOn: true }), false, place);
@@ -304,4 +304,50 @@ test('G-D4, G-D23: where Close lands', () => {
   assert.equal(F.closeTab({ mode: 'review', zoneTab: 'play', past: true, from: 'play' }), 'play', 'a past game opened from Recent games on Play');
   assert.equal(F.closeTab({ mode: 'review', zoneTab: 'play', past: false, from: 'play' }), 'play', 'a review opened from a game’s end card');
   assert.equal(F.closeTab({ mode: 'review', zoneTab: 'play', past: false, from: 'progress' }), 'play');
+});
+
+/* ---------- G2a fix round 1 ---------- */
+test('Fix 1: on a phone an end card has no slot (so no banner) while the board on screen is a game in progress', () => {
+  // the Learn end card: the board under it is back on the player's game
+  assert.equal(F.slotOk({ place: 'learn', day: true, inUse: false, wide: false, gameOn: true, live: true }), false, 'an unfinished game is on the board');
+  assert.equal(F.slotOk({ place: 'learn', day: true, inUse: false, wide: false, gameOn: false, live: false }), true, 'no moves, or the game is over');
+  // a set's end card: the board shows the last puzzle, the saved game is closed (G-D11)
+  assert.equal(F.slotOk({ place: 'step', day: true, inUse: false, wide: false, gameOn: true, live: false }), true);
+  for (const place of ['game', 'learn', 'step']) assert.equal(F.slotOk({ place, day: true, inUse: false, wide: false, gameOn: true, live: true }), false, place);
+  // the fact must be known: a missing one means no slot
+  for (const place of ['game', 'learn', 'step']) assert.equal(F.slotOk({ place, day: true, inUse: false, wide: false, gameOn: false }), false, place + ': unknown fails closed');
+  // Home and Progress have no board on a phone, and wide screens keep their own rule: the fact is not asked there
+  assert.equal(F.slotOk({ place: 'home', day: true, inUse: false, wide: false, gameOn: true }), true);
+  assert.equal(F.slotOk({ place: 'learn', day: true, inUse: false, wide: true, gameOn: false }), true);
+  assert.equal(F.slotOk({ place: 'learn', day: true, inUse: false, wide: true, gameOn: true, live: true }), false, 'wide: F-D32, as before');
+});
+
+test('Fix 5: "Back to my game" reads "Resume game" on the Continue card', () => {
+  assert.equal(F.COPY.back, 'Resume game');
+  assert.equal(F.cont({ kind: 'beat', name: 'Club' }, true).button, 'Resume game');
+  assert.equal(F.cont({ kind: 'beat', name: 'Club' }, false).button, 'Play now');
+});
+
+test('Fix 6: on a phone a drill belongs to the tab it was started from', () => {
+  assert.equal(F.drillZone('train', false), 'train');
+  assert.equal(F.drillZone('learn', false), null, 'from Learn (or Home, or an end card): the lesson’s own zone');
+  assert.equal(F.drillZone(undefined, false), null);
+  assert.equal(F.drillZone('train', true), null, 'wide screens: as before');
+});
+
+test('Fix 7: the Continue card resumes a lesson that is waiting at its step', () => {
+  const w = { unit: 'fork', part: 'learn' };
+  assert.equal(F.resumesLesson({ go: 'part', unit: 'fork', part: 'learn' }, w), true);
+  assert.equal(F.resumesLesson({ go: 'ask', unit: 'fork', part: 'learn' }, w), false);
+  assert.equal(F.resumesLesson({ go: 'part', unit: 'pin', part: 'learn' }, w), false, 'another lesson');
+  assert.equal(F.resumesLesson({ go: 'part', unit: 'fork', part: 'practice' }, w), false, 'another part of it');
+  assert.equal(F.resumesLesson({ go: 'part', unit: 'fork', part: 'learn' }, null), false, 'nothing is waiting');
+});
+
+test('Fix 2: the room an end card keeps free for the banner: its reported height, else 64, plus the gap above fixed tabs', () => {
+  assert.equal(F.bannerRoom({ expected: true, h: 0, fixedTabs: true }), 72);
+  assert.equal(F.bannerRoom({ expected: true, h: 58, fixedTabs: true }), 66);
+  assert.equal(F.bannerRoom({ expected: true, h: 58.2, fixedTabs: false }), 59);
+  assert.equal(F.bannerRoom({ expected: false, h: 58, fixedTabs: true }), 0, 'no banner is coming: nothing is kept free');
+  assert.equal(F.bannerRoom(), 0);
 });

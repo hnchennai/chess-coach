@@ -733,7 +733,8 @@ header h1 { margin-right: auto; } /* the gear stays right when the engine pill i
 .rs-line { margin: 2px 0 0; font-size: 15px; line-height: 1.4; color: var(--muted); }
 .bhome .rs-card { width: 100%; box-sizing: border-box; }
 #recentPlay .btn.sm { min-height: 44px; }
-@media (min-width: 601px) and (max-width: 860px) { .actbar { margin-top: calc(-20px - env(safe-area-inset-top)); } }
+/* 601 to 860px: the page has the body's 8px margin and a 20px top padding there: the bar is flush with the top and the sides all the same */
+@media (min-width: 601px) and (max-width: 860px) { .actbar { margin: calc(-28px - env(safe-area-inset-top)) calc(-8px - max(16px, env(safe-area-inset-right))) 8px calc(-8px - max(16px, env(safe-area-inset-left))); } }
 @media (max-width: 860px) {
   /* a tab page: no board, and none of the cards that belong to an open activity */
   html:not([data-scr]) .boardcol { display: none; }
@@ -742,6 +743,7 @@ header h1 { margin-right: auto; } /* the gear stays right when the engine pill i
   /* the board screen: the Close bar instead of the header and the mode bar, no tabs, and no menus under the board */
   html[data-scr] .actbar { display: flex; }
   html[data-scr] header, html[data-scr] .modebar { display: none; }
+  html[data-scr] .lessoncard .back { display: none; } /* Close replaces the step card's own way back */
   html[data-scr]:not([data-scrend]) .tabs { display: none; }
   html[data-scr] #newCard, html[data-scr] .rs-card, html[data-scr] #recentPlay, html[data-scr] #levels, html[data-scr] #unitView .unitcard, html[data-scr] #panel-train > .card:not(#sessionCard) { display: none; }
 }

@@ -125,7 +125,7 @@ test('Scenario 5 / D47: Foundations done, partner not beaten: Next step, Beat Ra
   assert.equal(l.bar, null, 'no bar'); assert.equal(l.button, 'Play now'); assert.equal(l.go, 'game');
   assert.equal(l.second, null); assert.equal(l.alt, null);
   l = H.lines(s, 'rani', true);
-  assert.equal(l.button, 'Back to my game', 'an unfinished game: back to it'); assert.equal(l.go, 'back'); assert.equal(l.second, null);
+  assert.equal(l.button, 'Resume game', 'an unfinished game: back to it'); assert.equal(l.go, 'back'); assert.equal(l.second, null);
   assert.equal(H.lines(s, 'gaja', false).line, 'Now beat Rani’s practice partner.', 'D48');
   assert.equal(H.lines(s, 'gaja', false).head, 'You finished every Foundations lesson!');
 });
@@ -210,7 +210,7 @@ test('F5: every Foundations lesson in the real course has its signed pair (no si
 });
 
 test('D49: the ask-first note copy, exactly', () => {
-  assert.deepEqual(H.ASK, { text: 'You have a game going. Finish it first?', back: 'Back to my game', go: 'Start the lesson game' });
+  assert.deepEqual(H.ASK, { text: 'You have a game going. Finish it first?', back: 'Resume game', go: 'Start the lesson game' });
   assert.ok(!/—|'/.test(Object.values(H.ASK).join(' ')), 'no em dash, curly apostrophes only');
 });
 

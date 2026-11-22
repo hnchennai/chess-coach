@@ -434,8 +434,9 @@ const cases = [
       await finishLesson(page);
       await page.waitForFunction(() => window.__ad.cards.some((c) => c.id === 'learnEnd'));
       card = (await page.evaluate(() => window.__ad.cards)).filter((c) => c.id === 'learnEnd').pop();
-      await backAfterDelay(page, n0, card.t, 'a Learn end card with a game saved');
-      assert.equal(await vis(page, '#learnEnd .tipslot'), true, 'and the tip is on the card: the banner follows the slot');
+      // fix round 1: the board under a Learn end card is back on the unfinished game, so that card gets no tip and no banner
+      await staysAway(page, 'a Learn end card over the unfinished game');
+      assert.equal(await vis(page, '#learnEnd .tipslot'), false, 'and no tip there either: the banner follows the slot');
       requestRules(await calls(page), 'G-D11');
       return page;
     }

@@ -578,6 +578,7 @@
   var ZTAB = { learn: 'path', train: 'train', play: 'play' }, ZNAME = { learn: 'Learn', train: 'Train', play: 'Play' };
   function zoneOf() {
     if (st.mode === 'play' || st.mode === 'review') return 'play';
+    if (st.ses && st.ses.zone) return st.ses.zone; /* Fix round 1: on a phone a drill started from Train belongs to Train */
     if (st.mode === 'lesson' || st.mode === 'squares' || st.mode === 'reach' || (st.ses && st.ses.unit)) return 'learn';
     return 'train';
   }
@@ -755,7 +756,7 @@
   /* THE ONE DECISION for the tip slot, and through adFacts for the banner. The rule is Flow.slotOk (unit tested): wide screens
      keep F-D17 and F-D32 (an end card has no slot while a game is unfinished); phones follow G-D11. */
   function slotAllowed(place, visit) {
-    return Flow.slotOk({ place: place, day: slotVisit(place, visit).day, inUse: activityOn(), wide: !phone(), gameOn: gameOn() });
+    return Flow.slotOk({ place: place, day: slotVisit(place, visit).day, inUse: activityOn(), wide: !phone(), gameOn: gameOn(), live: st.mode === 'play' && gameOn() }); /* live: the board on screen is a game in progress */
   }
   function slotTip(place, visit) { var s = slotVisit(place, visit); return s.tip || (s.tip = Tips.pick(prof.level)); }
   /* F-D27: desktop = the board and the panel sit side by side. There the slot is one strip under both columns. */
@@ -780,7 +781,7 @@
   }
   /* Writes the two root attributes the CSS reads, in the same step as the state change (criterion 2: within one frame). */
   function syncScreen() {
-    var de = document.documentElement, on = actOpen(), end = on && endUp();
+    var de = document.documentElement, on = actOpen(), end = on && !Flow.tabsHidden({ wide: !phone(), scr: st.scr, end: endUp() });
     if (on) de.dataset.scr = 'act'; else delete de.dataset.scr;
     if (end) de.dataset.scrend = '1'; else delete de.dataset.scrend;
     renderActBar(); renderResume();
@@ -802,7 +803,6 @@
     if (st.mode === 'review' && st.rv) return [bar, $('navPos').textContent];
     if (st.mode === 'lesson' && st.ls) return [st.ls.unit.title, lessonPlace(st.ls)];
     if (st.ses && st.mode !== 'play') return [bar, setPlace(st.ses)];
-    if (st.end && UNIT[st.end.unit]) return [UNIT[st.end.unit].title, 'Lesson'];
     return [n ? 'Your game' : 'New game', G.game_over() ? Math.ceil(n / 2) + ' moves' : turnLine()];
   }
   function renderActBar() {
@@ -810,6 +810,7 @@
     var w = actWords(), a = $('actName'), b = $('actPlace');
     if (a.textContent !== w[0]) a.textContent = w[0];
     if (b.textContent !== w[1]) b.textContent = w[1];
+    var lab = w[0] + ', ' + w[1], t = $('actText'); if (t.getAttribute('aria-label') !== lab) t.setAttribute('aria-label', lab); /* what is read when the bar takes focus */
   }
   /* G-D5, G-D6, G-D21: the Resume cards and Play's "Recent games", on a phone's tab pages only. Drawn from memory, so a card
      can never be stale. Until G2b a lesson or set lives in memory only: after an app restart its card is simply not there. */
@@ -832,7 +833,8 @@
     rsCard($('resumePlay'), game ? gameResume(true) : '');
     /* Play's start page has one main button: "Resume game" while a game waits, otherwise "Start new game". Wide: never (unchanged). */
     $('newBtn').classList.toggle('primary', page && !game);
-    rsCard($('resumeHome'), game && !plain() ? gameResume(false) : ''); /* Beginner Home draws its own, under its Continue card */
+    /* Beginner Home draws its own, under its Continue card. No card when the Continue card's own button is already the game. */
+    rsCard($('resumeHome'), game && !plain() && nextAction(currentStage()).info.kind !== 'beat' ? gameResume(false) : '');
     rsCard($('resumePath'), z === 'learn' ? other : '');
     rsCard($('resumeTrain'), z === 'train' ? other : '');
     var rc = $('recentPlay'), gs = prof.games, pl = plain();
@@ -853,8 +855,12 @@
   /* G-D4, G-D23: Close. No question; nothing to save (a game is saved on every move, a lesson or set stays in memory).
      Lands on the activity's tab; a past game's review lands where it was opened. A review opened in the middle of a game
      goes back to that game. An end card that is up is over, so it is dropped. Returns false when there is nothing to close. */
+  /* The lesson that is waiting on a phone's tab pages (closed, in memory), for Home's Continue card. */
+  function waitingLesson() { return phone() && st.scr !== 'act' && st.mode === 'lesson' && st.ls ? { unit: st.ls.unit.id, part: 'learn' } : null; }
+  var RESUME_LESSON = 'data-act="resume" data-z="learn"';
   function closeAct() {
     if (!actOpen()) return false;
+    save(); /* nothing is ever lost by Close: the game is written once more as it stands */
     if (st.mode === 'review' && st.rv && !st.rv.past && !G.game_over()) { exitMode(true); return true; }
     var to = Flow.closeTab({ mode: st.mode, zoneTab: ZTAB[zoneOf()], learnEnd: !!st.end, past: !!(st.rv && st.rv.past), from: st.rvFrom });
     leaveEnd(true);
@@ -929,7 +935,7 @@
     if (!ADS) return null;
     try { var C = window.Capacitor; if (!C || !C.Plugins || !C.Plugins.AdMob) return null; if (typeof C.isNativePlatform === 'function' && !C.isNativePlatform()) return null; return C.Plugins.AdMob; } catch (e) { return null; }
   })();
-  var ad = { state: 'off', banner: 'none', loaded: false, margin: 0, h: 0, ok: false, place: null, visit: null, since: NaN, timer: null, retry: null, retryAt: 0, info: null, form: false, inited: false, err: '', facts: null };
+  var ad = { room: 0, lastH: 0, state: 'off', banner: 'none', loaded: false, margin: 0, h: 0, ok: false, place: null, visit: null, since: NaN, timer: null, retry: null, retryAt: 0, info: null, form: false, inited: false, err: '', facts: null };
   function adNow() { return window.performance && performance.now ? performance.now() : Date.now(); }
   function adNoop() {}
   /* Test builds only: the last failure, in words, for the state line in Settings (Ads.debugLine). Never shown with real ads on. */
@@ -960,7 +966,7 @@
      in it (a size from the plugin and a loaded ad), so an empty strip never reserves space. */
   function adPad() {
     var el = $('adPad'); if (!el) return;
-    var h = ad.banner === 'shown' && ad.loaded ? ADS.padFor(ad.h, ad.margin > 0) : 0;
+    var h = ad.banner === 'shown' && ad.loaded ? ADS.padFor(ad.h, ad.margin > 0) : ad.room; /* ad.room: kept free for a banner on its way to an end card */
     if (h > 0) { el.style.height = h + 'px'; el.hidden = false; } else if (!el.hidden) el.hidden = true;
   }
   function adHide() {
@@ -991,6 +997,9 @@
     if (!AD || !booted || ad.state === 'off') return;
     var f = adFacts(), now = adNow(), ok = ADS.mayShow(f);
     if (!f.overlay) ad.facts = f; /* the last facts with no sheet open, for the test state line */
+    /* Fix round 1: a phone's end card that will get the banner keeps its room from the moment the card is drawn. Not when
+       no ad came (the retry wait): an empty strip never reserves space. */
+    ad.room = Flow.bannerRoom({ expected: phone() && ok && ad.state === 'ready' && !!AD_CARD[f.place] && !(ad.banner === 'none' && ad.retryAt > now), h: ad.h || ad.lastH, fixedTabs: adTabsFixed() });
     /* The 1 second clock starts at the first frame after the screen that allows the banner is drawn (when the player can
        see it), and again whenever the banner becomes allowed: a new screen or card, a sheet or note closed, the phone upright. */
     if (!ok) { ad.ok = false; ad.place = null; ad.visit = null; ad.since = NaN; }
@@ -1034,7 +1043,7 @@
   function adListen() {
     function on(name, fn) { try { var r = AD.addListener(name, fn); if (r && typeof r.catch === 'function') r.catch(adNoop); } catch (e) {} }
     /* the height the plugin reports (0 when the banner is hidden, removed or has no ad) */
-    on('bannerAdSizeChanged', function (s) { ad.h = s && +s.height > 0 ? +s.height : 0; adPad(); });
+    on('bannerAdSizeChanged', function (s) { ad.h = s && +s.height > 0 ? +s.height : 0; if (ad.h) ad.lastH = ad.h; adPad(); });
     on('bannerAdLoaded', function () { if (ad.banner === 'none') return; ad.loaded = true; ad.err = ''; if (ad.banner === 'hidden') adCall('hideBanner').catch(adNoop); adPad(); });
     on('bannerAdFailedToLoad', adLost);
   }
@@ -1155,20 +1164,31 @@
     if (!rh) rv._k = ''; else if (!rv._k) { rv._k = 'r'; if (booted) { revealEnd(rv); cardShown(rv); } }
   }
   var booted = false, revealN = 0;
+  /* Fix round 1: after "Next" on a phone's board screen (the button is under the fold) the new item starts with the board
+     back at the top of the screen, just under the Close bar. */
+  function boardUp() { if (actOpen() && window.scrollY > 0) window.scrollTo(0, 0); }
   /* G2a: the board screen's sticky Close bar covers the top of the page: "the whole board stays on screen" means under it */
   function barBottom() { var b = $('actBar'); return b && b.getClientRects().length ? Math.max(0, b.getBoundingClientRect().bottom) : 0; }
   /* When the card first shows, bring it on screen if the whole board can stay on screen too (never during a drag). */
   function revealEnd(el) {
     revealN++;
     if (!window.requestAnimationFrame) return;
-    requestAnimationFrame(function () {
-      var nav = document.querySelector('.tabs'); if (drag || !el.isConnected || el.hidden) return;
-      var bottom = nav && nav.getClientRects().length && getComputedStyle(nav).position === 'fixed' ? nav.getBoundingClientRect().top : window.innerHeight;
-      var d = el.getBoundingClientRect().bottom + 8 - bottom, bt = $('board').getBoundingClientRect().top - barBottom();
-      if (d <= 0 || bt < 0) return;
-      window.scrollBy({ top: Math.min(d, bt), behavior: window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
-    });
+    requestAnimationFrame(function () { revealNow(el); });
   }
+  /* Fix round 1 (ads criterion 5): when a banner is on its way to this end card (ad.room, set by adSync in the same step
+     as the card), the card is placed as if the banner were already up: every button of the card ends above the banner's
+     zone, even if the board has to give way, and the page padding is already there, so nothing moves when it arrives. */
+  function revealNow(el) {
+    var nav = document.querySelector('.tabs'); if (drag || !el.isConnected || el.hidden) return;
+    var bottom = (nav && nav.getClientRects().length && getComputedStyle(nav).position === 'fixed' ? nav.getBoundingClientRect().top : window.innerHeight) - ad.room;
+    var d = el.getBoundingClientRect().bottom + 8 - bottom, bt = $('board').getBoundingClientRect().top - barBottom(), need = 0;
+    if (ad.room) { var bs = el.querySelectorAll('.ec-btns button'); for (var i = 0; i < bs.length; i++) if (bs[i].getClientRects().length) need = Math.max(need, bs[i].getBoundingClientRect().bottom + 4 - bottom); }
+    var by = Math.max(d > 0 && bt >= 0 ? Math.min(d, bt) : 0, need);
+    if (by <= 0) return;
+    window.scrollBy({ top: by, behavior: window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+  }
+  /* A Learn or set end card: no scroll of its own (as before), unless a banner is coming to it. */
+  function clearBanner(el) { if (window.requestAnimationFrame) requestAnimationFrame(function () { if (ad.room) revealNow(el); }); }
   /* F-D7: an end card is on screen (after a lesson step or a puzzle set): its main button is the screen's one main button. */
   function sesEnded() { return !!(st.ses && (st.ses.finished || st.ses.end)); }
   /* R3: scoped to the tab the card is on, so a Learn end card never takes Train's main button away. */
@@ -1198,8 +1218,12 @@
     if (st.mode === 'drill') return drillMove(from, to);
     if (st.mode === 'book') return bookMove(from, to);
     if (st.mode === 'placement') return placementMove(from, to);
-    var fenBefore = G.fen(), mv = G.move({ from: from, to: to, promotion: 'q' });
+    var fenBefore = G.fen(), mv = G.move({ from: from, to: to, promotion: 'q' }), gid = st.gid;
     if (!mv) return;
+    /* Fix round 1: a move on the board under a Learn end card (phones) is a move in the game: the end card is over in the same
+       step, so the tabs, the tip and the banner go and the Close bar reads the game. */
+    if (st.end && phone()) { st.end = null; if (st.scr === 'act') switchTab('play'); }
+    save(); /* saved at once, before the move is graded: an app closed in that moment keeps the move */
     st.sel = null; resetHints(); st.busy = true; st.opp = null; st.think = null; st.confirmNew = false;
     var words = Words.say(mv, true);
     st.fb = { cls: 'info', sym: '♙', title: 'Checking your move…', mv: 'You played ' + mv.san, words: words };
@@ -1209,6 +1233,7 @@
       st.notes[ply] = n; st.ann[ply] = n.cls; if (n.tag) st.tags[ply] = n.tag; st.evalW = n.ev;
       st.fb = { cls: n.cls, sym: CLS[n.cls].sym, title: CLS[n.cls].title, mv: 'You played ' + mv.san, words: words, text: n.text, tip: n.tip };
     }).catch(function () { st.fb = { cls: 'info', sym: '♙', title: 'Move played', mv: mv.san, words: words }; }).then(function () {
+      if (gid !== st.gid) return; /* a new game was started while this move was being checked */
       checkGoal(); save();
       if (G.game_over()) { st.busy = false; finishGame(); render(); return; }
       render(); engineTurn();
@@ -1277,9 +1302,11 @@
   }
   function newGame(force, opts) {
     opts = opts || {};
-    if (!force && st.mode === 'play' && G.history().length > 2 && !G.game_over() && !st.confirmNew) { st.confirmNew = true; $('newConfirm').hidden = false; st.scr = 'tabs'; switchTab('play'); return; } /* G2a: the question is on Play's start page */
+    /* Fix round 1: on a phone the question comes whatever is on the board (a closed lesson or set may be waiting over the game) */
+    if (!force && (st.mode === 'play' || phone()) && G.history().length > 2 && !G.game_over() && !st.confirmNew) { st.confirmNew = true; $('newConfirm').hidden = false; st.scr = 'tabs'; switchTab('play'); return; } /* G2a: the question is on Play's start page */
     $('newConfirm').hidden = true; st.confirmNew = false; st.nm = null; /* G1: a new game clears the name line */
     clearSession(); st.mode = 'play'; st.rv = null;
+    st.gid = (st.gid || 0) + 1; st.busy = false; /* the old game's engine or grading reply is dropped: the new game is playable at once */
     var c = opts.color || $('colorSel').value; if (c === 'r') c = Math.random() < 0.5 ? 'w' : 'b';
     /* D19: a Beginner's "New game" always plays Rani's practice partner (the Beginner bot); lesson tasks pass their own level. */
     st.user = c; st.level = opts.level || (plain() ? Profile.LEVELS.beginner.opp : +$('levelSel').value); $('levelSel').value = String(st.level);
@@ -1435,7 +1462,7 @@
     }
     if (c._h !== head + body) { c._h = head + body; c.innerHTML = head + body; }
     renderSlot(c.querySelector('[data-slot]'), 'step', s);
-    if ((s.finished || s.end) && !s.told) { s.told = true; cardShown(c); }
+    if ((s.finished || s.end) && !s.told) { s.told = true; cardShown(c); clearBanner(c); }
   }
   function startSession(kind, opts) {
     clearSession(); st.rv = null; st.flipped = false;
@@ -1448,6 +1475,7 @@
     if (!first) s.i++;
     resetHints(); st.sel = null; st.flash = null; s.canNext = false; s.canRetry = false; s.msg = null; s.end = null;
     if (s.i >= s.count) return finishSession();
+    if (!first) boardUp();
     if (s.kind === 'puzzles') { var p = s.opts.pick ? s.opts.pick(s) : s.items[s.i]; if (!p) { s.count = s.i; return finishSession(); } s.items[s.i] = p; startPuzzle(p); }
     else if (s.kind === 'safety') { if (!s.items[s.i]) { s.count = s.i; return finishSession(); } startQuiz(s.items[s.i]); }
     else if (s.kind === 'squares') startSquare();
@@ -1672,13 +1700,15 @@
   }
 
   /* drills (endgames) */
-  function startDrill(unitId, d) {
+  function startDrill(unitId, d, from) {
     clearSession(); st.rv = null; st.flipped = false;
     var g = new Chess(d.fen);
     st.mode = 'drill';
     st.dr = { g: g, side: g.turn(), goal: d.goal, limit: d.limit, moves: 0, done: false, unit: unitId, name: UNIT[unitId] ? UNIT[unitId].title : 'Endgame drill', ev: null };
     st.ses = { kind: 'drill', title: st.dr.name, count: 1, i: 0, right: 0, wrong: 0, items: [], unit: unitId, part: 'apply', msg: { title: 'Your move', text: esc(d.text || '') + ' Stuck? Hint shows Stockfish’s idea.' } };
-    /* G2a: on a phone the board screen is on the activity's own tab, and a lesson's drill belongs to Learn (zoneOf) */
+    /* G2a: on a phone the board screen is on the activity's own tab: Train for a drill started from Train's list, Learn for
+       one started as a lesson's task (zoneOf). */
+    var dz = Flow.drillZone(from, !phone()); if (dz) st.ses.zone = dz;
     openAct(); switchTab(phone() ? ZTAB[zoneOf()] : tabOpen('train') ? 'train' : 'path'); render();
   }
   function drillMove(from, to) {
@@ -1765,7 +1795,7 @@
   function lessonNav(d) {
     var L = st.ls;
     if (d > 0 && L.i === L.unit.lesson.length - 1) { var id = L.unit.id; markUnit(id, 'learn'); clearSession(); st.mode = 'play'; resetHints(); st.unitOpen = null; st.end = { unit: id }; render(); renderPath(); return; } /* F1: the Learn part's end card, over the course */
-    L.i = Math.max(0, Math.min(L.unit.lesson.length - 1, L.i + d)); showLessonStep();
+    L.i = Math.max(0, Math.min(L.unit.lesson.length - 1, L.i + d)); showLessonStep(); boardUp();
   }
 
   /* ---------- course UI ---------- */
@@ -1797,7 +1827,7 @@
     if (le._h !== leh) { le._h = leh; le.innerHTML = leh; }
     if (eu) renderSlot(le.querySelector('[data-slot]'), 'learn', st.end);
     renderSlots(); /* the desktop strip follows the Learn end card */
-    if (eu && !st.end.told) { st.end.told = true; cardShown(le); }
+    if (eu && !st.end.told) { st.end.told = true; cardShown(le); clearBanner(le); }
     if (st.mode === 'lesson' && st.ls && !(phone() && st.scr !== 'act')) { /* G2a: a closed lesson leaves the course on Learn's page */
       var L = st.ls, step = L.unit.lesson[L.i];
       lv.hidden = true; uv.hidden = false;
@@ -1831,7 +1861,7 @@
     var steps = [
       { z: 'learn', n: 1, h: 'Learn', done: !!d.course, t: nx ? nx.title : 'Course complete', s: nx ? PART_NAME[k] + ': ' + partDesc(nx, k) : 'Keep sharp with puzzles and games.', b: nx ? 'Start lesson' : 'Open course', act: nx ? 'data-part="' + k + '" data-u="' + nx.id + '"' : 'data-zgo="path"' },
       { z: 'train', n: 2, h: 'Train', done: d.puz >= 10, t: due ? 'Review ' + due + ' missed puzzle' + (due === 1 ? '' : 's') : pl ? '10 puzzles' : '10 rated puzzles', s: Math.min(d.puz, 10) + ' of 10 today.' + (pl ? '' : ' Puzzle rating ' + Math.round(prof.rating) + '.'), b: 'Start training', act: due ? 'data-train="review"' : 'data-train="rated"' },
-      { z: 'play', n: 3, h: 'Play', done: d.games >= 1, t: 'One full game', s: 'Use what you learned against ' + (pl ? partnerName() + '.' : OPP[recLevel()].name + ' (~' + OPP[recLevel()].elo + ').'), b: G.history().length && !G.game_over() ? 'Back to my game' : 'Play a game', act: G.history().length && !G.game_over() ? 'data-act="close"' : 'data-act="recgame"' }
+      { z: 'play', n: 3, h: 'Play', done: d.games >= 1, t: 'One full game', s: 'Use what you learned against ' + (pl ? partnerName() + '.' : OPP[recLevel()].name + ' (~' + OPP[recLevel()].elo + ').'), b: G.history().length && !G.game_over() ? Flow.COPY.back : 'Play a game', act: G.history().length && !G.game_over() ? 'data-act="close"' : 'data-act="recgame"' }
     ].filter(function (x) { return x.z !== 'train' || tabOpen('train'); }); /* a Beginner's Train tab is still locked */
     steps.forEach(function (x, i) { x.n = i + 1; });
     var doneCount = steps.filter(function (x) { return x.done; }).length;
@@ -2278,9 +2308,11 @@
   function contAttr(C) { return C.go === 'part' ? partAttr(C.unit.id, C.part) : C.go === 'back' ? 'data-act="close"' : 'data-go="next"'; }
   function renderCont() {
     var el = $('contCard'), C = contCard();
+    /* Fix round 1: a lesson that is waiting is resumed at its step */
+    var rl = Flow.resumesLesson({ go: C.go, unit: C.unit && C.unit.id, part: C.part }, waitingLesson());
     var html = '<div class="bh-row"><span class="bh-ic z-' + C.zone + '" aria-hidden="true">' + GLYPH[C.icon] + VS + '</span><div class="bh-tt"><p class="bh-kick">' + esc(C.kicker) + '</p><h3 class="bh-title" id="ccTitle">' + esc(C.title) + '</h3></div></div>' +
       (C.bar ? '<div class="bh-bar" role="progressbar" aria-labelledby="ccTitle" aria-valuemin="0" aria-valuemax="' + C.bar.m + '" aria-valuenow="' + C.bar.done + '" aria-valuetext="' + esc(C.bar.text) + '"><i style="width:' + Math.round(100 * C.bar.done / Math.max(1, C.bar.m)) + '%"></i></div>' : '') +
-      '<button class="btn primary big bh-go" type="button" ' + contAttr(C) + '>' + esc(C.button) + '</button>';
+      '<button class="btn primary big bh-go" type="button" ' + (rl ? RESUME_LESSON : contAttr(C)) + '>' + esc(rl ? Flow.COPY.resumeLesson : C.button) + '</button>';
     if (el._k === html) return;
     var keep = el.contains(document.activeElement);
     el._k = html; el.innerHTML = html;
@@ -2307,6 +2339,8 @@
        Beginner Home's second button "Back to my game" is retired (wide screens keep D44 as it is). */
     var rs = on && phone();
     if (rs && L.alt === 'back') L.second = null;
+    if (rs && L.go === 'back') rs = false; /* the Continue card's own button is the game: no second button for the same action */
+    var rl = Flow.resumesLesson({ go: L.go, unit: s.unit && s.unit.id, part: s.part }, waitingLesson());
     /* D50: "Back to my game" is exitMode(true), as today's Home button: an open lesson or puzzle set ends (the lesson starts
        again at step 1; puzzle results so far are already saved). D49: a lesson game with a game going asks first. */
     var act = bhAttr(s);
@@ -2315,7 +2349,7 @@
       (sk ? '<p class="bh-streak" role="img" aria-label="' + esc(sk.label) + '"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3c2 4 5 5 5 10a5 5 0 0 1-10 0c0-3 2-4 2-7 2 1 3 2 3 4"/></svg>' + esc(sk.text) + '</p>' : '') + '</div>' +
       '<div class="card bh-card"><div class="bh-row"><span class="bh-ic z-' + L.zone + '" aria-hidden="true">' + GLYPH[L.icon] + VS + '</span><div class="bh-tt"><p class="bh-kick">' + esc(L.kicker) + '</p><h3 class="bh-title" id="bhTitle">' + esc(L.title) + '</h3></div></div>' +
       (L.bar ? '<div class="bh-bar" role="progressbar" aria-labelledby="bhTitle" aria-valuemin="0" aria-valuemax="' + L.bar.m + '" aria-valuenow="' + L.bar.done + '" aria-valuetext="' + esc(L.bar.text) + '"><i style="width:' + Math.round(100 * L.bar.done / Math.max(1, L.bar.m)) + '%"></i></div>' : '') +
-      '<button class="btn primary big bh-go" type="button" ' + act[L.go] + '>' + esc(L.button) + '</button></div>' +
+      '<button class="btn primary big bh-go" type="button" ' + (rl ? RESUME_LESSON : act[L.go]) + '>' + esc(rl ? Flow.COPY.resumeLesson : L.button) + '</button></div>' +
       (rs ? '<div class="card bh-card rs-card" id="resumeBHome">' + gameResume(false) + '</div>' : '') +
       (L.second ? '<button class="btn big bh-alt" type="button" ' + act[L.alt] + '>' + esc(L.second) + '</button>' : '');
     var key = html + '|' + coach; if (el._k === key) return;
@@ -2646,7 +2680,7 @@
     if (e.target && e.target.id === 'settingsSheet') { closeSettings(); return; }
     var t = e.target.closest('button'); if (!t || t.closest('.tabs')) return;
     var d = t.dataset;
-    if (d.unit) { if (st.mode !== 'play' && st.mode !== 'review') { clearSession(); st.mode = 'play'; resetHints(); } st.end = null; st.unitOpen = d.unit; switchTab('path'); render(); return; }
+    if (d.unit) { if (!phone() && st.mode !== 'play' && st.mode !== 'review') { clearSession(); st.mode = 'play'; resetHints(); } /* phones: looking at a lesson's page keeps what is waiting; only starting something ends it */ st.end = null; st.unitOpen = d.unit; switchTab('path'); render(); return; }
     if (d.part) { st.unitOpen = d.u; startPart(d.u, d.part); return; }
     if (d.zgo) { switchTab(d.zgo); return; }
     if (d.coach) { Coach3D.set(d.coach); $('coachAv').dataset.k = ''; $('coachStrip').dataset.k = ''; var sc = $('sessionCard'); if (sc) sc._h = ''; renderLook(); renderCoach(); render(); return; }
@@ -2665,11 +2699,11 @@
     if (d.act === 'close') { exitMode(true); return; }
     if (d.act === 'actclose') { closeAct(); return; }
     if (d.act === 'resume') { resumeAct(d.z); return; }
-    if (d.again) { var s = st.ses; if (s && s.unit && s.part) startPart(s.unit, s.part); else if (s && s.rated) trainStart('rated'); else if (s && s.kind === 'safety') trainStart('safety'); else if (s && s.opts && s.opts.theme) themeStart(s.opts.theme); else if (s && s.kind === 'book' && s.opts) startSession('book', s.opts); else exitMode(); return; }
+    if (d.again) { var s = st.ses; if (s && s.zone === 'train' && s.kind === 'drill' && UNIT[s.unit]) startDrill(s.unit, UNIT[s.unit].apply, 'train'); else if (s && s.unit && s.part) startPart(s.unit, s.part); else if (s && s.rated) trainStart('rated'); else if (s && s.kind === 'safety') trainStart('safety'); else if (s && s.opts && s.opts.theme) themeStart(s.opts.theme); else if (s && s.kind === 'book' && s.opts) startSession('book', s.opts); else exitMode(); return; }
     if (d.train) { trainStart(d.train); return; }
     if (d.theme) { themeStart(d.theme); return; }
     if (d.book) { var line = COURSE.BOOK.filter(function (b) { return b.id === d.book; })[0]; startSession('book', { title: 'Opening drill', count: 1, items: [line] }); return; }
-    if (d.drill) { var u = UNIT[d.drill]; if (u) startDrill(u.id, u.apply); return; }
+    if (d.drill) { var u = UNIT[d.drill]; if (u) startDrill(u.id, u.apply, 'train'); return; }
     if (d.apply) { startPart(d.apply, 'apply'); return; }
     if (t.hasAttribute('data-review')) { var g = prof.games[+d.review]; if (g) enterReview(g); return; }
     if (d.lnav) { lessonNav(+d.lnav); return; }

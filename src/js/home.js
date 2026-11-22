@@ -18,7 +18,7 @@
   var ICON = { rules: 'n', special: 'r', board: 'p', values: 'q', mate: 'k', opening: 'b', blunder: 'n' };
   var FOUNDATIONS = 1;
   /* D49: Rani's question before a lesson game would drop an unfinished game (signed copy). */
-  var ASK = { text: 'You have a game going. Finish it first?', back: 'Back to my game', go: 'Start the lesson game' };
+  var ASK = { text: 'You have a game going. Finish it first?', back: 'Resume game', go: 'Start the lesson game' };
 
   function startIndex(units, start) { for (var i = 0; i < units.length; i++) if (units[i].id === start) return i; return 0; }
   /* D45: Foundations lessons (course level 1) at or after the start point, in course order. An unknown start counts from the first unit. */
@@ -50,7 +50,7 @@
     var back = { second: 'Back to my game', alt: 'back' }, play = { second: 'Just play a game', alt: 'game' }, two = ongoing ? back : play;
     if (s.kind === 'beat') {
       return { head: 'You finished every Foundations lesson!', line: 'Now beat ' + partner + '.', kicker: 'Next step', title: 'Beat Rani’s practice partner',
-        bar: null, button: ongoing ? 'Back to my game' : 'Play now', go: ongoing ? 'back' : 'game', second: null, alt: null, icon: 'k', zone: 'play' };
+        bar: null, button: ongoing ? 'Resume game' : 'Play now', go: ongoing ? 'back' : 'game', second: null, alt: null, icon: 'k', zone: 'play' };
     }
     if (s.kind === 'practice') {
       return { head: 'You know the basics now.', line: 'Keep practising, or move up to Improver any time in Settings.', kicker: 'Practice', title: 'Puzzles at your level',

@@ -363,7 +363,7 @@ const cases = [
     // with an unfinished game: Back to my game, and the game is kept
     page = await seeded(vp, improver({ course: done(...TACTICS), rating: 1250, rn: 30 }), { tab: 'coach', game: Object.assign({}, GAME_OPEN, { level: 3 }) });
     c = await cont(page);
-    assert.equal(c.title, 'Beat the Improver engine'); assert.equal(c.button, 'Back to my game');
+    assert.equal(c.title, 'Beat the Improver engine'); assert.equal(c.button, 'Resume game'); // fix round 1: "Back to my game" reads "Resume game"
     await homeRules(page, 'game goal with a game going');
     await page.locator('#contCard .bh-go').click();
     assert.equal(await st(page, 'tab'), 'play'); assert.deepEqual(await page.evaluate(() => window.__coach.hist()), GAME_OPEN.sans);
@@ -583,7 +583,7 @@ const cases = [
     await goTab(page, 'progress');
     await page.locator('#history [data-review]').first().click(); await page.locator('#navLast').click();
     c = await card(page, '#reviewEnd');
-    assert.equal(c.title, 'That’s the whole game.'); assert.equal(c.line, 'Beat Rani’s practice partner'); assert.equal(c.main, 'Back to my game'); assert.deepEqual(c.small, ['New game', 'Home']);
+    assert.equal(c.title, 'That’s the whole game.'); assert.equal(c.line, 'Beat Rani’s practice partner'); assert.equal(c.main, 'Resume game'); assert.deepEqual(c.small, ['New game', 'Home']);
     cardRules(c, vp, 'Beginner review finished'); beginnerWords(c, 'Beginner review finished');
     await page.locator('#reviewEnd .ec-main').click();
     assert.equal(await st(page, 'mode'), 'play'); assert.deepEqual(await page.evaluate(() => window.__coach.hist()), GAME_OPEN.sans, 'the unfinished game is kept');
@@ -1408,8 +1408,9 @@ const cases = [
     const page = await seeded(vp, improver(), { tab: 'coach', game: Object.assign({}, GAME_OPEN, { level: 3 }) });
     await page.locator('#contCard .bh-go').click(); await finishLesson(page);
     assert.equal((await card(page, '#learnEnd')).main, 'Start practice');
-    // G-D11 (phones) replaces F-D32: a saved game the player has closed no longer hides the slot on an end card. Wide: F-D32 as it is.
-    assert.equal(await anySlot(page), col1(vp) ? 1 : 0, 'Learn end card with a paused game: ' + (col1(vp) ? 'the slot shows on a phone' : 'no slot'));
+    // The board under a Learn end card is back on the unfinished game, so no slot there at any width (fix round 1; wide: F-D32).
+    assert.equal(await anySlot(page), 0, 'Learn end card with a paused game: no slot');
+    // G-D11 (phones) replaces F-D32 on a set's end card (below): the saved game is closed, the board shows the last puzzle.
     await page.locator('#learnEnd .ec-main').click();
     await page.waitForFunction(() => window.__coach.st.ses && window.__coach.st.ses.unit === 'fork');
     await jump(page, 7); await lastPuzzle(page);

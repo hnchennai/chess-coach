@@ -351,3 +351,20 @@ test('Fix 2: the room an end card keeps free for the banner: its reported height
   assert.equal(F.bannerRoom({ expected: false, h: 58, fixedTabs: true }), 0, 'no banner is coming: nothing is kept free');
   assert.equal(F.bannerRoom(), 0);
 });
+
+/* ---------- G2d (G-D33): the pieces and the view a player starts with ---------- */
+test('G-D33: a player who never chose pieces or a view starts with the classic pieces on the flat board', () => {
+  const has = (id) => ['classic', 'heroes', 'ramayana'].indexOf(id) > -1;
+  assert.deepEqual(F.firstLook({ pieces: null, theme: null, v3d: null }, has), { theme: 'classic', v3d: false }, 'a fresh install');
+  assert.deepEqual(F.firstLook({}, has), { theme: 'classic', v3d: false }, 'nothing saved at all');
+  assert.deepEqual(F.firstLook(null, has), { theme: 'classic', v3d: false });
+  assert.deepEqual(F.firstLook({ pieces: 'gone', theme: 'also-gone', v3d: 'true' }, has), { theme: 'classic', v3d: false }, 'a set that no longer exists, a view that is not a plain yes');
+});
+test('G-D33: a saved choice is kept: the set picked on this device, else the one in the profile; 3D only on a saved yes', () => {
+  const has = (id) => ['classic', 'heroes', 'ramayana'].indexOf(id) > -1;
+  assert.deepEqual(F.firstLook({ pieces: 'ramayana', theme: null, v3d: true }, has), { theme: 'ramayana', v3d: true });
+  assert.deepEqual(F.firstLook({ pieces: 'heroes', theme: 'ramayana', v3d: false }, has), { theme: 'heroes', v3d: false }, 'this device’s choice first');
+  assert.deepEqual(F.firstLook({ pieces: null, theme: 'ramayana', v3d: null }, has), { theme: 'ramayana', v3d: false }, 'a restored profile carries the choice');
+  assert.deepEqual(F.firstLook({ pieces: 'classic', theme: 'ramayana', v3d: null }, has), { theme: 'classic', v3d: false }, 'classic, chosen, stays classic');
+  assert.deepEqual(F.firstLook({ pieces: 'gone', theme: 'heroes', v3d: true }, has), { theme: 'heroes', v3d: true });
+});

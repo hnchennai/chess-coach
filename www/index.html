@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#1f6b4a">
-<title>Suresh's Chess Coach</title>
+<title>Chess Coach</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bodoni+Moda:opsz,wght@6..96,500;6..96,700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&family=Noto+Sans+Symbols+2&display=swap">
@@ -758,17 +758,38 @@ header h1 { margin-right: auto; } /* the gear stays right when the engine pill i
   html[data-scr]:not([data-scrend]) .wrap { padding-bottom: calc(28px + env(safe-area-inset-bottom)); }
   html[data-scr]:not([data-scrend]) .raninote { bottom: calc(16px + env(safe-area-inset-bottom)); }
 }
-/* a phone held sideways (up to 860px wide, under 500px high): the whole board fits under the Close bar; the cards scroll under it */
+/* ---------- G2d (G-D32): a phone held sideways on the board screen (up to 860px wide, under 500px high). The board is pinned
+   on the left and fills the height under the Close bar (--bs: the screen's height less the bar, 8px above and below and the
+   safe areas; never more than 60 percent of the width). Everything else (the opponent line, the eval strip, the You line, the
+   buttons, the end cards, then the panel with Rani's card, the moves, a lesson's step or a puzzle card) is the one column on
+   its right. That column is the page itself, so it scrolls under the sticky bar while the board stays put, and every scroll
+   the app does (end cards, Next) works as it does upright. Nothing moves in the DOM. .app stays a one-column grid: app.js
+   wide() reads its columns. Upright phones (over 500px high) and wide screens (over 860px) match none of this. ---------- */
 @media (max-width: 860px) and (max-height: 500px) {
-  html[data-scr] .boardrow { width: 100%; max-width: calc(100dvh - 96px - env(safe-area-inset-top)); margin-inline: auto; } /* the bar, the row above the board; the eval strip is beside the board */
+  html[data-scr] { --bs: min(calc(100dvh - 65px - env(safe-area-inset-top) - env(safe-area-inset-bottom)), 60vw); }
+  html[data-scr] .actbar { padding-top: calc(2px + env(safe-area-inset-top)); padding-bottom: 2px; } /* a thinner bar (49px); Close stays 44px */
+  html[data-scr] .app { padding-left: calc(var(--bs) + 12px); }
+  html[data-scr] .boardrow { display: block; margin-inline: 0; }
+  html[data-scr] .boardrow > .board { position: fixed; z-index: 5; top: calc(57px + env(safe-area-inset-top)); left: calc(8px + max(16px, env(safe-area-inset-left))); width: var(--bs); height: var(--bs); max-width: none; flex: none; }
+  /* the eval strip: thin and level, as on an upright phone, at the top of the column */
+  html[data-scr] .evalbar { width: auto; height: 5px; border: 0; border-radius: 3px; }
+  html[data-scr] .evalbar .fill { top: 0; bottom: 0; left: 0; right: auto; height: auto !important; width: var(--ev, 50%); transition: width .5s ease; }
+  html[data-scr] .evalbar.flip .fill { left: auto; right: 0; }
+  html[data-scr] .evalnum { display: none; }
+  /* a note from Rani sits in the column, not over the board */
+  html[data-scr] .raninote { left: auto; right: max(16px, env(safe-area-inset-right)); transform: none; width: min(440px, calc(100vw - var(--bs) - 60px - env(safe-area-inset-left) - env(safe-area-inset-right))); }
 }
-@media (max-width: 600px) and (max-height: 500px) { html[data-scr] .boardrow { max-width: calc(100dvh - 124px - env(safe-area-inset-top)); } } /* the eval strip is above the board here */
+@media (max-width: 600px) and (max-height: 500px) {
+  /* no body margin here; and the fixed tab bar an end card brings back spans the column only, so it never covers the board */
+  html[data-scr] .boardrow > .board { left: max(16px, env(safe-area-inset-left)); }
+  html[data-scr] .tabs { left: calc(var(--bs) + 12px + max(16px, env(safe-area-inset-left))); border-left-width: 1px; border-top-left-radius: 10px; }
+}
 .adpad { height: 0; }
 </style>
 
 <div class="wrap">
   <header>
-    <h1>Suresh's Chess Coach</h1>
+    <h1>Chess Coach</h1>
     <p class="engine-pill" id="enginePill" role="status" aria-label="Loading Stockfish…" data-state="loading"><i aria-hidden="true"></i><span>Loading Stockfish…</span></p>
     <button class="iconbtn" id="settingsBtn" type="button" data-act="settings" aria-label="Settings" title="Settings"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></button>
   </header>

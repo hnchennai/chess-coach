@@ -1174,6 +1174,13 @@
   function boardUp() { if (actOpen() && window.scrollY > 0) window.scrollTo(0, 0); }
   /* G2a: the board screen's sticky Close bar covers the top of the page: "the whole board stays on screen" means under it */
   function barBottom() { var b = $('actBar'); return b && b.getClientRects().length ? Math.max(0, b.getBoundingClientRect().bottom) : 0; }
+  /* How far the page may scroll before the board's top leaves the screen. G2d (G-D32): on a phone held sideways the board is
+     pinned beside the column and cannot leave; there the limit is the card's own top, which stays under the Close bar. */
+  function boardRoom(el) {
+    var b = $('board');
+    if (getComputedStyle(b).position === 'fixed') return Math.max(0, el.getBoundingClientRect().top - barBottom() - 8);
+    return b.getBoundingClientRect().top - barBottom();
+  }
   /* When the card first shows, bring it on screen if the whole board can stay on screen too (never during a drag). */
   function revealEnd(el) {
     revealN++;
@@ -1186,7 +1193,7 @@
   function revealNow(el, own) {
     var nav = document.querySelector('.tabs'); if (drag || !el.isConnected || el.hidden) return;
     var bottom = (nav && nav.getClientRects().length && getComputedStyle(nav).position === 'fixed' ? nav.getBoundingClientRect().top : window.innerHeight) - ad.room;
-    var d = el.getBoundingClientRect().bottom + 8 - bottom, bt = $('board').getBoundingClientRect().top - barBottom(), need = 0;
+    var d = el.getBoundingClientRect().bottom + 8 - bottom, bt = boardRoom(el), need = 0;
     if (ad.room) { var bs = el.querySelectorAll('.ec-btns button'); for (var i = 0; i < bs.length; i++) if (bs[i].getClientRects().length) need = Math.max(need, bs[i].getBoundingClientRect().bottom - bottom); }
     /* with a banner coming: the least that puts the last button above its zone, never further (fix round 2). Without one:
        the whole card, as far as the board allows. */
@@ -1971,7 +1978,7 @@
       var a = document.activeElement, nav = document.querySelector('.tabs');
       if (drag || !nav || !el.isConnected || (a && a.closest && a.closest('.panel, .sheet, .placement, .raninote'))) return;
       /* G2a: with the tabs hidden (the board screen) the strip only has to clear the bottom of the screen */
-      var d = el.getBoundingClientRect().bottom + 8 - (nav.getClientRects().length ? nav.getBoundingClientRect().top : window.innerHeight), bt = $('board').getBoundingClientRect().top - barBottom();
+      var d = el.getBoundingClientRect().bottom + 8 - (nav.getClientRects().length ? nav.getBoundingClientRect().top : window.innerHeight), bt = boardRoom(el);
       if (d <= 0 || (bt >= 0 && bt - d < 0)) return;
       window.scrollBy({ top: d, behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
     });
@@ -2768,8 +2775,10 @@
   }
   function start(data) {
     fillLevels();
-    var th = lsGet('suresh-chess-coach.pieces'); if (th && Avatar.SETS[th]) st.theme = th;
     var raw = lsGet(PSTORE), p = Profile.migrate(raw); if (p) prof = p;
+    /* G-D33: never chose pieces or a view: the classic pieces on the flat board. A saved choice is kept (Flow.firstLook). */
+    var look = Flow.firstLook({ pieces: lsGet('suresh-chess-coach.pieces'), theme: prof.theme, v3d: lsGet(K3D) }, function (id) { return !!Avatar.SETS[id]; });
+    st.theme = look.theme;
     if (raw && (+raw.v || 0) < Profile.V && prof.placed === 'derived') { lsSet(PSTORE, prof); showNote('You’re set as ' + Profile.LEVELS[prof.level].name + '. Change it any time in Settings.', 'level'); }
     applyLevel();
     Brain.onState(function (s) { enginePill(s); if (s === 'ready' && st.mode === 'play' && G.turn() === st.user && !G.game_over() && !st.busy) analyseForUser().then(render); });
@@ -2780,7 +2789,7 @@
     /* G-D25: on a phone the app always opens on Home (with the Resume game card when a game is unfinished), never on the board */
     var tab = lsGet('suresh-chess-coach.tab'); switchTab(Flow.startTab(tab, !phone(), function (t) { return !!$('panel-' + t); }));
     render(); resumeGame();
-    if (lsGet(K3D) === true) set3d(true, true);
+    if (look.v3d) set3d(true, true);
     if (Profile.needsCheck(prof)) openPlacement(false);
     booted = true;
     adBoot(); /* F3b: the one moment the ads start-up may begin (from day two, no activity open); on day one and on the web, nothing */

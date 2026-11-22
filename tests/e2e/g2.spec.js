@@ -775,8 +775,9 @@ const cases = [
     const B = await bar(page);
     assert.deepEqual([L.board, L.tabs, L.scr], [true, false, 'act']);
     assert.ok(L.boardBox.top >= B.box.y + B.box.h - 1 && L.boardBox.bottom <= L.vh, 'the whole board is visible under the Close bar: ' + JSON.stringify(L.boardBox));
-    assert.ok(L.boardBox.w >= 230, 'and still a usable size: ' + L.boardBox.w);
-    assert.ok(Math.abs((L.boardBox.left + L.boardBox.right) / 2 - L.vw / 2) < 20, 'centred');
+    // G2d (G-D32) replaces "capped and centred": the board is on the left and fills the height under the bar (it was 242px here)
+    assert.ok(L.boardBox.w >= L.vh - (B.box.y + B.box.h) - 17, 'the board fills the height under the Close bar: ' + L.boardBox.w);
+    assert.ok(L.boardBox.left >= 0 && L.boardBox.left <= 40, 'on the left (the column is on its right; tests/e2e/g2d.spec.js has the rest)');
     await shot(page, vp, 'board_game_780x360');
     return page;
   }],

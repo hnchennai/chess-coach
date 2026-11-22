@@ -1,6 +1,6 @@
 # Chess Coach for Android
 
-This folder turns Suresh's Chess Coach into an Android app with Capacitor.
+This folder turns Chess Coach into an Android app with Capacitor.
 The whole app works offline: Stockfish, the 3D board, puzzles and lessons are inside `www/`.
 
 ## Build in the cloud (no Android Studio needed)

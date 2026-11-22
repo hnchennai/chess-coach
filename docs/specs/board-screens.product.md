@@ -51,6 +51,11 @@ Builds on: `flow-rework.product.md` (F-D1 to F-D33), `beginner-flow.product.md` 
 | G-D24 | The Close bar has the Settings gear at its top right, so pieces, 3D and Piece tags can be changed without closing | Suresh, 2026-11-21 |
 | G-D25 | On a phone the app always opens on Home, whatever tab it was closed on | Suresh, 2026-11-21 |
 | G-D26 | A drill's card reads "Resume drill" | Delegated to Claude |
+| G-D27 | Closing a review that was opened in the middle of a game returns to that game. A second Close goes to Play | Suresh, 2026-11-21 |
+| G-D28 | For a Beginner the Resume game card reads "Move 12, Rani's partner to move" when it is not their move (Beginners never see "engine") | Suresh, 2026-11-21 |
+| G-D29 | "Back to my game" is renamed "Resume game" everywhere. When the Continue card's own button is already the game, Home shows no second Resume game card | Suresh, 2026-11-21; second sentence delegated to Claude |
+| G-D30 | Resume card lines: "Lesson · step 2 of 5", "Puzzle 3 of 10", "Endgame drill". Close bar for a game: "Your game" with the move line | Suresh, 2026-11-21 |
+| G-D31 | On an end card the tip and banner show only if the board on screen is not a game in progress. A move played under an end card ends the end card at once. A drill closes to the tab it was started from | Delegated to Claude (review, 2026-11-22; follows G-D11) |
 
 ## New wording (all of it)
 - Button, top left of the activity screen: "Close" (spoken label; the button shows an X)

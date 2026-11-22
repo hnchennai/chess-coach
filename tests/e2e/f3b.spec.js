@@ -65,6 +65,8 @@ function fakeFn(cfg) {
   const fire = (n, d) => (A.ls[n] || []).slice().forEach((f) => f(d));
   const info = () => ({ status: C.status, isConsentFormAvailable: C.form, canRequestAds: C.can, privacyOptionsRequirementStatus: C.privacy });
   const hold = (k) => new Promise((r) => { A.release[k] = r; });
+  // How late the page's own timers ran (a loaded machine): every 100ms tick that came more than 50ms late, with its lateness.
+  A.late = []; { let last = performance.now(); const tick = () => { const n = performance.now(); if (n - last > 150) A.late.push({ t: n, ms: n - last - 100 }); last = n; }; (window.__realInterval = window.setInterval)(tick, 100); }
   const size = (on) => fire('bannerAdSizeChanged', on ? { width: Math.min(window.innerWidth, 728), height: C.h } : { width: 0, height: 0 });
   A.fire = fire;
   const P = {
@@ -191,7 +193,9 @@ async function backAfterDelay(page, n0, since, why, how) {
   const cs = (await calls(page)).slice(n0).filter((c) => c.m !== 'hideBanner');
   assert.deepEqual(cs.map((c) => c.m), [how || 'resumeBanner'], why + ': one call brings it back');
   assert.ok(cs[0].t - since >= 1000, why + ': no sooner than 1000ms (' + Math.round(cs[0].t - since) + 'ms)');
-  assert.ok(cs[0].t - since < 3000, why + ': and not much later (' + Math.round(cs[0].t - since) + 'ms)');
+  // "not much later": within 3 seconds, plus however late the machine ran the page's timers in that time (measured in the page)
+  const lag = await page.evaluate(([a, b]) => window.__ad.late.filter((x) => x.t >= a && x.t <= b + 200).reduce((n, x) => n + x.ms, 0), [since, cs[0].t]);
+  assert.ok(cs[0].t - since < 3000 + lag, why + ': and not much later (' + Math.round(cs[0].t - since) + 'ms, the machine ran ' + Math.round(lag) + 'ms late)');
   await waitPad(page);
 }
 // Where the banner is on screen: a strip of height h, `margin` above the bottom edge.
@@ -373,7 +377,10 @@ const cases = [
     }
     await page.waitForFunction(() => window.__ad.cards.some((c) => c.id === 'gameEnd'), null, { timeout: 30000 });
     assert.equal(await shown(page), false, 'the card shows at once, without the banner');
-    await page.waitForTimeout(500); assert.equal(await shown(page), false, 'not yet at half a second');
+    // not yet in the card's first second, by the page's own clock (a sleep here could overrun on a loaded machine)
+    const early = await page.evaluate(() => { const c = window.__ad.cards.filter((x) => x.id === 'gameEnd').pop(); return { age: performance.now() - c.t, shown: window.__ad.shown, calls: window.__ad.calls.filter((x) => x.t >= c.t && (x.m === 'showBanner' || x.m === 'resumeBanner')).map((x) => Math.round(x.t - c.t)) }; });
+    if (early.age < 1000) assert.equal(early.shown, false, 'not yet in the first second');
+    assert.ok(early.calls.every((ms) => ms >= 1000), 'nothing asked for the banner in the card’s first second: ' + JSON.stringify(early.calls));
     const card = (await page.evaluate(() => window.__ad.cards)).filter((c) => c.id === 'gameEnd').pop(), n0 = (await calls(page)).findIndex((c) => c.t >= r.t0);
     await backAfterDelay(page, n0, card.t, 'the game end card');
     requestRules(await calls(page), 'game end');

@@ -56,8 +56,10 @@ function seedFn([pk, p, gk, g, tk, tab, sk, set, k3, v3d]) {
   sessionStorage.setItem('seeded', '1');
 }
 // A small fake of the native ads plugin (the full one is in f3b.spec.js): enough to see when a banner is on screen.
-function fakeAds() {
-  const A = window.__ad = { calls: [], ls: {}, view: false, visible: false, loaded: false };
+// cfg: holdResume (a banner brought back stays hidden until __ad.release()), holdLoad (the first ad waits for __ad.load() or __ad.fail()).
+function fakeAds(cfg) {
+  const C = cfg || {};
+  const A = window.__ad = { calls: [], ls: {}, view: false, visible: false, loaded: false, pending: null };
   Object.defineProperty(A, 'shown', { get() { return A.view && A.visible && A.loaded; } });
   const rec = (m) => A.calls.push({ m, t: performance.now(), scr: document.documentElement.dataset.scr || null, scrend: document.documentElement.dataset.scrend || null }); // the screen at the moment of the call
   const fire = (n, d) => (A.ls[n] || []).slice().forEach((f) => f(d));
@@ -69,11 +71,14 @@ function fakeAds() {
     showConsentForm() { rec('showConsentForm'); return Promise.resolve(info()); },
     showPrivacyOptionsForm() { rec('showPrivacyOptionsForm'); return Promise.resolve(); },
     initialize() { rec('initialize'); return Promise.resolve(); },
-    showBanner() { rec('showBanner'); if (A.view) return Promise.resolve(); A.view = true; A.visible = true; A.loaded = false; setTimeout(() => { if (!A.view) return; A.loaded = true; size(true); fire('bannerAdLoaded', {}); }, 30); return Promise.resolve(); },
+    showBanner() { rec('showBanner'); if (A.view) return Promise.resolve(); A.view = true; A.visible = true; A.loaded = false; if (!C.holdLoad) setTimeout(A.load, 30); return Promise.resolve(); },
     hideBanner() { rec('hideBanner'); if (!A.view) return Promise.reject(new Error('never shown')); A.visible = false; setTimeout(() => size(false), 0); return Promise.resolve(); },
-    resumeBanner() { rec('resumeBanner'); if (A.view) { A.visible = true; setTimeout(() => size(true), 0); } return Promise.resolve(); },
+    resumeBanner() { rec('resumeBanner'); if (A.view) { const up = () => { A.visible = true; size(true); }; if (C.holdResume) A.pending = up; else setTimeout(up, 0); } return Promise.resolve(); },
     removeBanner() { rec('removeBanner'); A.view = false; A.visible = false; A.loaded = false; setTimeout(() => size(false), 0); return Promise.resolve(); }
   };
+  A.load = () => { if (!A.view) return; A.loaded = true; size(true); fire('bannerAdLoaded', {}); };
+  A.fail = () => { A.view = false; A.visible = false; A.loaded = false; size(false); fire('bannerAdFailedToLoad', { code: 3, message: 'No fill' }); };
+  A.release = () => { const p = A.pending; A.pending = null; if (p) p(); };
   window.Capacitor = { isNativePlatform: () => true, getPlatform: () => 'android', Plugins: { AdMob: P } };
 }
 // o: { game, tab, set, v3d, ads (true: the fake ads plugin), size (another viewport) }
@@ -82,7 +87,7 @@ async function newPage(vp, p, o) {
   const ctx = await browser.newContext({ viewport: o.size || vp, deviceScaleFactor: 1 });
   await ctx.route(/fonts\.(googleapis|gstatic)\.com/, (r) => r.fulfill({ status: 200, contentType: 'text/css', body: '' }));
   await ctx.addInitScript(seedFn, [PKEY, p, GKEY, o.game || null, TKEY, o.tab || null, SKEY, o.set || null, K3D, !!o.v3d]);
-  if (o.ads) await ctx.addInitScript(fakeAds);
+  if (o.ads) await ctx.addInitScript(fakeAds, o.ads === true ? {} : o.ads);
   const page = await ctx.newPage();
   if (process.env.G2_TIMEOUT) { page.setDefaultTimeout(+process.env.G2_TIMEOUT); page.setDefaultNavigationTimeout(60000); }
   page.errors = []; page.outside = []; page.dialogs = [];
@@ -867,7 +872,7 @@ const cases = [
     assert.ok((await hist(page)).length >= 23, 'the game is still there');
     return page;
   }],
-  ['Fix 2: the banner never covers an end card’s buttons: the card is placed for it when it appears, and nothing moves when it arrives', async (vp) => {
+  ['Fix 2: the banner never covers an end card’s buttons: the card is placed for it when it appears, by the least scroll, and nothing moves when it arrives', async (vp) => {
     if (!PH(vp)) return newPage(vp, club(), {});
     const measure = (page, sel) => page.evaluate((s) => {
       const fixed = getComputedStyle(document.querySelector('.tabs')).position === 'fixed', margin = fixed ? 64 : 0, zone = { top: window.innerHeight - margin - 64, bottom: window.innerHeight - margin };
@@ -875,30 +880,72 @@ const cases = [
       const pad = document.getElementById('adPad');
       return { zone, btns, y: window.scrollY, pad: pad.hidden ? 0 : pad.getBoundingClientRect().height, shown: window.__ad.shown };
     }, sel);
-    const check = async (page, sel, why) => {
-      await page.waitForTimeout(600); // the card's own scroll
+    // The page has stopped scrolling (the same place for 250ms), whatever the machine's load.
+    const settled = (page) => page.evaluate(() => new Promise((res) => { let y = window.scrollY, t = performance.now(); const tick = () => { if (window.scrollY !== y) { y = window.scrollY; t = performance.now(); } if (performance.now() - t > 250) res(y); else requestAnimationFrame(tick); }; tick(); }));
+    const backCalls = (page, n) => page.evaluate((k) => window.__ad.calls.slice(k).filter((c) => c.m === 'resumeBanner' || c.m === 'showBanner').length, n);
+    // The banner's return is held back by the fake plugin: the first measurement is taken after the app has asked for it
+    // (so the one second is over and the card has done its scrolling), and before it is on screen.
+    const check = async (page, sel, why, n0) => {
+      await page.waitForFunction((k) => window.__ad.calls.slice(k).some((c) => c.m === 'resumeBanner'), n0, { timeout: 20000 });
+      await settled(page);
       const a = await measure(page, sel);
       assert.equal(a.shown, false, why + ': measured before the banner is up');
       assert.ok(a.btns.length >= 2, why + ': buttons measured');
+      const low = Math.max(...a.btns.map((b) => b.bottom));
       for (const b of a.btns) assert.ok(b.top >= 0 && b.bottom <= a.zone.top + 0.5, why + ': "' + b.t + '" is above the banner’s zone (' + Math.round(b.bottom) + ' vs ' + a.zone.top + ')');
+      assert.ok(a.y === 0 || a.zone.top - low <= 1.5, why + ': scrolled by the least that clears the banner, no further (' + (a.zone.top - low) + 'px to spare after ' + a.y + 'px)');
       assert.equal(a.pad, 72, why + ': the page padding is already there');
-      await page.waitForFunction(() => window.__ad.shown, null, { timeout: 5000 }); await page.waitForTimeout(300);
+      await page.evaluate(() => window.__ad.release());
+      await page.waitForFunction(() => window.__ad.shown, null, { timeout: 5000 }); await settled(page);
       const b = await measure(page, sel);
       assert.equal(b.y, a.y, why + ': the page did not move when the banner came'); assert.equal(b.pad, a.pad, why + ': nor did the padding change');
       assert.deepEqual(b.btns, a.btns, why + ': every button is where it was');
+      return a;
     };
-    let page = await newPage(vp, club({ games: [] }), { game: MATE1, ads: true });
-    await page.waitForFunction(() => window.__ad.shown, null, { timeout: 5000 });
+    let page = await newPage(vp, club({ games: [] }), { game: MATE1, ads: { holdResume: true } });
+    await page.waitForFunction(() => window.__ad.shown, null, { timeout: 8000 });
     await goTab(page, 'play'); await page.locator('#resumePlay .rs-go').click(); await idle(page);
+    let n0 = await page.evaluate(() => window.__ad.calls.length);
     await page.locator('#board .sq[data-sq="h5"]').click(); await page.locator('#board .sq[data-sq="f7"]').click();
     await page.waitForFunction(() => !!document.querySelector('#gameEnd .ec-main') && !window.__coach.st.busy, null, { timeout: 30000 });
-    await check(page, '#gameEnd', 'game end card');
+    const g = await check(page, '#gameEnd', 'game end card', n0);
+    if (vp.width === 360) assert.ok(g.y > 0, 'at 360x800 the card had to move for the banner');
     assert.deepEqual(page.errors, []); await page.context().close();
-    page = await newPage(vp, club(), { ads: true });
-    await page.waitForFunction(() => window.__ad.shown, null, { timeout: 5000 });
+    page = await newPage(vp, club(), { ads: { holdResume: true } });
+    await page.waitForFunction(() => window.__ad.shown, null, { timeout: 8000 });
     await page.evaluate(() => window.__coach.startPart('kq', 'learn'));
+    n0 = await page.evaluate(() => window.__ad.calls.length);
     await finishLesson(page);
-    await check(page, '#learnEnd', 'Learn end card');
+    await check(page, '#learnEnd', 'Learn end card', n0);
+    return page;
+  }],
+  ['Round 2, item 3: when no ad comes for an end card, the room kept for the banner is given back and the card is where it would be without one', async (vp) => {
+    if (!PH(vp)) return newPage(vp, club(), {});
+    const settled = (page) => page.evaluate(() => new Promise((res) => { let y = window.scrollY, t = performance.now(); const tick = () => { if (window.scrollY !== y) { y = window.scrollY; t = performance.now(); } if (performance.now() - t > 250) res(y); else requestAnimationFrame(tick); }; tick(); }));
+    const pad = (page) => page.evaluate(() => { const e = document.getElementById('adPad'); return e.hidden ? 0 : e.getBoundingClientRect().height; });
+    const play = async (page) => {
+      await goTab(page, 'play'); await page.locator('#resumePlay .rs-go').click(); await idle(page);
+      await page.locator('#board .sq[data-sq="h5"]').click(); await page.locator('#board .sq[data-sq="f7"]').click();
+      await page.waitForFunction(() => !!document.querySelector('#gameEnd .ec-main') && !window.__coach.st.busy, null, { timeout: 30000 });
+    };
+    // the same end card with no ads at all (the web version): where the card sits without a banner
+    let page = await newPage(vp, club({ games: [] }), { game: MATE1 });
+    await play(page); await page.waitForTimeout(400);
+    const plain = await settled(page);
+    assert.deepEqual(page.errors, []); await page.context().close();
+    // with ads: the first ad is still loading when the game ends, the card keeps room for it, then the load fails
+    page = await newPage(vp, club({ games: [] }), { game: MATE1, ads: { holdLoad: true } });
+    await page.waitForFunction(() => window.__ad.calls.some((c) => c.m === 'showBanner'), null, { timeout: 20000 }); // asked for on Home; no ad yet
+    await play(page);
+    await page.waitForFunction(() => window.__ad.calls.some((c) => c.m === 'resumeBanner'), null, { timeout: 20000 });
+    const kept = await settled(page);
+    assert.equal(await pad(page), 72, 'room is kept while the banner is expected');
+    if (vp.width === 360) assert.ok(kept > plain, 'and the card moved up for it (' + kept + ' vs ' + plain + ')');
+    await page.evaluate(() => window.__ad.fail());
+    await page.waitForFunction(() => document.getElementById('adPad').hidden, null, { timeout: 5000 });
+    assert.equal(await pad(page), 0, 'no ad came: the padding is back to 0');
+    assert.ok(Math.abs((await settled(page)) - plain) <= 1, 'and the card is where it is without a banner (' + (await page.evaluate(() => window.scrollY)) + ' vs ' + plain + ')');
+    assert.equal(await adShown(page), false);
     return page;
   }],
   ['Fix 3, 10: "Start new game" asks whenever an unfinished game has moves, also with a lesson waiting; a new game started while the engine thinks is playable', async (vp) => {
@@ -1115,6 +1162,120 @@ const cases = [
     await page.waitForFunction(() => window.Board3D.debug.context().restoredN === 1 && window.Board3D.debug.ready() && window.Board3D.debug.idle(), null, { timeout: 15000 });
     await page.evaluate(() => window.Board3D.debug.tap('b2'));
     assert.equal(await st(page, 'sel'), 'b2', 'taps work again');
+    return page;
+  }],
+  // ---------- fix round 2 (.crew/g2a-fix-round-2.md) ----------
+  ['Round 2, item 1: every activity opened on the board screen starts at the top: the board’s top edge is at or below the Close bar', async (vp) => {
+    if (!PH(vp)) return newPage(vp, club(), {});
+    let page;
+    const top = async (why) => {
+      const m = await page.evaluate(() => ({ y: window.scrollY, board: document.getElementById('board').getBoundingClientRect().top, bar: document.getElementById('actBar').getBoundingClientRect().bottom, scr: document.documentElement.dataset.scr || null, end: document.documentElement.dataset.scrend || null }));
+      assert.equal(m.scr, 'act', why); assert.equal(m.end, null, why + ': a new activity, no end card');
+      assert.ok(m.board >= m.bar - 0.5, why + ': the board’s top (' + Math.round(m.board) + ') is at or below the Close bar (' + Math.round(m.bar) + '), scrollY ' + m.y);
+    };
+    const settled = () => page.evaluate(() => new Promise((res) => { let y = window.scrollY, t = performance.now(); const tick = () => { if (window.scrollY !== y) { y = window.scrollY; t = performance.now(); } if (performance.now() - t > 250) res(y); else requestAnimationFrame(tick); }; tick(); }));
+    const banner = (n) => page.waitForFunction((k) => window.__ad.calls.slice(k).some((c) => c.m === 'resumeBanner'), n, { timeout: 20000 });
+    const calls = () => page.evaluate(() => window.__ad.calls.length);
+    for (const size of [{ width: vp.width, height: 800 }, { width: vp.width, height: 640 }]) {
+      const tag = size.width + 'x' + size.height + ' ';
+      const mated = async () => {
+        if (page) { assert.deepEqual(page.errors, []); await page.context().close(); }
+        page = await newPage(vp, club({ games: [] }), { game: MATE1, ads: true, size });
+        await page.waitForFunction(() => window.__ad.shown, null, { timeout: 8000 });
+        await goTab(page, 'play'); await page.locator('#resumePlay .rs-go').click(); await idle(page);
+        const n = await calls();
+        await page.locator('#board .sq[data-sq="h5"]').click(); await page.locator('#board .sq[data-sq="f7"]').click();
+        await page.waitForFunction(() => !!document.querySelector('#gameEnd .ec-main') && !window.__coach.st.busy, null, { timeout: 30000 });
+        await banner(n); await settled(); // the end card has made its room for the banner
+      };
+      await mated();
+      if (size.height === 800 && vp.width === 360) assert.ok((await page.evaluate(() => window.scrollY)) > 0, 'the end card had scrolled for the banner');
+      await page.locator('#gameEnd [data-act="again"]').click(); await top(tag + 'New game from the end card');
+      await mated();
+      await page.locator('#gameEnd [data-act="review"]').click(); await top(tag + 'Review this game from the end card');
+      // a set's end card, then "10 more puzzles"
+      await closeX(page);
+      let n = await calls();
+      await page.evaluate(() => window.__coach.trainStart('rated')); await top(tag + 'the first puzzle of a set');
+      await page.evaluate(() => { const s = window.__coach.st.ses; s.count = s.i + 1; });
+      await solvePuzzle(page); await page.locator('#sessionCard [data-act="next"]').click();
+      await page.waitForFunction(() => window.__coach.st.ses && window.__coach.st.ses.finished);
+      await banner(n); await settled();
+      await page.locator('#sessionCard .ec-main').click(); await top(tag + '10 more puzzles from the end card');
+      // a lesson to its end card (a fresh board under it, so the banner comes), then its main button
+      n = await calls();
+      await page.evaluate(() => window.__coach.startPart('kq', 'learn')); await top(tag + 'a lesson');
+      await finishLesson(page); await settled();
+      await page.locator('#learnEnd .ec-main').click(); await top(tag + 'the next part from the Learn end card');
+      // a drill, and Resume from a page that was scrolled down
+      await closeX(page); await goTab(page, 'train');
+      await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+      await page.locator('#drillList [data-drill]').first().click(); await top(tag + 'a drill');
+      await closeX(page);
+      await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+      await page.locator('#resumeTrain .rs-go').click(); await top(tag + 'Resume');
+    }
+    return page;
+  }],
+  ['Round 2, item 4: Today’s Learn step reads "Resume lesson" for the lesson that is waiting, and resumes it at its step', async (vp) => {
+    const page = await newPage(vp, improver(), {});
+    const btn = '#today .step3.z-learn .zb';
+    assert.equal(await page.locator(btn).innerText(), 'Start lesson');
+    if (!PH(vp)) return page;
+    await page.locator(btn).click(); await page.waitForFunction(() => window.__coach.st.mode === 'lesson');
+    await page.locator('#navNext').click();
+    await closeX(page); await goTab(page, 'coach');
+    assert.equal(await page.locator(btn).innerText(), WORDS.lesson);
+    assert.equal(await page.locator('#contCard .bh-go').innerText(), WORDS.lesson, 'the same as the Continue card');
+    const R = await page.evaluate((s) => { document.querySelector(s).click(); return { scr: document.documentElement.dataset.scr || null, i: window.__coach.st.ls ? window.__coach.st.ls.i : null, tab: window.__coach.st.tab }; }, btn);
+    assert.deepEqual(R, { scr: 'act', i: 1, tab: 'path' });
+    // another lesson waiting: Today's step (Forks) starts as usual
+    await closeX(page);
+    await page.evaluate(() => window.__coach.startPart('pin', 'learn')); await closeX(page); await goTab(page, 'coach');
+    assert.equal(await page.locator(btn).innerText(), 'Start lesson', 'a different lesson is waiting');
+    return page;
+  }],
+  ['Round 2, item 5: a move still being checked when a new game starts writes nothing into the new game', async (vp) => {
+    const page = await newPage(vp, club(), { game: GAME12, tab: 'play' });
+    if (PH(vp)) { await goTab(page, 'play'); await page.locator('#resumePlay .rs-go').click(); }
+    await idle(page);
+    // every analysis is held back from here on; the test lets them go by hand
+    await page.evaluate(() => { window.__held = []; window.Brain.analyse = () => new Promise((r) => window.__held.push(r)); });
+    await page.locator('#board .sq[data-sq="a2"]').click(); await page.locator('#board .sq[data-sq="a4"]').click();
+    await page.waitForFunction(() => window.__coach.hist().length === 23 && window.__held.length >= 1);
+    assert.equal(await page.evaluate(() => window.__coach.st.fb.title), 'Checking your move…');
+    // a new game, started while the old move is still being checked
+    if (PH(vp)) { await closeX(page); await page.locator('#newBtn').click(); await page.locator('#newBtn').click(); }
+    else { await page.locator('#newBtn').click(); await page.locator('#newBtn').click(); }
+    assert.deepEqual(await hist(page), []);
+    const fresh = await page.evaluate(() => { const s = window.__coach.st; return { notes: Object.keys(s.notes), ann: Object.keys(s.ann), tags: Object.keys(s.tags), fb: s.fb.title }; });
+    // the old move's check finishes now, every step of it
+    for (let i = 0; i < 6; i++) { await page.evaluate(() => { const h = window.__held; window.__held = []; h.forEach((r) => r([{ uci: 'a2a4', score: 30, pv: ['a2a4'] }])); }); await page.waitForTimeout(60); }
+    const after = await page.evaluate(() => { const s = window.__coach.st; return { notes: Object.keys(s.notes), ann: Object.keys(s.ann), tags: Object.keys(s.tags), fb: s.fb.title }; });
+    assert.deepEqual(after, fresh, 'nothing from the old game’s move is in the new game');
+    assert.deepEqual(after, { notes: [], ann: [], tags: [], fb: 'Your move' });
+    assert.deepEqual(await hist(page), [], 'and no engine move was made for it');
+    const saved = await savedGame(page);
+    assert.deepEqual([saved.sans, Object.keys(saved.notes), Object.keys(saved.ann)], [[], [], []], 'nor in the saved game');
+    return page;
+  }],
+  ['Round 2, item 6: the "Tap again to abandon it" question is gone when the player leaves Play or closes Settings', async (vp) => {
+    const page = await newPage(vp, club(), { game: GAME12, tab: 'play' });
+    if (!PH(vp)) return page;
+    const asked = () => page.locator('#newConfirm').isVisible();
+    await goTab(page, 'play');
+    await page.locator('#newBtn').click(); assert.equal(await asked(), true);
+    await goTab(page, 'coach'); await goTab(page, 'play');
+    assert.equal(await asked(), false, 'leaving the Play tab takes the question back');
+    await page.locator('#newBtn').click();
+    assert.equal(await asked(), true, 'a later tap asks again'); assert.deepEqual(await hist(page), SANS22, 'and the game is still there');
+    await page.locator('#settingsBtn').click(); await page.keyboard.press('Escape');
+    assert.equal(await asked(), false, 'closing Settings takes it back too');
+    await page.locator('#newBtn').click(); assert.equal(await asked(), true); assert.deepEqual(await hist(page), SANS22);
+    await page.locator('#resumePlay .rs-go').click(); await closeX(page);
+    assert.equal(await asked(), false, 'and so does opening the game');
+    await page.locator('#newBtn').click(); assert.deepEqual(await hist(page), SANS22, 'one tap never abandons the game');
+    await page.locator('#newBtn').click(); assert.deepEqual(await hist(page), [], 'the second tap in a row does');
     return page;
   }]
 ];

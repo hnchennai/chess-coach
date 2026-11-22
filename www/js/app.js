@@ -769,8 +769,11 @@
   function endUp() { return !!(endFull || reviewDone() || sesEnded() || st.end); }
   /* Every start (a game, a lesson, a set, a drill, a review) and every Resume calls openAct() before it switches tab; the
      start's own render() then draws the screen. scrHold keeps the safety rule quiet in between (the mode is still changing). */
-  var scrHold = false, scrOn = false, scrY = 0, scrTab = null;
-  function openAct() { if (st.scr !== 'act') { scrY = window.scrollY || 0; scrTab = st.tab; } st.scr = 'act'; scrHold = true; }
+  var scrHold = false, scrOn = false, scrY = 0, scrTab = null, scrTop = false;
+  function openAct() { if (st.scr !== 'act') { scrY = window.scrollY || 0; scrTab = st.tab; } st.scr = 'act'; scrHold = true; scrTop = true; unask(); }
+  /* Fix round 2: the "Tap again to abandon it" question is only good for the next tap on the same page. Leaving Play, closing
+     Settings or opening anything takes it back, so a much later single tap cannot wipe the game. Phones only. */
+  function unask() { if (st.confirmNew && phone()) { st.confirmNew = false; $('newConfirm').hidden = true; } }
   /* The safety rule: the board screen is only kept on the activity's own tab (or under the Learn end card). Whatever path
      changed the tab or ended the activity, the player lands on a tab page, never on a board screen with nothing on it. */
   function fixScreen() {
@@ -785,6 +788,8 @@
     if (on) de.dataset.scr = 'act'; else delete de.dataset.scr;
     if (end) de.dataset.scrend = '1'; else delete de.dataset.scrend;
     renderActBar(); renderResume();
+    /* Fix round 2: whatever opens on the board screen starts at the top of the page (an end card's scroll is not kept) */
+    if (scrTop && !scrHold) { scrTop = false; if (on && on === scrOn && window.scrollY > 0) window.scrollTo(0, 0); }
     if (on === scrOn) return;
     scrOn = on;
     if (st.tab === 'path') renderPath(); /* the lesson's step card belongs to the board screen; the course to the tab page */
@@ -935,7 +940,7 @@
     if (!ADS) return null;
     try { var C = window.Capacitor; if (!C || !C.Plugins || !C.Plugins.AdMob) return null; if (typeof C.isNativePlatform === 'function' && !C.isNativePlatform()) return null; return C.Plugins.AdMob; } catch (e) { return null; }
   })();
-  var ad = { room: 0, lastH: 0, state: 'off', banner: 'none', loaded: false, margin: 0, h: 0, ok: false, place: null, visit: null, since: NaN, timer: null, retry: null, retryAt: 0, info: null, form: false, inited: false, err: '', facts: null };
+  var ad = { room: 0, lastH: 0, push: null, state: 'off', banner: 'none', loaded: false, margin: 0, h: 0, ok: false, place: null, visit: null, since: NaN, timer: null, retry: null, retryAt: 0, info: null, form: false, inited: false, err: '', facts: null };
   function adNow() { return window.performance && performance.now ? performance.now() : Date.now(); }
   function adNoop() {}
   /* Test builds only: the last failure, in words, for the state line in Settings (Ads.debugLine). Never shown with real ads on. */
@@ -966,7 +971,7 @@
      in it (a size from the plugin and a loaded ad), so an empty strip never reserves space. */
   function adPad() {
     var el = $('adPad'); if (!el) return;
-    var h = ad.banner === 'shown' && ad.loaded ? ADS.padFor(ad.h, ad.margin > 0) : ad.room; /* ad.room: kept free for a banner on its way to an end card */
+    var h = Math.max(ad.banner === 'shown' && ad.loaded ? ADS.padFor(ad.h, ad.margin > 0) : 0, ad.room); /* never less than the room an end card keeps: nothing moves in the moment before the banner reports its size */ /* ad.room: kept free for a banner on its way to an end card */
     if (h > 0) { el.style.height = h + 'px'; el.hidden = false; } else if (!el.hidden) el.hidden = true;
   }
   function adHide() {
@@ -975,7 +980,7 @@
     adPad();
   }
   /* No ad came: nothing on screen, no gap. While the same screen stays open, one check a minute later (a single timer). */
-  function adLost(e) { if (e !== undefined) adErr('ad load', e); ad.banner = 'none'; ad.loaded = false; ad.h = 0; ad.retryAt = adNow() + 60000; adPad(); adSync(); }
+  function adLost(e) { if (e !== undefined) adErr('ad load', e); ad.banner = 'none'; ad.loaded = false; ad.h = 0; ad.retryAt = adNow() + 60000; ad.room = 0; adPad(); giveBack(); adSync(); } /* the room kept for it on an end card is given back */
   /* A plugin call for the banner failed: remove whatever the native side has, so the page and the native side cannot disagree. */
   function adDrop(e) { adErr('banner call', e); adCall('removeBanner').catch(adNoop); adLost(); }
   function adShow() {
@@ -984,7 +989,7 @@
     if (ad.banner === 'hidden' && ad.margin === m) { ad.banner = 'shown'; adCall('resumeBanner').catch(adDrop); return; }
     if (ad.banner === 'none') {
       var left = ad.retryAt - adNow();
-      if (left > 0) { if (!ad.retry) ad.retry = setTimeout(function () { ad.retry = null; adSync(); }, left + 20); return; }
+      if (left > 0) { if (!ad.retry) ad.retry = setTimeout(function () { ad.retry = null; adSync(); }, left + 20); adPad(); return; }
     }
     /* a new banner, or the same one moved (the layout changed between phone and wide): the plugin keeps the ad and moves it */
     var moved = ad.banner !== 'none';
@@ -1173,21 +1178,31 @@
   function revealEnd(el) {
     revealN++;
     if (!window.requestAnimationFrame) return;
-    requestAnimationFrame(function () { revealNow(el); });
+    requestAnimationFrame(function () { revealNow(el, true); });
   }
   /* Fix round 1 (ads criterion 5): when a banner is on its way to this end card (ad.room, set by adSync in the same step
      as the card), the card is placed as if the banner were already up: every button of the card ends above the banner's
      zone, even if the board has to give way, and the page padding is already there, so nothing moves when it arrives. */
-  function revealNow(el) {
+  function revealNow(el, own) {
     var nav = document.querySelector('.tabs'); if (drag || !el.isConnected || el.hidden) return;
     var bottom = (nav && nav.getClientRects().length && getComputedStyle(nav).position === 'fixed' ? nav.getBoundingClientRect().top : window.innerHeight) - ad.room;
     var d = el.getBoundingClientRect().bottom + 8 - bottom, bt = $('board').getBoundingClientRect().top - barBottom(), need = 0;
-    if (ad.room) { var bs = el.querySelectorAll('.ec-btns button'); for (var i = 0; i < bs.length; i++) if (bs[i].getClientRects().length) need = Math.max(need, bs[i].getBoundingClientRect().bottom + 4 - bottom); }
-    var by = Math.max(d > 0 && bt >= 0 ? Math.min(d, bt) : 0, need);
+    if (ad.room) { var bs = el.querySelectorAll('.ec-btns button'); for (var i = 0; i < bs.length; i++) if (bs[i].getClientRects().length) need = Math.max(need, bs[i].getBoundingClientRect().bottom - bottom); }
+    /* with a banner coming: the least that puts the last button above its zone, never further (fix round 2). Without one:
+       the whole card, as far as the board allows. */
+    var by = ad.room ? need : d > 0 && bt >= 0 ? Math.min(d, bt) : 0;
+    if (ad.room) ad.push = { el: el, y: window.scrollY, own: !!own };
     if (by <= 0) return;
     window.scrollBy({ top: by, behavior: window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
   }
   /* A Learn or set end card: no scroll of its own (as before), unless a banner is coming to it. */
+  /* Fix round 2: no ad came for the end card on screen: its scroll goes back to where it is without a banner. */
+  function giveBack() {
+    var p = ad.push; ad.push = null;
+    if (!p || !p.el.isConnected || p.el.hidden || !p.el.getClientRects().length || !actOpen()) return;
+    window.scrollTo(0, p.y);
+    if (p.own) revealNow(p.el, true);
+  }
   function clearBanner(el) { if (window.requestAnimationFrame) requestAnimationFrame(function () { if (ad.room) revealNow(el); }); }
   /* F-D7: an end card is on screen (after a lesson step or a puzzle set): its main button is the screen's one main button. */
   function sesEnded() { return !!(st.ses && (st.ses.finished || st.ses.end)); }
@@ -1229,10 +1244,12 @@
     st.fb = { cls: 'info', sym: '♙', title: 'Checking your move…', mv: 'You played ' + mv.san, words: words };
     render();
     var ply = G.history().length - 1;
+    /* gid: every step of this chain belongs to the game the move was made in. A new game started meanwhile gets nothing from it. */
     gradeUserMove(fenBefore, mv, gameAt(G.history(), ply + 1), st.user).then(function (n) {
+      if (gid !== st.gid) return;
       st.notes[ply] = n; st.ann[ply] = n.cls; if (n.tag) st.tags[ply] = n.tag; st.evalW = n.ev;
       st.fb = { cls: n.cls, sym: CLS[n.cls].sym, title: CLS[n.cls].title, mv: 'You played ' + mv.san, words: words, text: n.text, tip: n.tip };
-    }).catch(function () { st.fb = { cls: 'info', sym: '♙', title: 'Move played', mv: mv.san, words: words }; }).then(function () {
+    }).catch(function () { if (gid !== st.gid) return; st.fb = { cls: 'info', sym: '♙', title: 'Move played', mv: mv.san, words: words }; }).then(function () {
       if (gid !== st.gid) return; /* a new game was started while this move was being checked */
       checkGoal(); save();
       if (G.game_over()) { st.busy = false; finishGame(); render(); return; }
@@ -1251,9 +1268,9 @@
   }
   function engineTurn() {
     st.busy = true; render();
-    var fen = G.fen();
+    var fen = G.fen(), gid = st.gid;
     engineChoose(fen).then(function (uci) {
-      if (G.fen() !== fen) return;
+      if (gid !== st.gid || G.fen() !== fen) return;
       var m = uci && findMove(G, uci); if (!m) m = G.moves({ verbose: true })[0];
       if (!m) { st.busy = false; render(); return; }
       var gBefore = new Chess(fen);
@@ -1263,6 +1280,7 @@
       render();
       if (G.game_over()) { finishGame(); st.busy = false; save(); render(); return; }
       return analyseForUser().then(function (res) {
+        if (gid !== st.gid) return; /* a new game was started while the reply was being explained */
         var why;
         try { why = explainEngineMove(gBefore, m, G, st.user, res.th); } catch (e) { why = [{ c: '', h: cap1(describe(m, 'its')) + '.' }]; }
         var ply = G.history().length - 1;
@@ -1858,8 +1876,9 @@
   function renderToday() {
     var d = dayRec(), nx = nextUnit(), due = dueList().length, el = $('today'), streak = streakDays(), pl = plain();
     var k = nx ? nextPart(nx) : null;
+    var tl = nx ? Flow.resumesLesson({ go: 'part', unit: nx.id, part: k }, waitingLesson()) : false; /* fix round 2: as the Continue card */
     var steps = [
-      { z: 'learn', n: 1, h: 'Learn', done: !!d.course, t: nx ? nx.title : 'Course complete', s: nx ? PART_NAME[k] + ': ' + partDesc(nx, k) : 'Keep sharp with puzzles and games.', b: nx ? 'Start lesson' : 'Open course', act: nx ? 'data-part="' + k + '" data-u="' + nx.id + '"' : 'data-zgo="path"' },
+      { z: 'learn', n: 1, h: 'Learn', done: !!d.course, t: nx ? nx.title : 'Course complete', s: nx ? PART_NAME[k] + ': ' + partDesc(nx, k) : 'Keep sharp with puzzles and games.', b: tl ? Flow.COPY.resumeLesson : nx ? 'Start lesson' : 'Open course', act: tl ? RESUME_LESSON : nx ? 'data-part="' + k + '" data-u="' + nx.id + '"' : 'data-zgo="path"' },
       { z: 'train', n: 2, h: 'Train', done: d.puz >= 10, t: due ? 'Review ' + due + ' missed puzzle' + (due === 1 ? '' : 's') : pl ? '10 puzzles' : '10 rated puzzles', s: Math.min(d.puz, 10) + ' of 10 today.' + (pl ? '' : ' Puzzle rating ' + Math.round(prof.rating) + '.'), b: 'Start training', act: due ? 'data-train="review"' : 'data-train="rated"' },
       { z: 'play', n: 3, h: 'Play', done: d.games >= 1, t: 'One full game', s: 'Use what you learned against ' + (pl ? partnerName() + '.' : OPP[recLevel()].name + ' (~' + OPP[recLevel()].elo + ').'), b: G.history().length && !G.game_over() ? Flow.COPY.back : 'Play a game', act: G.history().length && !G.game_over() ? 'data-act="close"' : 'data-act="recgame"' }
     ].filter(function (x) { return x.z !== 'train' || tabOpen('train'); }); /* a Beginner's Train tab is still locked */
@@ -2120,7 +2139,7 @@
   }
   function closeSettings(noFocus) {
     var sh = $('settingsSheet'); if (!sh || sh.hidden) return;
-    sh.hidden = true; document.documentElement.classList.remove('sheet-open'); adSync();
+    sh.hidden = true; document.documentElement.classList.remove('sheet-open'); unask(); adSync();
     var back = setOpener && setOpener.isConnected && setOpener.offsetParent !== null ? setOpener : $('settingsBtn');
     if (!noFocus && back) back.focus(); setOpener = null;
     if (!noFocus) focusOffer();
@@ -2440,6 +2459,7 @@
   function switchTab(name) {
     if (!tabOpen(name) || !$('panel-' + name)) name = 'coach'; /* S2a: a Beginner's Train and Progress stay out of reach until unlocked */
     if (st.tab !== name && visits[name] != null) visits[name]++; /* F-D12: a new visit to Home or Progress picks a new tip */
+    if (name !== 'play') unask();
     st.tab = name; syncHomeMode(); fixScreen();
     ['coach', 'path', 'play', 'train', 'progress'].forEach(function (t) { $('tab-' + t).setAttribute('aria-selected', t === name ? 'true' : 'false'); $('panel-' + t).hidden = t !== name; });
     if (name === 'progress') renderProgress();

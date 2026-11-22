@@ -21,6 +21,7 @@ Builds on: `flow-rework.product.md` (F-D1 to F-D33), `beginner-flow.product.md` 
 | G2a | Phone layout: tab pages without the board, the board screen with the Close bar, tabs back on end cards, Play as a start page, Resume game on Play and every Home, start on Home, the tip and banner rule | L. Design: `board-screens.tech.md` |
 | G2b | One thing waits per tab; lessons, sets and drills saved on the device so Resume survives a restart | M |
 | G2c | The phone's back button acts as Close (`@capacitor/app`) | S, phone test |
+| G2d | Sideways phone: board left, controls right. Classic flat board as the first-time default. The app is named "Chess Coach" | S, phone test |
 
 ## Decisions
 | # | Decision | Source |
@@ -56,6 +57,9 @@ Builds on: `flow-rework.product.md` (F-D1 to F-D33), `beginner-flow.product.md` 
 | G-D29 | "Back to my game" is renamed "Resume game" everywhere. When the Continue card's own button is already the game, Home shows no second Resume game card | Suresh, 2026-11-21; second sentence delegated to Claude |
 | G-D30 | Resume card lines: "Lesson · step 2 of 5", "Puzzle 3 of 10", "Endgame drill". Close bar for a game: "Your game" with the move line | Suresh, 2026-11-21 |
 | G-D31 | On an end card the tip and banner show only if the board on screen is not a game in progress. A move played under an end card ends the end card at once. A drill closes to the tab it was started from | Delegated to Claude (review, 2026-11-22; follows G-D11) |
+| G-D32 | Phone held sideways on the board screen (up to 860px wide, under 500px high): the board sits on the left and fills the height under the Close bar. The opponent line, the buttons, Rani's card and everything else sit in a column on its right, which scrolls on its own. Upright phones and wide screens do not change | Suresh, 2026-11-22 (phone test of 1.0.45: the board was very small) |
+| G-D33 | A player who has never chosen pieces or a view starts with the classic pieces on the flat (2D) board. A player who has chosen keeps the choice. The themed sets and the 3D view stay in Settings | Suresh, 2026-11-22 |
+| G-D34 | The app's name on screen is "Chess Coach" (the header and the page title), not "Suresh's Chess Coach". Saved data is not touched | Suresh, 2026-11-22 |
 
 ## New wording (all of it)
 - Button, top left of the activity screen: "Close" (spoken label; the button shows an X)

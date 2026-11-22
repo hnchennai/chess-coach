@@ -2,8 +2,9 @@
 // G-D26; scenarios 1 to 6, 8, 13; acceptance criteria 1 to 7. Design: docs/specs/board-screens.tech.md, section 9).
 // Run: G2_VP=412 node tests/e2e/g2.spec.js   (serves www/ itself; needs Playwright with Chromium). One viewport per process.
 // G2_VP: 360 | 412 | 1280. G2_SHOTS=<dir> saves screenshots. G2_ONLY=<regex> runs matching cases.
-// Not in this slice, so not here: one thing waiting per tab and saving a lesson or set on the device (G2b), the phone's back
-// button (G2c).
+// One thing waiting per tab and saving a lesson or set on the device (G2b) is in g2b.spec.js, which is built on the helpers
+// here (exported at the bottom). Three cases here were moved to G2b's rule (G-D20 replaces D50 on phones): "G-D5", "Fix 4"
+// and "Fix 6". Not in this slice, so not here: the phone's back button (G2c).
 const { chromium } = require('playwright');
 const http = require('http');
 const fs = require('fs');
@@ -46,8 +47,9 @@ const GAME12 = game(SANS22);
 const MATE1 = game(['e4', 'e5', 'Bc4', 'Nc6', 'Qh5', 'Nf6']);
 const PAST = (o) => Object.assign({ id: 'gp', d: NOW - DAY, r: 'W', user: 'b', level: 3, acc: 80, counts: {}, tags: {}, sans: ['f3', 'e5', 'g4', 'Qh4#'], ann: {} }, o);
 
-function seedFn([pk, p, gk, g, tk, tab, sk, set, k3, v3d]) {
+function seedFn([pk, p, gk, g, tk, tab, sk, set, k3, v3d, more]) {
   if (sessionStorage.getItem('seeded')) return;
+  Object.keys(more || {}).forEach((k) => localStorage.setItem(k, more[k])); // o.ls: other keys, as raw strings (g2b.spec.js)
   if (p) localStorage.setItem(pk, JSON.stringify(p));
   if (g) localStorage.setItem(gk, JSON.stringify(g));
   if (tab) localStorage.setItem(tk, JSON.stringify(tab));
@@ -81,12 +83,12 @@ function fakeAds(cfg) {
   A.release = () => { const p = A.pending; A.pending = null; if (p) p(); };
   window.Capacitor = { isNativePlatform: () => true, getPlatform: () => 'android', Plugins: { AdMob: P } };
 }
-// o: { game, tab, set, v3d, ads (true: the fake ads plugin), size (another viewport) }
+// o: { game, tab, set, v3d, ads (true: the fake ads plugin), size (another viewport), ls (other local storage keys, raw strings) }
 async function newPage(vp, p, o) {
   o = o || {};
   const ctx = await browser.newContext({ viewport: o.size || vp, deviceScaleFactor: 1 });
   await ctx.route(/fonts\.(googleapis|gstatic)\.com/, (r) => r.fulfill({ status: 200, contentType: 'text/css', body: '' }));
-  await ctx.addInitScript(seedFn, [PKEY, p, GKEY, o.game || null, TKEY, o.tab || null, SKEY, o.set || null, K3D, !!o.v3d]);
+  await ctx.addInitScript(seedFn, [PKEY, p, GKEY, o.game || null, TKEY, o.tab || null, SKEY, o.set || null, K3D, !!o.v3d, o.ls || null]);
   if (o.ads) await ctx.addInitScript(fakeAds, o.ads === true ? {} : o.ads);
   const page = await ctx.newPage();
   if (process.env.G2_TIMEOUT) { page.setDefaultTimeout(+process.env.G2_TIMEOUT); page.setDefaultNavigationTimeout(60000); }
@@ -475,7 +477,16 @@ const cases = [
     await solvePuzzle(page);
     assert.equal(await page.evaluate(() => window.__coach.st.pz.done), true, 'the puzzle went on and could be finished');
     assert.deepEqual(await page.evaluate(() => { const s = window.__coach.st.ses; return [s.i, s.right]; }), [1, 2]);
-    // until G2b: opening the game still ends the open set, as today (D50)
+    // G2b (G-D20): opening the game does not end the set: it waits on Train with its place and score, and is dealt again
+    await closeX(page); await goTab(page, 'play');
+    assert.equal(await resume(page, 'resumePlay'), null, 'no game was started, so no game card');
+    await page.locator('#newBtn').click();
+    L = await look(page);
+    assert.deepEqual([L.mode, L.scr, L.tab], ['play', 'act', 'play']);
+    await closeX(page); await goTab(page, 'train');
+    assert.deepEqual([(await resume(page, 'resumeTrain')).title, (await resume(page, 'resumeTrain')).line], [WORDS.puzzles, 'Puzzle 2 of 10'], 'the set still waits');
+    await page.locator('#resumeTrain .rs-go').click();
+    assert.deepEqual(await page.evaluate(() => { const s = window.__coach.st.ses; return [s.i, s.right, window.__coach.st.pz.p.id]; }), [1, 2, pid], 'the same puzzle, the same score');
     return page;
   }],
   // ---------- G-D5, G-D26: Resume lesson, Resume drill ----------
@@ -501,14 +512,18 @@ const cases = [
     L = await look(page);
     assert.deepEqual([L.board, L.scr, L.mode], [true, 'act', 'lesson']);
     assert.equal(await page.evaluate(() => window.__coach.st.ls.i), 1, 'criterion 3: the same step');
-    // until G2b, opening the game ends the open lesson, exactly as "Resume game" does today (D50)
+    // G2b (G-D20 replaces D50 on phones): opening the game does not end the lesson; it waits on Learn at its step
     await closeX(page); await goTab(page, 'play');
     await page.locator('#resumePlay .rs-go').click();
     L = await look(page);
     assert.deepEqual([L.mode, L.scr, L.tab], ['play', 'act', 'play']);
     assert.deepEqual(await hist(page), SANS22);
     await closeX(page); await goTab(page, 'path');
-    assert.equal(await resume(page, 'resumePath'), null, 'the lesson ended (G2b will keep it)');
+    R = await resume(page, 'resumePath');
+    assert.deepEqual([R.title, R.button], [WORDS.lesson, WORDS.lesson], 'the lesson still waits'); assert.match(R.line, /^Lesson · step 2 of \d+$/);
+    await page.locator('#resumePath .rs-go').click();
+    assert.deepEqual(await page.evaluate(() => [window.__coach.st.mode, window.__coach.st.ls.i]), ['lesson', 1], 'and comes back at its step');
+    await closeX(page);
     // a drill from Train's list (fix round 1: it belongs to Train; the Fix 6 case has the rest)
     await goTab(page, 'train');
     await page.locator('#drillList [data-drill]').first().click();
@@ -977,7 +992,7 @@ const cases = [
     assert.equal((await hist(page))[0], 'e4'); assert.ok(!(await hist(page)).includes('a6'));
     return page;
   }],
-  ['Fix 4: a waiting lesson survives browsing (a unit page, All levels, Train’s lists); only starting another activity ends it', async (vp) => {
+  ['Fix 4: a waiting lesson survives browsing (a unit page, All levels, Train’s lists); only starting another lesson ends it', async (vp) => {
     const page = await newPage(vp, club(), {});
     if (!PH(vp)) return page;
     await page.evaluate(() => window.__coach.startPart('kq', 'learn'));
@@ -997,7 +1012,7 @@ const cases = [
     assert.equal((await look(page)).scr, 'act'); await waiting('resumed');
     await closeX(page);
     await page.locator('#levels [data-unit="kr"]').click(); await page.locator('#unitView [data-part="learn"]').click();
-    assert.equal(await page.evaluate(() => window.__coach.st.ls.unit.id + window.__coach.st.ls.i), 'kr0', 'starting another lesson ends the waiting one (until G2b)');
+    assert.equal(await page.evaluate(() => window.__coach.st.ls.unit.id + window.__coach.st.ls.i), 'kr0', 'starting another lesson replaces the one waiting on Learn (G-D20: the newest wins on its own tab)');
     return page;
   }],
   ['Fix 5: the old "Back to my game" reads "Resume game" (Continue card, Today, Rani’s question); no separate Resume card when Continue is the game', async (vp) => {
@@ -1062,7 +1077,11 @@ const cases = [
     L = await look(page); assert.deepEqual([L.scr, L.tab, L.mode], ['act', 'path', 'drill']);
     await closeX(page);
     assert.equal((await look(page)).tab, 'path'); assert.equal((await resume(page, 'resumePath')).title, WORDS.drill);
-    await goTab(page, 'train'); assert.equal(await resume(page, 'resumeTrain'), null);
+    // G2b (G-D20): Train's drill was not ended by the one started for Learn: one waits on each tab
+    await goTab(page, 'train'); assert.equal((await resume(page, 'resumeTrain')).title, WORDS.drill, 'Train’s drill still waits');
+    await page.locator('#resumeTrain .rs-go').click();
+    L = await look(page); assert.deepEqual([L.scr, L.tab, L.mode], ['act', 'train', 'drill']);
+    await closeX(page); await goTab(page, 'path'); assert.equal((await resume(page, 'resumePath')).title, WORDS.drill, 'and Learn’s too');
     return page;
   }],
   ['Fix 7: Home’s Continue button for a lesson that is waiting reads "Resume lesson" and resumes it at its step (Beginner and Improver)', async (vp) => {
@@ -1294,11 +1313,13 @@ function serve() {
   return new Promise((r) => srv.listen(PORT, '127.0.0.1', () => r(srv)));
 }
 
-(async () => {
+// The runner, shared with g2b.spec.js (which is built on the helpers above). list: [name, fn(vp)] cases.
+async function run(list, vps, only) {
   const srv = await serve();
   browser = await chromium.launch();
   try {
-    for (const vp of VIEWPORTS) for (const [name, fn] of cases) {
+    for (const vp of vps) for (const [name, fn] of list) {
+      const ONLY = only;
       if (ONLY && !ONLY.test(name)) continue;
       const label = vp.width + 'x' + vp.height + ' ' + name;
       let page;
@@ -1317,4 +1338,7 @@ function serve() {
   console.log(results.join('\n'));
   console.log('\n' + (results.length - failures) + ' passed, ' + failures + ' failed');
   process.exit(failures ? 1 : 0);
-})();
+}
+if (require.main === module) run(cases, VIEWPORTS, ONLY);
+else module.exports = { run, newPage, shot, st, hist, savedGame, idle, look, bar, resume, visibleIds, text, goTab, closeX, move, solvePuzzle, finishLesson, endCard, slotOn, adShown,
+  prof, improver, club, dayOne, game, done, played, PH, WORDS, GAME12, SANS22, MATE1, PAST, NOW, DAY, PKEY, GKEY, TKEY };

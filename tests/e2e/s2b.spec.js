@@ -709,7 +709,7 @@ const cases = [
     assert.equal(await page.locator('#raniNote').isHidden(), true);
     return page;
   }],
-  ['S2b-4b / D50: Resume game ends an open puzzle set; the puzzles already answered are kept', async (vp) => {
+  ['S2b-4b / D50: Resume game ends an open puzzle set (phones, G-D20: it waits on Train instead); the puzzles already answered are kept', async (vp) => {
     const page = await seeded(vp, prof({ course: done('rules', 'special', 'board') }), { game: GAME_OPEN });
     const hist = await page.evaluate(() => window.__coach.hist());
     await page.evaluate(() => window.__coach.trainStart('rated'));
@@ -718,7 +718,7 @@ const cases = [
     await solvePuzzle(page);
     assert.equal((await getProf(page)).puz[id].n, 1, 'the answer is recorded');
     await goTab(page, 'coach');
-    if (col1(vp)) { // G-D21: the Resume game card does what the second button did. Until slice G2b it still ends the open set (D50).
+    if (col1(vp)) { // G-D21: the Resume game card does what the second button did. G2b: it no longer ends the open set (below).
       assert.equal((await block(page)).second, null);
       await page.locator('#resumeBHome .rs-go').click();
     } else {
@@ -726,7 +726,10 @@ const cases = [
       await page.locator('#bhome .bh-alt').click();
     }
     assert.equal(await st(page, 'tab'), 'play'); assert.equal(await st(page, 'mode'), 'play');
-    assert.equal(await st(page, 'ses'), null, 'the puzzle set ended');
+    assert.equal(await st(page, 'ses'), null, 'the puzzle set left the board');
+    const waits = await page.evaluate(() => { const r = JSON.parse(localStorage.getItem('suresh-chess-coach.resume.v1')); return r && r.train ? [r.train.kind, r.train.i, r.train.right + r.train.wrong, r.train.items[0]] : null; });
+    if (col1(vp)) assert.deepEqual(waits, ['puzzles', 0, 1, id], 'G-D20 (slice G2b) replaces D50 on phones: the set waits on Train with its place and score');
+    else assert.equal(waits, null, 'wide: D50, the puzzle set ended');
     assert.deepEqual(await page.evaluate(() => window.__coach.hist()), hist, 'the old game is on the board');
     assert.equal((await getProf(page)).puz[id].n, 1, 'answered puzzle kept');
     assert.equal(await page.evaluate(([k, i]) => JSON.parse(localStorage.getItem(k)).puz[i].n, [PKEY, id]), 1, 'and saved');

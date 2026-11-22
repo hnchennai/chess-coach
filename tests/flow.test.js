@@ -368,3 +368,155 @@ test('G-D33: a saved choice is kept: the set picked on this device, else the one
   assert.deepEqual(F.firstLook({ pieces: 'classic', theme: 'ramayana', v3d: null }, has), { theme: 'classic', v3d: false }, 'classic, chosen, stays classic');
   assert.deepEqual(F.firstLook({ pieces: 'gone', theme: 'heroes', v3d: true }, has), { theme: 'heroes', v3d: true });
 });
+
+/* ---------- G2b: one thing waits per tab, saved on the device (G-D19, G-D20) ---------- */
+// The facts the app hands over: a small course, a small puzzle bank, two opening lines.
+const UNITS_F = {
+  board: { title: 'The board', steps: 4, practice: 'squares', apply: null },
+  values: { title: 'What pieces are worth', steps: 5, practice: 'puzzles', apply: null },
+  blunder: { title: 'The blunder check', steps: 5, practice: 'safety', apply: null },
+  kq: { title: 'King and queen mate', steps: 5, practice: null, apply: 'drill' },
+  rep: { title: 'Your repertoire', steps: 3, practice: null, apply: 'book' },
+  moves: { title: 'How pieces move', steps: 6, practice: 'reach', apply: null }
+};
+const facts = (o) => Object.assign({
+  unit: (id) => UNITS_F[id] || null, puzzle: (id) => /^m\d+$/.test(id), quiz: (id) => /^m[0-4]$/.test(id), book: (id) => id === 'italian' || id === 'london',
+  fen: (s) => typeof s === 'string' && /^\S+ [wb] /.test(s), trainOpen: true
+}, o);
+const LESSON = { k: 'lesson', unit: 'kq', i: 1 };
+const setE = (o) => Object.assign({ k: 'set', kind: 'puzzles', title: 'Rated puzzles', unit: null, part: null, count: 10, pass: null, rated: true, theme: null, review: false, i: 2, right: 1, wrong: 1, counted: false, items: ['m1', 'm2', 'm3'] }, o);
+const DRILL = setE({ kind: 'drill', title: 'King and queen mate', unit: 'kq', part: 'apply', count: 1, rated: false, i: 0, right: 0, wrong: 0, items: [], drill: { fen: '8/8/8/4k3/8/8/8/KQ6 b - - 1 1', moves: 1 } });
+
+test('G-D20: what happens to the lesson or set on the board when something else opens', () => {
+  // phones: another tab's activity, or the game, parks it; its Resume card stays
+  assert.equal(F.onOpen({ wide: false, live: 'learn', over: false, to: 'play' }), 'park', 'opening the game over a lesson');
+  assert.equal(F.onOpen({ wide: false, live: 'train', over: false, to: 'play' }), 'park', 'opening the game over a set');
+  assert.equal(F.onOpen({ wide: false, live: 'learn', over: false, to: 'train' }), 'park');
+  assert.equal(F.onOpen({ wide: false, live: 'train', over: false, to: 'learn' }), 'park');
+  // a new activity on the same tab replaces it, with no question
+  assert.equal(F.onOpen({ wide: false, live: 'learn', over: false, to: 'learn' }), 'end');
+  assert.equal(F.onOpen({ wide: false, live: 'train', over: false, to: 'train' }), 'end');
+  // what is finished is over, never parked
+  assert.equal(F.onOpen({ wide: false, live: 'train', over: true, to: 'play' }), 'end');
+  // nothing on the board
+  assert.equal(F.onOpen({ wide: false, live: null, over: false, to: 'play' }), 'none');
+  assert.equal(F.onOpen(null), 'none');
+  // wide screens keep D50: whatever opens ends it
+  for (const to of ['play', 'learn', 'train']) for (const live of ['learn', 'train']) assert.equal(F.onOpen({ wide: true, live, over: false, to }), 'end', 'wide ' + live + ' to ' + to);
+});
+
+test('G-D19: what is saved for a lesson, a set and a drill (and nothing for what is over)', () => {
+  assert.deepEqual(F.entryOf({ lesson: { unit: 'kq', i: 1 } }), LESSON);
+  assert.equal(F.entryOf({}), null); assert.equal(F.entryOf(null), null);
+  assert.equal(F.entryOf({ over: true, set: setE() }), null, 'a finished set is not saved');
+  const e = F.entryOf({ set: { kind: 'puzzles', title: 'Rated puzzles', count: 10, rated: true, i: 2, right: 1, wrong: 1, counted: true, items: ['m1', 'm2', 'm3'], extra: 'x' } });
+  assert.deepEqual(e, setE({ counted: true }));
+  assert.equal('extra' in e, false, 'only the known fields');
+  assert.deepEqual(F.entryOf({ set: DRILL }), DRILL);
+  assert.equal('drill' in F.entryOf({ set: setE() }), false);
+  // it is plain data: it survives the trip through storage unchanged
+  assert.deepEqual(JSON.parse(JSON.stringify(F.entryOf({ set: DRILL }))), DRILL);
+});
+
+test('G-D19: the saved key holds one entry per tab, and nothing at all when nothing waits', () => {
+  assert.equal(F.RESUME_KEY, 'suresh-chess-coach.resume.v1');
+  assert.equal(F.writeResume({ learn: null, train: null }), null);
+  assert.equal(F.writeResume(null), null);
+  assert.deepEqual(F.writeResume({ learn: LESSON, train: null }), { v: 1, learn: LESSON, train: null });
+  assert.deepEqual(F.writeResume({ learn: LESSON, train: setE() }), { v: 1, learn: LESSON, train: setE() });
+  const back = F.readResume(JSON.parse(JSON.stringify(F.writeResume({ learn: LESSON, train: DRILL }))), facts());
+  assert.deepEqual(back, { learn: LESSON, train: DRILL });
+});
+
+test('G-D19: a good saved entry is accepted, for every kind', () => {
+  const f = facts();
+  assert.equal(F.entryOk('learn', LESSON, f), true);
+  assert.equal(F.entryOk('train', setE(), f), true, 'rated puzzles');
+  assert.equal(F.entryOk('train', setE({ rated: false, theme: 'fork', title: 'Theme: Forks', count: 3 }), f), true, 'a themed set');
+  assert.equal(F.entryOk('train', setE({ rated: false, review: true, count: 3 }), f), true, 'missed puzzles');
+  assert.equal(F.entryOk('learn', setE({ rated: false, unit: 'values', part: 'practice', pass: 2, count: 3 }), f), true, 'a lesson’s practice puzzles');
+  assert.equal(F.entryOk('train', setE({ kind: 'safety', rated: false, count: 3, items: [['m1', 1], ['m2', 0], ['m3', 1]] }), f), true, 'Safe or blunder');
+  assert.equal(F.entryOk('learn', setE({ kind: 'safety', rated: false, unit: 'blunder', part: 'practice', pass: 2, count: 3, items: [['m1', 1], ['m2', 0], ['m3', 1]] }), f), true);
+  assert.equal(F.entryOk('learn', setE({ kind: 'squares', rated: false, unit: 'board', part: 'practice', count: 12, pass: 10, items: [] }), f), true);
+  assert.equal(F.entryOk('learn', setE({ kind: 'reach', rated: false, unit: 'moves', part: 'practice', count: 6, pass: 5, items: [] }), f), true);
+  assert.equal(F.entryOk('train', setE({ kind: 'book', rated: false, title: 'Opening drill', count: 1, i: 0, right: 0, wrong: 0, items: ['italian'] }), f), true);
+  assert.equal(F.entryOk('learn', setE({ kind: 'book', rated: false, unit: 'rep', part: 'apply', count: 2, pass: 2, i: 1, wrong: 0, items: ['italian', 'london'] }), f), true);
+  assert.equal(F.entryOk('learn', DRILL, f), true, 'a drill as the lesson’s task');
+  assert.equal(F.entryOk('train', DRILL, f), true, 'the same drill from Train’s list');
+});
+
+test('G-D19 fails safe: a corrupt, stale or unknown entry is dropped (no error, no card)', () => {
+  const f = facts(), bad = (zone, e, why) => assert.equal(F.entryOk(zone, e, f), false, why);
+  // not an entry at all
+  for (const x of [null, undefined, 0, 'lesson', [], {}, { k: 'game' }, { k: 'review' }, { k: 'placement' }]) bad('learn', x, JSON.stringify(x));
+  bad('play', LESSON, 'no such slot'); bad('train', LESSON, 'a lesson waits on Learn only');
+  // the course changed
+  bad('learn', { k: 'lesson', unit: 'gone', i: 0 }, 'the unit is gone');
+  bad('learn', { k: 'lesson', unit: 'kq', i: 5 }, 'the lesson has fewer steps now');
+  bad('learn', { k: 'lesson', unit: 'kq', i: -1 }); bad('learn', { k: 'lesson', unit: 'kq', i: 1.5 }); bad('learn', { k: 'lesson', unit: 'kq', i: '1' }); bad('learn', { k: 'lesson', unit: 7, i: 1 });
+  bad('learn', setE({ rated: false, unit: 'kq', part: 'practice', count: 3 }), 'the lesson has no practice part any more');
+  bad('learn', setE({ rated: false, unit: 'board', part: 'practice', count: 3 }), 'its practice is another kind now');
+  bad('learn', setE({ kind: 'drill', unit: 'values', part: 'apply', count: 1, i: 0, right: 0, wrong: 0, rated: false, items: [], drill: DRILL.drill }), 'its task is not a drill');
+  // the puzzle bank changed
+  bad('train', setE({ items: ['m1', 'zz9', 'm3'] }), 'a puzzle id is gone');
+  bad('train', setE({ kind: 'safety', rated: false, count: 3, items: [['m1', 1], ['m9', 0], ['m3', 1]] }), 'not a Safe or blunder puzzle any more');
+  bad('train', setE({ kind: 'book', rated: false, count: 1, i: 0, right: 0, wrong: 0, items: ['gone'] }), 'the opening line is gone');
+  // broken numbers and shapes
+  bad('train', setE({ i: 10 }), 'past the end'); bad('train', setE({ i: -1 })); bad('train', setE({ count: 0 })); bad('train', setE({ count: 1000 }));
+  bad('train', setE({ right: 9 }), 'more results than puzzles played'); bad('train', setE({ wrong: -1 })); bad('train', setE({ right: 'a' }));
+  bad('train', setE({ items: ['m1'] }), 'the current puzzle is missing'); bad('train', setE({ items: 'm1,m2,m3' })); bad('train', setE({ items: [1, 2, 3] }));
+  bad('train', setE({ rated: false }), 'a fixed set must carry all its puzzles');
+  bad('train', setE({ title: '' })); bad('train', setE({ title: 5 })); bad('train', setE({ kind: 'quizshow' })); bad('train', setE({ counted: 'yes' })); bad('train', setE({ pass: 99 }));
+  bad('train', setE({ kind: 'safety', rated: false, count: 3, items: [['m1', 2], ['m2', 0], ['m3', 1]] }));
+  bad('train', setE({ kind: 'squares', rated: false, items: [] }), 'the board drill is a lesson’s practice, never Train’s');
+  bad('learn', setE(), 'Learn only holds a lesson’s own parts');
+  bad('train', setE({ rated: false, unit: 'values', part: 'practice', pass: 2, count: 3 }), 'a lesson’s practice waits on Learn');
+  bad('learn', Object.assign({}, DRILL, { drill: null }), 'a drill needs its position');
+  bad('learn', Object.assign({}, DRILL, { drill: { fen: 'nonsense', moves: 1 } }));
+  bad('learn', Object.assign({}, DRILL, { drill: { fen: DRILL.drill.fen, moves: -3 } }));
+  // a function that throws inside the facts must not escape either
+  assert.equal(F.entryOk('learn', LESSON, facts({ unit: () => { throw new Error('boom'); } })), false);
+  assert.equal(F.entryOk('learn', LESSON, null), false);
+});
+
+test('G-D19: Train’s entry is dropped while the player cannot open Train (another level’s content)', () => {
+  assert.equal(F.entryOk('train', setE(), facts({ trainOpen: false })), false);
+  assert.equal(F.entryOk('train', DRILL, facts({ trainOpen: false })), false);
+  assert.equal(F.entryOk('learn', LESSON, facts({ trainOpen: false })), true, 'Learn is always open');
+  assert.equal(F.entryOk('train', setE(), facts({ trainOpen: undefined })), false, 'unknown fails closed');
+});
+
+test('G-D19: reading the saved key: wrong version, junk, or one bad entry never breaks the other', () => {
+  const f = facts(), none = { learn: null, train: null };
+  for (const raw of [null, undefined, 'x', 7, [], {}, { v: 2, learn: LESSON }, { v: '1', learn: LESSON }, { learn: LESSON }]) assert.deepEqual(F.readResume(raw, f), none, JSON.stringify(raw));
+  assert.deepEqual(F.readResume({ v: 1, learn: LESSON, train: setE() }, f), { learn: LESSON, train: setE() });
+  assert.deepEqual(F.readResume({ v: 1, learn: { k: 'lesson', unit: 'gone', i: 0 }, train: setE() }, f), { learn: null, train: setE() }, 'the stale lesson is dropped, the set is kept');
+  assert.deepEqual(F.readResume({ v: 1, learn: LESSON, train: setE({ items: ['zz'] }) }, f), { learn: LESSON, train: null });
+  assert.deepEqual(F.readResume({ v: 1, learn: LESSON, train: setE() }, facts({ trainOpen: false })), { learn: LESSON, train: null });
+  // unknown fields never come back into memory
+  const got = F.readResume({ v: 1, learn: Object.assign({ evil: '<b>' }, LESSON), train: null, more: 1 }, f);
+  assert.deepEqual(got, { learn: LESSON, train: null });
+  assert.doesNotThrow(() => F.readResume({ v: 1, learn: LESSON }, null));
+  assert.deepEqual(F.readResume({ v: 1, learn: LESSON }, null), none);
+});
+
+test('G-D30: the Resume card reads the same from a saved entry as from the live one', () => {
+  const f = facts();
+  assert.equal(F.lessonLine(1, 5), 'Lesson · step 2 of 5');
+  assert.equal(F.setLine({ kind: 'puzzles', i: 2, count: 10 }), 'Puzzle 3 of 10');
+  assert.equal(F.setLine({ kind: 'puzzles', i: 9, count: 10, finished: true }), 'Puzzle 10 of 10');
+  assert.equal(F.setLine({ kind: 'safety', i: 0, count: 10 }), '1 of 10');
+  assert.equal(F.setLine({ kind: 'drill', i: 0, count: 1 }), 'Endgame drill');
+  assert.deepEqual(F.resumeCard(LESSON, f), { kind: 'lesson', kick: 'King and queen mate', line: 'Lesson · step 2 of 5' });
+  assert.deepEqual(F.resumeCard(setE(), f), { kind: 'puzzles', kick: 'Rated puzzles', line: 'Puzzle 3 of 10' });
+  assert.deepEqual(F.resumeCard(DRILL, f), { kind: 'drill', kick: 'King and queen mate', line: 'Endgame drill' });
+  assert.equal(F.resumeTitle(F.resumeCard(LESSON, f).kind), 'Resume lesson');
+  assert.equal(F.resumeTitle(F.resumeCard(setE(), f).kind), 'Resume puzzles');
+  assert.equal(F.resumeTitle(F.resumeCard(DRILL, f).kind), 'Resume drill');
+  assert.equal(F.resumeCard(null, f), null);
+  assert.equal(F.resumeCard({ k: 'lesson', unit: 'gone', i: 0 }, f), null, 'no card for a lesson that is gone');
+  // Home's Continue card and Today's Learn step: the waiting lesson, live or saved
+  assert.deepEqual(F.waitingLesson(LESSON), { unit: 'kq', part: 'learn' });
+  assert.equal(F.waitingLesson(setE()), null); assert.equal(F.waitingLesson(null), null);
+  assert.equal(F.resumesLesson({ go: 'part', unit: 'kq', part: 'learn' }, F.waitingLesson(LESSON)), true);
+});

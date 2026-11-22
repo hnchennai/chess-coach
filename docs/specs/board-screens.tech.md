@@ -70,6 +70,7 @@ Grounded in the code at `main` b752057 (G1 merged). Line numbers are `src/js/app
 | Window turns wide, or back | unchanged | unchanged | The resize handler (:790) already re-renders; `syncScreen()` joins it |
 
 ### Parking (G2b, scenario 14)
+As built: see section 15. It departs from the draft below in one point: a parked entry is plain data (the same entry that is saved), not the live fields.
 - `st.park = { learn: null, train: null }`. A parked entry is the fields `clearSession()` wipes plus the shared ones the level check already saves in `st.plPrev` (:1898): `mode, ses, ls, pz, qz, sq, rc, dr, bk, flipped, arrows, hls, flash, hintLvl`.
 - Park when the game or another activity is opened over a live lesson or set. Restore on Resume.
 - Risk and rule: about eight timers and engine callbacks in the set code check identity (`st.pz !== pz`, `st.ses === s`, `st.dr === D`, `st.bk !== B`: :1385, :1512, :1543, :1548, :1568, :1602) and give up when the reference is gone. A set parked in the middle of a wait would come back frozen. So Resume re-deals the current item: lesson shows step `i` again; puzzle, quiz, square, reach and book items restart item `i` with the score and the "already counted" flag kept; an endgame drill keeps its position and asks the engine again if it is the engine's turn (as `resumeGame()` :2317 does for the game).
@@ -134,7 +135,7 @@ Grounded in the code at `main` b752057 (G1 merged). Line numbers are `src/js/app
   - "Resume game": always, across restarts (scenarios 4, 5, 13).
   - "Resume lesson" and "Resume puzzles": until the app is closed or Android clears it from memory. After that the card is simply not there; the lesson starts at step 1 again and a new set starts at 1 of 10. No puzzle result and no rating change is ever lost. A stale card can never show, because the card is drawn from memory.
   - The product spec already accepts this fallback in its assumption register. It must be said plainly, because Android often clears a background app within minutes.
-- Cost of making them survive (optional, see questions): one new local key, `suresh-chess-coach.resume.v1`, outside `prof`. So no profile shape change and no `migrate()` step; it is local to the device, like the tab key. Lesson: `{ unit, i }`, about 15 lines. Set: `{ kind, title, unit, part, i, right, wrong, item ids, counted }`, rebuilt through the same "re-deal item i" path as parking; `opts.pick` is a function (:2235) and is rebuilt from the kind. About 80 lines plus tests. Complexity 2 on top of G2b. Not synced to the cloud.
+- Built in G2b (G-D19), see section 15 for the exact shape. The draft estimate was: one new local key, `suresh-chess-coach.resume.v1`, outside `prof`. So no profile shape change and no `migrate()` step; it is local to the device, like the tab key. Lesson: `{ unit, i }`, about 15 lines. Set: `{ kind, title, unit, part, i, right, wrong, item ids, counted }`, rebuilt through the same "re-deal item i" path as parking; `opts.pick` is a function (:2235) and is rebuilt from the kind. About 80 lines plus tests. Complexity 2 on top of G2b. Not synced to the cloud.
 - If it were put in `prof` instead: `Profile.V` 5 to 6 (`src/js/profile.js`:7), a `migrate()` default, a `merge()` rule (newest wins), fixtures in `tests/profile.test.js`. Not recommended: it is device state, not progress.
 
 ## 6. App start (question 5)
@@ -311,3 +312,46 @@ Counts are estimates from reading and pattern matching. The suites were not run.
 
 ### The name (G-D34)
 - `src/body.html` h1 and `src/head.html` title read "Chess Coach". Storage keys, the app id and code comments are unchanged.
+
+## 15. Slice G2b: one thing waits per tab, saved on the device (G-D19, G-D20, G-D26)
+
+### Decisions taken (orchestrator, 2026-11-22)
+- One waiting item per tab: the game on Play, a lesson or a drill started from Learn on Learn, a set or drill on Train. The newest wins on its own tab, with no question.
+- Saved items never expire by time. They go when finished, replaced, ended, or no longer valid.
+- Parking is for phones only. Wide screens keep D50: opening the game ends an open lesson or set.
+- The saved key is read and written at every width, because it costs nothing and shows nothing on a wide screen (no Resume cards there, Home's Continue card is unchanged). A phone turned upright again shows its cards.
+- A level change (Settings, the level check, a sign-in merge) drops a saved entry the player can no longer open. Today that is a set on Train while Train is locked for a Beginner.
+
+### Model
+- On the board, as before: at most one lesson, set or drill (`st.ls`, `st.ses`). Close (X) leaves it there (G2a).
+- New: `st.park = { learn, train }`. When the game, a review, or another tab's activity takes the board, the one on the board is parked: turned into one plain entry (`liveEntry()`), and the board is cleared. `stow(to)` is the one place; the rule is `Flow.onOpen` (park, end or none).
+- Resume of a parked entry (`restoreEntry`) deals the current item again: a lesson shows its step; a puzzle, question, square, piece or opening line starts that item again; an endgame drill keeps its position and asks the engine again when it is its move. Nothing is thawed.
+- A restart and a parked item use the same entry and the same restore path. At app start `loadResume()` fills `st.park` from the key.
+- Resume cards, Home's Continue card and Today's Learn step all read `waitOn(zone)`: the entry of what is on the board, else the parked one.
+
+### The saved key
+- `suresh-chess-coach.resume.v1`, local storage, outside `prof`: no profile shape change, no `migrate()`, never synced.
+- Shape: `{ v: 1, learn: entry | null, train: entry | null }`. The key is removed when both are null.
+- Lesson entry: `{ k: 'lesson', unit, i }`.
+- Set entry: `{ k: 'set', kind, title, unit, part, count, pass, rated, theme, review, i, right, wrong, counted, items }`, plus `drill: { fen, moves }` for an endgame drill.
+  - `kind`: `puzzles`, `safety`, `squares`, `reach`, `book`, `drill`.
+  - `items`: puzzle ids (dealt so far for a rated set, all of them for a fixed set), `[id, 0 | 1]` pairs for Safe or blunder, opening line ids, empty for the rest.
+  - `counted`: the current item's result is already in the score and the profile (`ses.cnt`), so an item dealt again never counts twice.
+- Written by `syncResume()` at the end of every `render()`, only when the text changed. Every step, item and result change is drawn through `render()` in the same step as the change, so a kill right after it finds it saved. Close renders too.
+- Cleared (entry null) when the lesson or set is finished, replaced on its tab, ended (D50 on wide, Train locking), or fails the check.
+- Fail safe: `Flow.readResume` and `Flow.entryOk` accept only version 1 and only entries whose unit, part kind, step, counts, puzzle ids, opening lines and drill position are all valid now. Anything else is dropped with no error and no card, and the key is rewritten clean. The check runs at start, on a level change and again at the moment of Resume.
+
+### Late replies (risk notes of sections 2 and 13)
+- `st.busy` is now a getter over two flags: `st.gb` (the game's move check and engine reply) and `st.ab` (the lesson, set or drill on the board). The game's chain writes `st.gb` only, and draws its arrow only when the game is on the board.
+- `clearSession()` raises `boardId` and clears `st.ab`. Late callbacks of a set check that their own object is still on the board (`st.pz !== P`, `st.dr !== D`, `st.bk !== B`) or the `boardId` they started with (Hint), and give up otherwise.
+- This applies at every width. It changes no rule on wide screens; it removes a race that was there (a puzzle that stayed locked until the game's engine replied, an engine arrow on a lesson's board).
+
+### Departures from the draft above
+- A parked entry is plain data, not the live fields plus `flipped, arrows, hls, flash, hintLvl`. Those are rebuilt by dealing the item again.
+- The entry also carries `count, pass, rated, theme, review` and, for a drill, its position, so "Go again" and the end card work after a restart.
+- The rules live in `flow.js` (`onOpen`, `entryOf`, `entryOk`, `readResume`, `writeResume`, `resumeCard`, `waitingLesson`) with unit tests; `g2b.spec.js` is its own suite built on `g2.spec.js`'s helpers.
+
+### Known limits
+- A flipped board in the game is not kept when a lesson or set takes the board (as before G2b).
+- The engine's reply to a closed game is saved once it is explained (as before); after a kill in between, the engine thinks again.
+- Not verified on a phone: a real system kill of the WebView. The browser cases reload the page, which exercises the same read path.

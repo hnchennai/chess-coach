@@ -34,10 +34,18 @@
   var st = {
     theme: 'classic', mode: 'play', tab: 'path', user: 'w', level: 2, flipped: false,
     ann: {}, notes: {}, tags: {}, sel: null, arrows: [], hls: [], hintLvl: 0,
-    busy: false, evalW: 0, fb: null, opp: null, think: null, over: false,
+    gb: false, ab: false, evalW: 0, fb: null, opp: null, think: null, over: false,
     recorded: false, t: 0, goal: null, rv: null, pz: null, ses: null, ls: null, dr: null, bk: null, sq: null, qz: null, unitOpen: null, confirmNew: false, nm: null,
-    scr: 'tabs', rvFrom: null /* G2a: 'tabs' (a tab page) or 'act' (the board screen); memory only, never stored. Wide screens ignore it. */
+    scr: 'tabs', rvFrom: null, /* G2a: 'tabs' (a tab page) or 'act' (the board screen); memory only, never stored. Wide screens ignore it. */
+    park: { learn: null, train: null } /* G2b: what waits on Learn and on Train while something else is on the board (Flow entries) */
   };
+  /* G2b: two things can be waiting for the engine at once: the game (st.gb: its move check and the engine's reply go on while
+     the game is closed) and the lesson, set or drill on the board (st.ab). st.busy is the one the board on screen cares about,
+     so a game's late reply never freezes a puzzle, and a puzzle's never freezes the game. */
+  Object.defineProperty(st, 'busy', { enumerable: true,
+    get: function () { return st.mode === 'play' ? st.gb : st.ab; },
+    set: function (v) { if (st.mode === 'play') st.gb = !!v; else st.ab = !!v; } });
+  var boardId = 0; /* goes up whenever the board changes hands (clearSession): a late reply for the old one finds a new number */
   var prof = Profile.blank();
   var $ = function (id) { return document.getElementById(id); };
   /* Beginner interface (S2a): no ratings, eval, notation or opponent picker, unless "Show everything" is on. */
@@ -459,6 +467,7 @@
     renderStrip(); renderName();
     if (st.v3d && window.Board3D) sync3d(g, last, targets, checkSq);
     renderArrows(); renderEval(); renderCaps(g); renderMode(); renderPlayPanel(); renderMoves(); renderEnd(); renderSession(); syncScreen(); renderSlots(); releaseOffer();
+    syncResume(); /* G2b (G-D19): every change of place is drawn through here, so it is saved in the same step */
     if (st.tab === 'coach') { if (plain()) renderBHome(); else renderCont(); } /* AC8: a game that starts or ends next to Home (desktop) shows at once */
     var u = viewUser(), pl = plain();
     $('oppLevel').textContent = pl ? '' : st.mode === 'play' ? OPP[st.level].name + ' · ' + (st.level === 8 ? 'max' : '~' + OPP[st.level].elo) : st.mode === 'review' && OPP[st.rv.level] ? OPP[st.rv.level].name : '';
@@ -802,8 +811,8 @@
   }
   /* The Close bar's two lines: the activity's name, and where the player is in it. Words the app already uses. */
   function turnLine() { var t = Flow.resumeLine(fullmove(G), G.turn() === st.user); return plain() ? t.replace(Flow.COPY.engineTurn, ', Rani\u2019s partner to move') : t; } /* D23: a Beginner never reads "engine" */
-  function setPlace(s) { return s.kind === 'drill' ? 'Endgame drill' : (s.kind === 'puzzles' ? 'Puzzle ' : '') + (s.finished ? s.count : Math.min(s.i + 1, s.count)) + ' of ' + s.count; }
-  function lessonPlace(L) { return 'Lesson \u00B7 step ' + (L.i + 1) + ' of ' + L.unit.lesson.length; }
+  function setPlace(s) { return Flow.setLine(s); }
+  function lessonPlace(L) { return Flow.lessonLine(L.i, L.unit.lesson.length); }
   function actWords() {
     var n = G.history().length, bar = $('modeText').textContent; /* the mode bar's own words (renderMode), so a phone loses nothing it said */
     if (st.mode === 'review' && st.rv) return [bar, $('navPos').textContent];
@@ -818,8 +827,8 @@
     if (b.textContent !== w[1]) b.textContent = w[1];
     var lab = w[0] + ', ' + w[1], t = $('actText'); if (t.getAttribute('aria-label') !== lab) t.setAttribute('aria-label', lab); /* what is read when the bar takes focus */
   }
-  /* G-D5, G-D6, G-D21: the Resume cards and Play's "Recent games", on a phone's tab pages only. Drawn from memory, so a card
-     can never be stale. Until G2b a lesson or set lives in memory only: after an app restart its card is simply not there. */
+  /* G-D5, G-D6, G-D21: the Resume cards and Play's "Recent games", on a phone's tab pages only. G2b: a lesson's or a set's
+     card is drawn from what waits on its tab (waitOn): the one on the board, or the one parked or read from the device. */
   function rsHtml(kind, kick, line, zone, main) {
     var t = Flow.resumeTitle(kind);
     return '<div class="bh-tt">' + (kick ? '<p class="bh-kick">' + esc(kick) + '</p>' : '') + '<h3 class="bh-title">' + esc(t) + '</h3><p class="rs-line">' + esc(line) + '</p></div>' +
@@ -833,16 +842,15 @@
   }
   function gameResume(main) { return rsHtml('game', '', turnLine(), 'play', main); }
   function renderResume() {
-    var page = phone() && st.scr !== 'act', game = page && gameOn(), z = zoneOf(), s = st.ses, other = '';
-    if (page && st.mode === 'lesson' && st.ls) other = rsHtml('lesson', st.ls.unit.title, lessonPlace(st.ls), 'learn', false);
-    else if (page && s && z !== 'play') other = rsHtml(s.kind, s.title, setPlace(s), z, false);
+    var page = phone() && st.scr !== 'act', game = page && gameOn(), f = page ? resumeFacts() : null;
+    function other(z) { var c = page ? Flow.resumeCard(waitOn(z), f) : null; return c ? rsHtml(c.kind, c.kick, c.line, z, false) : ''; }
     rsCard($('resumePlay'), game ? gameResume(true) : '');
     /* Play's start page has one main button: "Resume game" while a game waits, otherwise "Start new game". Wide: never (unchanged). */
     $('newBtn').classList.toggle('primary', page && !game);
     /* Beginner Home draws its own, under its Continue card. No card when the Continue card's own button is already the game. */
     rsCard($('resumeHome'), game && !plain() && nextAction(currentStage()).info.kind !== 'beat' ? gameResume(false) : '');
-    rsCard($('resumePath'), z === 'learn' ? other : '');
-    rsCard($('resumeTrain'), z === 'train' ? other : '');
+    rsCard($('resumePath'), other('learn'));
+    rsCard($('resumeTrain'), other('train'));
     var rc = $('recentPlay'), gs = prof.games, pl = plain();
     if (!page || !gs.length) { if (!rc.hidden) rc.hidden = true; }
     else {
@@ -851,18 +859,94 @@
       rc.hidden = false;
     }
   }
-  /* Resume: the board screen opens on what is waiting. The game: as "Resume game" (until G2b that ends a lesson or set
-     that is open, D50). A lesson or set: it never left memory, so only the screen opens. */
+  /* Resume: the board screen opens on what is waiting. The game: as "Resume game" (G2b: a lesson or set that is open is
+     parked, exitMode). A lesson or set that never left the board: only the screen opens. One that is parked or was read from
+     the device: what is on the board is parked in turn, and the entry is dealt again (restoreEntry). */
   function resumeAct(zone) {
     if (zone === 'play') { if (st.mode !== 'play') { exitMode(true); return; } openAct(); switchTab('play'); render(); return; }
-    if (st.mode === 'play' || ZTAB[zoneOf()] !== ZTAB[zone]) { render(); return; }
-    openAct(); switchTab(ZTAB[zone]); render();
+    if (zone !== 'learn' && zone !== 'train') return;
+    if (liveZone() === zone) { if (sesEnded()) { render(); return; } openAct(); switchTab(ZTAB[zone]); render(); return; }
+    var e = st.park[zone];
+    if (!e || !phone()) { render(); return; }
+    if (!Flow.entryOk(zone, e, resumeFacts())) { st.park[zone] = null; render(); return; } /* fail safe: checked again at the moment of use */
+    stow(zone); restoreEntry(zone, e);
   }
+  /* ---------- G2b: one thing waits per tab, saved on the device (G-D19, G-D20; the rules are in flow.js) ----------
+     On the board: at most one lesson, set or drill (st.ls / st.ses), as before. Parked: st.park.learn and st.park.train, one
+     plain entry each (Flow.entryOf). Local storage (Flow.RESUME_KEY) always holds what waits on the two tabs: the one on the
+     board or the parked one. Outside the profile: no shape change, no migrate(), never synced. */
+  /* The tab the lesson or set on the board belongs to (zoneOf without the mode, so it also holds under the level check). */
+  function liveZone() { var s = st.ses; return st.ls ? 'learn' : !s ? null : s.zone || (s.unit || s.kind === 'squares' || s.kind === 'reach' ? 'learn' : 'train'); }
+  /* The entry for what is on the board (null: nothing, or it is finished). */
+  function liveEntry() {
+    if (st.ls) return Flow.entryOf({ lesson: { unit: st.ls.unit.id, i: st.ls.i } });
+    var s = st.ses; if (!s) return null;
+    var o = s.opts || {}, k = s.kind;
+    var items = k === 'puzzles' ? s.items.filter(Boolean).map(function (p) { return p.id; }) : k === 'safety' ? s.items.map(function (it) { return [it.p.id, it.blunder ? 1 : 0]; }) : k === 'book' ? s.items.map(function (b) { return b.id; }) : [];
+    return Flow.entryOf({ over: sesEnded(), set: { kind: k, title: s.title, unit: s.unit, part: s.part, count: s.count, pass: s.pass, rated: s.rated, theme: o.theme, review: o.review, i: s.i, right: s.right, wrong: s.wrong, counted: s.cnt, items: items,
+      drill: st.dr ? { fen: st.dr.g.fen(), moves: st.dr.moves } : null } });
+  }
+  function waitOn(z) { return liveZone() === z ? liveEntry() : st.park[z]; }
+  /* What this app and this player can still open: the facts Flow.entryOk checks an entry against. */
+  function resumeFacts() {
+    var own = function (o, k) { return typeof k === 'string' && Object.prototype.hasOwnProperty.call(o, k) ? o[k] : null; };
+    return {
+      unit: function (id) {
+        var u = own(UNIT, id); if (!u) return null;
+        var p = u.practice, a = u.apply;
+        return { title: u.title, steps: u.lesson.length, practice: p ? (p.type === 'squares' || p.type === 'reach' || p.type === 'safety' ? p.type : 'puzzles') : null, apply: a && (a.type === 'drill' || a.type === 'book') ? a.type : null };
+      },
+      puzzle: function (id) { return !!own(PZ_BY, id); },
+      quiz: function (id) { var p = own(PZ_BY, id); return !!(p && p.pre && p.last && p.preBest); },
+      book: function (id) { return COURSE.BOOK.some(function (b) { return b.id === id; }); },
+      fen: function (f) { var g = new Chess(); return !!g.load(f) && !g.game_over(); },
+      trainOpen: tabOpen('train')
+    };
+  }
+  /* Something else takes the board (to: the tab it belongs to). Phones: the lesson or set on the board waits on its own tab,
+     unless it is finished or the new one is for the same tab (the newest wins, no question). Wide: nothing is kept (D50).
+     The caller clears the board next (clearSession). */
+  function stow(to) {
+    var z = liveZone();
+    if (Flow.onOpen({ wide: !phone(), live: z, over: sesEnded(), to: to }) === 'park') st.park[z] = liveEntry();
+    if (to === 'learn' || to === 'train') st.park[to] = null;
+  }
+  /* Resume from an entry: the current item is dealt again. A lesson shows its step; a puzzle, question, square, piece or
+     opening line starts that item again with the score kept (and its result, if it was already counted, not counted again);
+     an endgame drill keeps its position. Nothing is thawed: timers and engine replies of the old one found a new board. */
+  function restoreEntry(z, e) {
+    clearSession(); st.rv = null; st.flipped = false; st.sel = null; resetHints();
+    if (e.k === 'lesson') { st.mode = 'lesson'; st.ls = { unit: UNIT[e.unit], i: e.i, g: null, side: 'w' }; openAct(); switchTab('path'); showLessonStep(); return; }
+    if (e.kind === 'drill') { openDrill(e.unit, UNIT[e.unit].apply, z === 'train' ? 'train' : null, e.drill); return; }
+    var items = e.kind === 'puzzles' ? e.items.map(function (id) { return PZ_BY[id]; }) : e.kind === 'safety' ? e.items.map(function (x) { return { p: PZ_BY[x[0]], blunder: !!x[1] }; })
+      : e.kind === 'book' ? e.items.map(function (id) { return COURSE.BOOK.filter(function (b) { return b.id === id; })[0]; }) : [];
+    var opts = { title: e.title, count: e.count, unit: e.unit, part: e.part, rated: e.rated };
+    if (e.pass != null) opts.pass = e.pass;
+    if (e.rated) opts.pick = ratedPick(); else if (items.length) opts.items = items;
+    if (e.theme) opts.theme = e.theme;
+    if (e.review) opts.review = true;
+    st.ses = { kind: e.kind, title: e.title, count: e.count, pass: opts.pass, unit: e.unit || null, part: e.part || null, rated: !!e.rated, i: e.i, right: e.right, wrong: e.wrong, items: items, opts: opts, msg: null };
+    openAct(); switchTab(ZTAB[z]);
+    nextItem(true, e.counted);
+  }
+  /* The saved key follows what waits, in the same step as the change (render). Nothing waits: the key is removed. */
+  var resumeOn = false, resumeStr = null;
+  function syncResume() {
+    if (!resumeOn) return;
+    var o = Flow.writeResume({ learn: waitOn('learn'), train: waitOn('train') }), str = o ? JSON.stringify(o) : '';
+    if (str === resumeStr) return;
+    resumeStr = str;
+    try { if (str) localStorage.setItem(Flow.RESUME_KEY, str); else localStorage.removeItem(Flow.RESUME_KEY); } catch (e) {}
+  }
+  /* App start: what was waiting comes back as parked entries. Anything that does not pass the check is dropped silently. */
+  function loadResume() { st.park = Flow.readResume(lsGet(Flow.RESUME_KEY), resumeFacts()); resumeOn = true; }
+  /* A level change (Settings, the level check, a sign-in merge): what the player can no longer open stops waiting. */
+  function checkPark() { var f = resumeFacts(); ['learn', 'train'].forEach(function (z) { if (st.park[z] && !Flow.entryOk(z, st.park[z], f)) st.park[z] = null; }); }
   /* G-D4, G-D23: Close. No question; nothing to save (a game is saved on every move, a lesson or set stays in memory).
      Lands on the activity's tab; a past game's review lands where it was opened. A review opened in the middle of a game
      goes back to that game. An end card that is up is over, so it is dropped. Returns false when there is nothing to close. */
-  /* The lesson that is waiting on a phone's tab pages (closed, in memory), for Home's Continue card. */
-  function waitingLesson() { return phone() && st.scr !== 'act' && st.mode === 'lesson' && st.ls ? { unit: st.ls.unit.id, part: 'learn' } : null; }
+  /* The lesson that is waiting on a phone's tab pages (closed, parked, or read from the device), for Home's Continue card. */
+  function waitingLesson() { return phone() && st.scr !== 'act' ? Flow.waitingLesson(waitOn('learn')) : null; }
   var RESUME_LESSON = 'data-act="resume" data-z="learn"';
   function closeAct() {
     if (!actOpen()) return false;
@@ -870,7 +954,7 @@
     if (st.mode === 'review' && st.rv && !st.rv.past && !G.game_over()) { exitMode(true); return true; }
     var to = Flow.closeTab({ mode: st.mode, zoneTab: ZTAB[zoneOf()], learnEnd: !!st.end, past: !!(st.rv && st.rv.past), from: st.rvFrom });
     leaveEnd(true);
-    st.scr = 'tabs'; switchTab(to); render();
+    st.scr = 'tabs'; switchTab(to); render(); syncResume(); /* G-D19: the place is written on Close (render already did; said here on purpose) */
     var b = document.querySelector('#panel-' + to + ' .rs-go');
     if (b && b.offsetParent !== null) try { b.focus({ preventScroll: true }); } catch (e) {} else focusTab();
     return true;
@@ -1252,7 +1336,7 @@
        step, so the tabs, the tip and the banner go and the Close bar reads the game. */
     if (st.end && phone()) { st.end = null; if (st.scr === 'act') switchTab('play'); }
     save(); /* saved at once, before the move is graded: an app closed in that moment keeps the move */
-    st.sel = null; resetHints(); st.busy = true; st.opp = null; st.think = null; st.confirmNew = false;
+    st.sel = null; resetHints(); st.gb = true; st.opp = null; st.think = null; st.confirmNew = false;
     var words = Words.say(mv, true);
     st.fb = { cls: 'info', sym: '♙', title: 'Checking your move…', mv: 'You played ' + mv.san, words: words };
     render();
@@ -1265,7 +1349,7 @@
     }).catch(function () { if (gid !== st.gid) return; st.fb = { cls: 'info', sym: '♙', title: 'Move played', mv: mv.san, words: words }; }).then(function () {
       if (gid !== st.gid) return; /* a new game was started while this move was being checked */
       checkGoal(); save();
-      if (G.game_over()) { st.busy = false; finishGame(); render(); return; }
+      if (G.game_over()) { st.gb = false; finishGame(); render(); return; }
       render(); engineTurn();
     });
   }
@@ -1279,19 +1363,21 @@
     if (lv === 8) return Brain.play(fen, { skill: 20, movetime: 900, fbDepth: 6 });
     return Brain.play(fen, { elo: OPP[lv].elo, movetime: 500, fbDepth: lv >= 6 ? 6 : 5 });
   }
+  /* G2b: the game goes on while it is closed (G-D20: a lesson or set may be on the board meanwhile). Its reply writes only
+     what belongs to the game: st.gb, never the board's shared arrows unless the game is the one on the board. */
   function engineTurn() {
-    st.busy = true; render();
+    st.gb = true; render();
     var fen = G.fen(), gid = st.gid;
     engineChoose(fen).then(function (uci) {
       if (gid !== st.gid || G.fen() !== fen) return;
       var m = uci && findMove(G, uci); if (!m) m = G.moves({ verbose: true })[0];
-      if (!m) { st.busy = false; render(); return; }
+      if (!m) { st.gb = false; render(); return; }
       var gBefore = new Chess(fen);
       G.move({ from: m.from, to: m.to, promotion: m.promotion || 'q' });
-      st.arrows = [{ from: m.from, to: m.to, color: 'var(--c-blund)' }];
+      if (st.mode === 'play') st.arrows = [{ from: m.from, to: m.to, color: 'var(--c-blund)' }];
       if (G.history().length === 1) st.fb = { cls: 'info', sym: '♙', title: 'Your move', mv: 'You play Black', noSan: true, text: 'Answer in the center and get a knight out.', tip: '<b>First 10 moves:</b> center pawns, knights and bishops out, then castle.' };
       render();
-      if (G.game_over()) { finishGame(); st.busy = false; save(); render(); return; }
+      if (G.game_over()) { finishGame(); st.gb = false; save(); render(); return; }
       return analyseForUser().then(function (res) {
         if (gid !== st.gid) return; /* a new game was started while the reply was being explained */
         var why;
@@ -1299,9 +1385,9 @@
         var ply = G.history().length - 1;
         st.notes[ply] = { side: 'e', why: why, ev: st.evalW };
         st.opp = { san: m.san, why: why };
-        st.busy = false; save(); render();
+        st.gb = false; save(); render();
       });
-    }).catch(function () { st.busy = false; render(); });
+    }).catch(function () { st.gb = false; render(); });
   }
   function analyseForUser() {
     var fen = G.fen();
@@ -1336,8 +1422,9 @@
     /* Fix round 1: on a phone the question comes whatever is on the board (a closed lesson or set may be waiting over the game) */
     if (!force && (st.mode === 'play' || phone()) && G.history().length > 2 && !G.game_over() && !st.confirmNew) { st.confirmNew = true; $('newConfirm').hidden = false; st.scr = 'tabs'; switchTab('play'); return; } /* G2a: the question is on Play's start page */
     $('newConfirm').hidden = true; st.confirmNew = false; st.nm = null; /* G1: a new game clears the name line */
+    stow('play'); /* G2b: on a phone a lesson or set that is open waits on its own tab; wide: it ends (D50) */
     clearSession(); st.mode = 'play'; st.rv = null;
-    st.gid = (st.gid || 0) + 1; st.busy = false; /* the old game's engine or grading reply is dropped: the new game is playable at once */
+    st.gid = (st.gid || 0) + 1; st.gb = false; /* the old game's engine or grading reply is dropped: the new game is playable at once */
     var c = opts.color || $('colorSel').value; if (c === 'r') c = Math.random() < 0.5 ? 'w' : 'b';
     /* D19: a Beginner's "New game" always plays Rani's practice partner (the Beginner bot); lesson tasks pass their own level. */
     st.user = c; st.level = opts.level || (plain() ? Profile.LEVELS.beginner.opp : +$('levelSel').value); $('levelSel').value = String(st.level);
@@ -1377,9 +1464,12 @@
       : st.mode === 'puzzle' ? Promise.resolve(puzzleHintData())
       : st.mode === 'book' ? Promise.resolve(bookHintData())
       : Brain.analyse(g.fen(), { depth: 14, multipv: 1, fbDepth: 4 }).then(function (a) { var m = a[0] && findMove(g, a[0].uci); return m ? { best: { from: m.from, to: m.to, san: m.san, why: describe(m, 'your') }, theme: { idea: 'Find the strongest move. Start with checks and captures.' } } : null; });
+    var tok = boardId, game = st.mode === 'play';
     st.busy = true; render();
     getBest.then(function (t) {
-      st.busy = false;
+      /* G2b: the board changed hands while the hint was worked out: it is dropped (clearSession already reset st.ab) */
+      if (game) st.gb = false; else if (tok === boardId) st.ab = false;
+      if (tok !== boardId || game !== (st.mode === 'play')) { render(); return; }
       if (!t || !t.best) { render(); return; }
       st.hintLvl = Math.min(3, st.hintLvl + 1);
       var fb;
@@ -1431,6 +1521,7 @@
 
   /* ---------- review ---------- */
   function enterReview(src) {
+    stow('play'); /* G2b: as a game, a review never ends what waits on Learn or Train (phones) */
     clearSession();
     st.rvFrom = src && st.tab === 'progress' ? 'progress' : 'play'; /* G-D23: where Close goes back to */
     var past = !!src, sans = past ? src.sans : G.history(), notes = past ? {} : JSON.parse(JSON.stringify(st.notes));
@@ -1460,9 +1551,10 @@
   }
 
   /* ---------- sessions ---------- */
-  function clearSession() { st.nm = null; st.end = null; st.ses = null; st.pz = null; st.qz = null; st.sq = null; st.dr = null; st.bk = null; st.ls = null; st.rc = null; st.flash = null; }
+  function clearSession() { st.nm = null; st.end = null; st.ses = null; st.pz = null; st.qz = null; st.sq = null; st.dr = null; st.bk = null; st.ls = null; st.rc = null; st.flash = null; st.ab = false; boardId++; }
   function exitMode(toGame) {
     var from = st.mode, unit = st.ses && st.ses.unit;
+    if (toGame === true) stow('play'); /* G2b (G-D20): on a phone "Resume game" keeps the open lesson or set for its Resume card; wide: D50, it ends */
     clearSession(); st.mode = 'play'; st.rv = null; st.sel = null; resetHints();
     var last = G.history({ verbose: true }).slice(-1)[0];
     if (last && last.color !== st.user) st.arrows = [{ from: last.from, to: last.to, color: 'var(--c-blund)' }];
@@ -1496,18 +1588,22 @@
     if ((s.finished || s.end) && !s.told) { s.told = true; cardShown(c); clearBanner(c); }
   }
   function startSession(kind, opts) {
+    stow(opts.unit ? 'learn' : 'train'); /* G2b: the newest wins on its own tab; another tab's waits (phones) */
     clearSession(); st.rv = null; st.flipped = false;
     st.ses = { kind: kind, title: opts.title, count: opts.count || 10, pass: opts.pass, unit: opts.unit || null, part: opts.part || null, rated: !!opts.rated, i: 0, right: 0, wrong: 0, items: opts.items || [], opts: opts, msg: null };
     openAct(); switchTab(opts.unit ? 'path' : 'train');
     nextItem(true);
   }
-  function nextItem(first) {
+  /* s.cnt (G2b): the current item's result is already in the score and the profile. It is saved with the set, so an item
+     that is dealt again after Resume or an app restart never counts twice. counted: only with first, from a saved entry. */
+  function nextItem(first, counted) {
     var s = st.ses; if (!s) return;
     if (!first) s.i++;
-    resetHints(); st.sel = null; st.flash = null; s.canNext = false; s.canRetry = false; s.msg = null; s.end = null;
+    resetHints(); st.sel = null; st.flash = null; s.canNext = false; s.canRetry = false; s.msg = null; s.end = null; s.cnt = !!(first && counted);
     if (s.i >= s.count) return finishSession();
     if (!first) boardUp();
-    if (s.kind === 'puzzles') { var p = s.opts.pick ? s.opts.pick(s) : s.items[s.i]; if (!p) { s.count = s.i; return finishSession(); } s.items[s.i] = p; startPuzzle(p); }
+    /* a puzzle that was already dealt for this place is dealt again (Resume); a rated set picks one only for a new place */
+    if (s.kind === 'puzzles') { var p = s.items[s.i] || (s.opts.pick ? s.opts.pick(s) : null); if (!p) { s.count = s.i; return finishSession(); } s.items[s.i] = p; startPuzzle(p); }
     else if (s.kind === 'safety') { if (!s.items[s.i]) { s.count = s.i; return finishSession(); } startQuiz(s.items[s.i]); }
     else if (s.kind === 'squares') startSquare();
     else if (s.kind === 'reach') startReach();
@@ -1555,7 +1651,7 @@
   function startPuzzle(p) {
     st.mode = 'puzzle';
     var g = new Chess(p.pre && p.last ? p.pre : p.fen), side = new Chess(p.fen).turn();
-    st.pz = { p: p, g: g, side: side, step: 0, done: false, wait: !!(p.pre && p.last), counted: false };
+    st.pz = { p: p, g: g, side: side, step: 0, done: false, wait: !!(p.pre && p.last), counted: !!st.ses.cnt };
     var goal = p.themes.indexOf('mateIn1') > -1 ? 'Find the checkmate.' : p.themes.indexOf('mateIn2') > -1 ? 'Find mate in 2.' : p.themes.indexOf('mateIn3') > -1 ? 'Find the forced mate.' : 'Find the best move.';
     st.ses.msg = { title: (side === 'w' ? 'White' : 'Black') + ' to move', text: goal + (p.sol.length > 1 ? ' It takes ' + Math.ceil(p.sol.length / 2) + ' moves.' : '') + (st.pz.wait ? ' Watch their move first.' : '') };
     render();
@@ -1576,6 +1672,7 @@
     st.busy = true; render();
     Brain.analyse(fenB, { depth: 12, multipv: 1, fbDepth: 3 }).then(function (r0) {
       return Brain.analyse(g.fen(), { depth: 11, multipv: 1, fbDepth: 2 }).then(function (r1) {
+        if (st.pz !== P) return; /* G2b: the set was parked or ended meanwhile: this answer is dropped, the puzzle is dealt again on Resume */
         st.busy = false;
         var best = r0[0] ? r0[0].score : 0, mine = r1[0] ? -r1[0].score : 0;
         var ok = best > MW ? mine > MW && mine >= best - 2 : (mine >= best - 60 && mine >= 200);
@@ -1588,7 +1685,7 @@
     var P = st.pz, s = st.ses;
     if (solved) {
       P.done = true;
-      if (!P.counted) { P.counted = true; s.right++; recordPuzzle(P.p, true); }
+      if (!P.counted) { P.counted = true; s.cnt = true; s.right++; recordPuzzle(P.p, true); }
       s.msg = { title: alt ? 'Solved (another way!)' : 'Solved!', text: puzzleLesson(P.p) };
       s.canNext = true; render(); return;
     }
@@ -1598,6 +1695,7 @@
     var go = reply === '*' ? Brain.play(P.g.fen(), { skill: 20, movetime: 300, fbDepth: 4 }) : Promise.resolve(reply);
     go.then(function (u) {
       return wait(450).then(function () {
+        if (st.pz !== P) return; /* G2b: parked or ended during the wait: nothing is drawn on the board that took its place */
         var m = u && findMove(P.g, u); if (m) { P.g.move(m); st.arrows = [{ from: m.from, to: m.to, color: 'var(--c-blund)' }]; }
         P.step++; P.wait = false;
         s.msg = { title: 'Your move again', mv: m ? 'They played ' + m.san : '', text: 'Finish it.' }; render();
@@ -1606,9 +1704,10 @@
   }
   function puzzleFail(mv, want) {
     var P = st.pz, s = st.ses;
-    if (!P.counted) { P.counted = true; s.wrong++; recordPuzzle(P.p, false); }
+    if (!P.counted) { P.counted = true; s.cnt = true; s.wrong++; recordPuzzle(P.p, false); }
     P.wait = true; render();
     setTimeout(function () {
+      if (st.pz !== P) return; /* G2b */
       P.g.undo(); var wm = findMove(P.g, want);
       st.arrows = wm ? [{ from: wm.from, to: wm.to, color: 'var(--c-best)' }] : [];
       P.done = true; P.wait = false;
@@ -1660,8 +1759,8 @@
   function answerQuiz(sayBlunder) {
     var q = st.qz, s = st.ses; if (!q || q.answered || !q.mv) return;
     q.answered = true;
-    var right = sayBlunder === q.it.blunder; if (right) s.right++; else s.wrong++;
-    var p = q.it.p, d = dayRec(); d.puz++; if (right) d.solved++;
+    var right = sayBlunder === q.it.blunder, p = q.it.p;
+    if (!s.cnt) { s.cnt = true; if (right) s.right++; else s.wrong++; var d = dayRec(); d.puz++; if (right) d.solved++; } /* G2b: an item dealt again after Resume counts once */
     if (q.it.blunder) {
       var qf = q.g.fen(); q.g.move(q.mv); var ref = findMove(q.g, p.sol[0]);
       st.arrows = ref ? [{ from: ref.from, to: ref.to, color: 'var(--c-blund)' }] : [];
@@ -1684,7 +1783,7 @@
   function tapSquare(sq) {
     var q = st.sq, s = st.ses; if (!q || q.done) return;
     q.done = true; var ok = sq === q.target, secs = ((Date.now() - q.t0) / 1000).toFixed(1);
-    if (ok) s.right++; else s.wrong++;
+    if (!s.cnt) { s.cnt = true; if (ok) s.right++; else s.wrong++; }
     st.flash = { sq: q.target, ok: ok }; st.hls = ok ? [] : [q.target];
     s.msg = { title: ok ? 'Right! ' + secs + 's' : 'That was ' + sq, text: ok ? '' : q.target + ' is highlighted: file ' + q.target[0] + ', rank ' + q.target[1] + '.' };
     render();
@@ -1722,7 +1821,7 @@
     else { R.misses++; R.bad = sq; setTimeout(function () { if (st.rc === R) { R.bad = null; render(); } }, 600); }
     var left = R.targets.length - R.found.length;
     if (!left) {
-      R.done = true; var ok = R.misses <= 1; if (ok) s.right++; else s.wrong++;
+      R.done = true; var ok = R.misses <= 1; if (!s.cnt) { s.cnt = true; if (ok) s.right++; else s.wrong++; }
       s.msg = { title: ok ? 'All ' + R.targets.length + ' found!' : 'Found them, with ' + R.misses + ' wrong taps', text: R.misses > 1 ? 'Try to see the whole pattern before tapping. Next one:' : '' };
       render(); setTimeout(function () { if (st.ses === s) nextItem(); }, 1100); return;
     }
@@ -1732,22 +1831,34 @@
 
   /* drills (endgames) */
   function startDrill(unitId, d, from) {
-    clearSession(); st.rv = null; st.flipped = false;
-    var g = new Chess(d.fen);
-    st.mode = 'drill';
-    st.dr = { g: g, side: g.turn(), goal: d.goal, limit: d.limit, moves: 0, done: false, unit: unitId, name: UNIT[unitId] ? UNIT[unitId].title : 'Endgame drill', ev: null };
-    st.ses = { kind: 'drill', title: st.dr.name, count: 1, i: 0, right: 0, wrong: 0, items: [], unit: unitId, part: 'apply', msg: { title: 'Your move', text: esc(d.text || '') + ' Stuck? Hint shows Stockfish’s idea.' } };
     /* G2a: on a phone the board screen is on the activity's own tab: Train for a drill started from Train's list, Learn for
        one started as a lesson's task (zoneOf). */
-    var dz = Flow.drillZone(from, !phone()); if (dz) st.ses.zone = dz;
+    var dz = Flow.drillZone(from, !phone());
+    stow(dz || 'learn'); /* G2b */
+    clearSession(); st.rv = null; st.flipped = false;
+    openDrill(unitId, d, dz, null);
+  }
+  /* at (G2b): a saved drill's place { fen, moves }: the same position; the engine is asked again when it is its move. */
+  function openDrill(unitId, d, dz, at) {
+    var g = new Chess(at ? at.fen : d.fen);
+    st.mode = 'drill';
+    st.dr = { g: g, side: new Chess(d.fen).turn(), goal: d.goal, limit: d.limit, moves: at ? at.moves : 0, done: false, unit: unitId, name: UNIT[unitId] ? UNIT[unitId].title : 'Endgame drill', ev: null };
+    st.ses = { kind: 'drill', title: st.dr.name, count: 1, i: 0, right: 0, wrong: 0, items: [], unit: unitId, part: 'apply', msg: { title: 'Your move', text: at && at.moves ? 'Move ' + at.moves + ' of ' + d.limit + '.' : esc(d.text || '') + ' Stuck? Hint shows Stockfish’s idea.' } };
+    if (dz) st.ses.zone = dz;
     openAct(); switchTab(phone() ? ZTAB[zoneOf()] : tabOpen('train') ? 'train' : 'path'); render();
+    if (g.turn() !== st.dr.side) drillReply(st.dr);
   }
   function drillMove(from, to) {
     var D = st.dr, g = D.g, mv = g.move({ from: from, to: to, promotion: 'q' }); if (!mv) return;
     st.sel = null; resetHints(); D.moves++;
     if (drillCheck()) return;
+    drillReply(D);
+  }
+  function drillReply(D) {
+    var g = D.g;
     st.busy = true; render();
     Brain.play(g.fen(), { skill: 20, movetime: 350, fbDepth: 5 }).then(function (u) {
+      if (st.dr !== D) return; /* G2b: parked or ended while the engine was thinking: Resume asks again from the saved position */
       var m = u && findMove(g, u); if (m) { g.move(m); st.arrows = [{ from: m.from, to: m.to, color: 'var(--c-blund)' }]; }
       st.busy = false;
       if (!drillCheck()) { st.ses.msg = { title: 'Your move', mv: m ? 'Stockfish played ' + m.san : '', text: 'Move ' + D.moves + ' of ' + D.limit + '.' }; render(); }
@@ -1790,6 +1901,7 @@
     if (mv.san === want) { B.ply++; s.msg = { title: 'Book move ✓', mv: mv.san, text: cap1(describe(mv, 'your')) + '.' }; render(); bookAuto(); return; }
     B.mistakes++; B.wait = true; render();
     setTimeout(function () {
+      if (st.bk !== B) return; /* G2b */
       g.undo(); var w = g.move(want); g.undo(); B.wait = false;
       st.arrows = [{ from: w.from, to: w.to, color: 'var(--c-best)' }];
       s.msg = { title: 'Not the book move', mv: 'You played ' + mv.san, text: 'The repertoire move is ' + mvc(w) + ': it ' + describe(w, 'your') + '. Play it to continue.' };
@@ -1799,7 +1911,7 @@
   function bookHintData() { var B = st.bk, g = new Chess(B.g.fen()), m = g.move(B.line.moves[B.ply]); return m ? { best: { from: m.from, to: m.to, san: m.san, why: describe(m, 'your') }, theme: { idea: 'Think about the plan of this opening: ' + (B.side === 'w' ? 'center, develop, castle.' : 'match the center, develop, castle.') } } : null; }
   function bookDone() {
     var B = st.bk, s = st.ses; B.done = true;
-    if (B.mistakes === 0) s.right++; else s.wrong++;
+    if (!s.cnt) { s.cnt = true; if (B.mistakes === 0) s.right++; else s.wrong++; }
     s.msg = { title: B.mistakes === 0 ? 'Line complete, no mistakes' : 'Line complete', text: B.mistakes ? B.mistakes + ' mistake' + (B.mistakes === 1 ? '' : 's') + '. Repeat it until it’s automatic.' : 'You know this one.' };
     s.canNext = true; render();
   }
@@ -1812,6 +1924,7 @@
 
   /* ---------- lesson player ---------- */
   function startLesson(id) {
+    stow('learn'); /* G2b: replaces what waits on Learn; a set on Train waits on (phones) */
     clearSession(); st.rv = null; st.flipped = false;
     st.mode = 'lesson'; st.ls = { unit: UNIT[id], i: 0, g: null, side: 'w' };
     openAct(); switchTab('path'); showLessonStep();
@@ -2044,6 +2157,7 @@
     ['train', 'progress'].forEach(function (t) { $('tab-' + t).hidden = lock; });
     /* U-4: a live Train session ends as if the player closed it (results so far are already saved), then Home */
     if (lock && st.ses && zoneOf() === 'train') { exitMode(false); switchTab('coach'); }
+    checkPark(); /* G2b: a set that waits on Train is dropped too when Train is out of reach */
     if (lock && !tabOpen(st.tab)) switchTab('coach');
   }
   /* A level, Show everything or merged profile change re-renders every visible screen at once (mid-game too). */
@@ -2782,6 +2896,7 @@
   function start(data) {
     fillLevels();
     var raw = lsGet(PSTORE), p = Profile.migrate(raw); if (p) prof = p;
+    loadResume(); /* G-D19: a lesson, set or drill that was waiting when the app was closed or killed */
     /* G-D33: never chose pieces or a view: the classic pieces on the flat board. A saved choice is kept (Flow.firstLook). */
     var look = Flow.firstLook({ pieces: lsGet('suresh-chess-coach.pieces'), theme: prof.theme, v3d: lsGet(K3D) }, function (id) { return !!Avatar.SETS[id]; });
     st.theme = look.theme;

@@ -101,6 +101,7 @@ Grounded in the code at `main` b752057 (G1 merged). Line numbers are `src/js/app
 
 ### Landscape and small tablets
 - A phone held sideways that is wider than 860px (915x412) is "wide" today and stays unchanged (G-D10).
+- G2d replaces the next rule: see section 14 (board left, column right).
 - A sideways phone up to 860px wide (780x360, 667x375) is one column, so G2 applies. Tab pages gain the most (no board). On the activity screen the board would be wider than the screen is tall, as it is today (a logged follow-up). G2a adds one rule: on screens under 500px high the board row is capped to the screen height minus the Close bar and centred, so the whole board is visible and the cards scroll under it. Board left, cards right is out of scope.
 - 601 to 860px: the tab bar is inline, so when an end card brings it back the panel under the board shifts down by the bar's height. Accepted for G2; noted as a follow-up.
 
@@ -289,3 +290,24 @@ Counts are estimates from reading and pattern matching. The suites were not run.
 - Whether a claude.ai artifact frame allows `history.pushState` is unknown; the design skips history inside a frame.
 - The engine's reply to a closed game already writes shared fields (`st.arrows`, `st.busy`, :1117) while another activity is on the board. This exists today; parking in G2b must save and restore those fields around it.
 - G2a touches about 85 existing e2e cases across six suites. The helper approach keeps the edits small, but this is the largest part of the work and the likeliest source of fix rounds.
+
+## 14. Slice G2d: sideways phone, first-time look, the name (G-D32 to G-D34)
+
+### Sideways board screen (G-D32)
+- One media query, `(max-width: 860px) and (max-height: 499.98px)` (under 500px: from 500px a banner is allowed), and every rule under `html[data-scr]`. Upright phones and wide screens match none of it. It replaces the G2a rule that only capped the board row.
+- The board (`.boardrow > .board`) is `position: fixed` under the Close bar. Its side is `--bs`: the screen height less the bar (49px here, Close still 44px), 8px above and below and the top and bottom safe areas, and never more than `60vw`.
+- `.app` gets `padding-left: var(--bs) + 12px`. So the rest of `.boardcol` (opponent line, eval strip, coach strip, the You line with the piece name line, `#gameEnd`, the buttons, `#reviewEnd`) and then `.side` (the tabs when an end card is up, Rani's card, the moves, a lesson's step card, `#sessionCard`, `#learnEnd`) form one column on the right, in DOM order. Nothing moves in the DOM.
+- The column is the page: it scrolls under the sticky bar and the board stays put. So `revealEnd()`, `boardUp()` and the open and close scroll keep working. `boardRoom(el)` in `app.js` is the one change: with a pinned board the scroll limit is the card's own top (it stays under the bar), not the board's top.
+- `.app` stays a one-column grid, because `wide()` reads its column count. `.boardcol` keeps its box, because `adBoard()` reads it.
+- The eval bar becomes the thin level strip an upright phone has, at the top of the column.
+- Up to 600px wide the fixed tab bar that an end card brings back spans the column only, so it never covers the board. From 601px it is inline in the column, as before.
+- 3D: the canvas host is inside `#board`. Its `ResizeObserver` and the window `resize` handler call `resize()`; nothing is rebuilt. The e2e case turns the screen both ways and checks the same canvas element, a live context and a drawing buffer of the board's size.
+- 915x412 is the wide layout and is untouched. There the board is 578px on a 412px screen, as before G2 (a follow-up, not this slice).
+
+### First-time look (G-D33)
+- `Flow.firstLook({ pieces, theme, v3d }, has)` is the one rule, used once in `start()`: the set saved on this device, else the set the profile carries, else `classic`; 3D only when the saved view is exactly `true`.
+- No profile shape change and no `migrate()` step. `prof.theme` stays `null` until the player picks a set.
+- Read from the code at 415dd04: a truly empty install already started with classic and flat. A themed set could only come from a saved choice: the device key, or `prof.theme` restored from the cloud save (`afterMerge`). The one change in behaviour is that a profile's set now also applies when the device key is missing.
+
+### The name (G-D34)
+- `src/body.html` h1 and `src/head.html` title read "Chess Coach". Storage keys, the app id and code comments are unchanged.

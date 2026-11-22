@@ -4,7 +4,7 @@ Non-negotiables for every change. Short on purpose. Amend only with Suresh's exp
 
 ## Product truths
 - Users: people learning chess, from "never played" to Expert (about 2000+). Many are complete beginners on a phone.
-- Suresh's Chess Coach is free on Android (Play Store) and the web, with ads and a one-time Remove ads purchase. The Play Store listing is for ages 13 and older.
+- Chess Coach is free on Android (Play Store) and the web, with ads and a one-time Remove ads purchase. The Play Store listing is for ages 13 and older.
 - A player's progress must never be lost: course progress, puzzle rating, games and settings survive app updates, restarts and going offline.
 - The app works fully offline. The network is only ever optional (cloud save, fonts, ads). The coach's tip always stays in the slot; the ad banner is separate.
 - Rani (the queen coach) is the voice of the app: warm, short, plain words.

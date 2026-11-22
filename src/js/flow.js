@@ -135,6 +135,14 @@
   }
   /* G-D25: on a phone the app always opens on Home. Wide: the stored tab, except Learn, as before. has(tab): the tab exists. */
   function startTab(stored, wide, has) { return wide && stored && stored !== 'path' && has(stored) ? stored : 'coach'; }
+  /* G2d (G-D33): the pieces and the view the app starts with. A player who never chose gets the classic pieces on the flat
+     board. A choice is kept: the set picked on this device (s.pieces), else the one the profile carries (s.theme, a restored
+     save); the 3D view only on a saved yes (s.v3d). has(id): the set exists. */
+  function firstLook(s, has) {
+    s = s || {};
+    var ok = function (id) { return typeof id === 'string' && !!has(id); };
+    return { theme: ok(s.pieces) ? s.pieces : ok(s.theme) ? s.theme : 'classic', v3d: s.v3d === true };
+  }
   /* G-D4, G-D23: the tab Close lands on. s: { mode, zoneTab, learnEnd, past (a past game's review), from (the tab a past
      game was opened on) } */
   function closeTab(s) {
@@ -155,6 +163,6 @@
     return Math.ceil(+s.h > 0 ? +s.h : 64) + (s.fixedTabs ? 8 : 0);
   }
 
-  return { drillZone: drillZone, resumesLesson: resumesLesson, bannerRoom: bannerRoom, actOpen: actOpen, tabsHidden: tabsHidden, keepsScreen: keepsScreen, inUse: inUse, slotOk: slotOk, resumeLine: resumeLine, resumeTitle: resumeTitle, startTab: startTab, closeTab: closeTab,
+  return { firstLook: firstLook, drillZone: drillZone, resumesLesson: resumesLesson, bannerRoom: bannerRoom, actOpen: actOpen, tabsHidden: tabsHidden, keepsScreen: keepsScreen, inUse: inUse, slotOk: slotOk, resumeLine: resumeLine, resumeTitle: resumeTitle, startTab: startTab, closeTab: closeTab,
     afterGame: afterGame, goalCard: goalCard, afterReview: afterReview, afterStep: afterStep, cont: cont, asks: asks, COPY: COPY };
 });

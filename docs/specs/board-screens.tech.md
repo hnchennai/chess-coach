@@ -370,3 +370,17 @@ Counts are estimates from reading and pattern matching. The suites were not run.
 - A set that ended while closed and is then killed before its end card is seen loses that card (its results and the lesson part are saved).
 - The engine's reply to a closed game is saved once it is explained (as before); after a kill in between, the engine thinks again.
 - Not verified on a phone: a real system kill of the WebView. The browser cases reload the page, which exercises the same read path.
+
+## 16. Slice G2c: the back button (G-D18, G-D38 to G-D40)
+
+- Library: `@capacitor/app` pinned to exactly `8.1.2` in `package.json` (official, MIT, no permission, no network, no Google library). CI fails if the installed version is not exactly 8.1.2 or if `npx cap sync android` does not list it.
+- JS: when `window.Capacitor` is the native app and `Capacitor.Plugins.App` exists, `addListener('backButton', ...)` calls one function `backPressed()`. If it returns false, `App.minimizeApp()`, which keeps the app in memory as back does today. No listener in a browser or when the plugin is missing, so the web build is unchanged.
+- `backPressed()`, first match wins, every width:
+  1. Settings sheet open: close it (as its Esc).
+  2. Level check open: do what its Esc does; if Esc does nothing at that step, consume the press and do nothing (never leave the app from the level check).
+  3. A note from Rani open: close it as Esc does (an offer comes back at the next app start; an "ask" keeps the old game).
+  4. Phones, board screen open (with or without an end card): `closeAct()`, so a review opened mid-game goes back to the game (G-D27).
+  5. A tab other than Home: `switchTab('coach')` (Home), focus as a tab tap does. On wide screens this never ends or parks what is on the board (G-D39).
+  6. Home: return false (leave).
+- Tests: a fake `Capacitor.Plugins.App` (as f3b fakes AdMob) records `addListener` and `minimizeApp`; the e2e suite fires the recorded back handler. Unit test for the order if it is put in `flow.js` as a pure function.
+- Not verified in Chromium: Android 16 predictive back and the real plugin; the phone test covers them.

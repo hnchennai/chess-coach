@@ -63,6 +63,9 @@ Builds on: `flow-rework.product.md` (F-D1 to F-D33), `beginner-flow.product.md` 
 | G-D35 | Waiting items survive on wide screens too: opening the game or another tab's activity parks a lesson or set instead of ending it. Replaces D50 at every width | Suresh, 2026-11-23 (review found a sideways big phone used the wide layout and lost the waiting set) |
 | G-D36 | A game that ends while closed gets a result card first on Play and Home: "Your game ended", the result line, buttons "See the end" and "Review". It goes once opened or when a new game starts | Suresh, 2026-11-23 |
 | G-D37 | Home's Continue and Today's steps resume the waiting item when it is the one they would start ("Resume lesson", "Resume puzzles", "Resume drill"); a different one still replaces it with no question | Delegated to Claude (review, 2026-11-23) |
+| G-D38 | Back button on a tab page: from Learn, Train, Play's start page or Progress it opens Home; on Home it leaves the app (the app stays in memory, as today). No "press again to leave" | Suresh, 2026-11-23 |
+| G-D39 | Back button on wide screens (over 860px): closes a sheet or a note if one is open, else the G-D38 tab rule. It never ends or parks a lesson, set, review or game on the board | Suresh, 2026-11-23 |
+| G-D40 | Back button order, every width: Settings open, close it; level check open, do what its Esc does (and nothing more when Esc does nothing); a note from Rani open, close it as Esc does; phone board screen open (end card or not), Close; then G-D38. Not in a browser (no web history handling) | Delegated to Claude, 2026-11-23 |
 
 ## New wording (all of it)
 - Button, top left of the activity screen: "Close" (spoken label; the button shows an X)

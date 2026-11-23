@@ -60,6 +60,9 @@ Builds on: `flow-rework.product.md` (F-D1 to F-D33), `beginner-flow.product.md` 
 | G-D32 | Phone held sideways on the board screen (up to 860px wide, under 500px high): the board sits on the left and fills the height under the Close bar. The opponent line, the buttons, Rani's card and everything else sit in a column on its right, which scrolls on its own. Upright phones and wide screens do not change | Suresh, 2026-11-22 (phone test of 1.0.45: the board was very small) |
 | G-D33 | A player who has never chosen pieces or a view starts with the classic pieces on the flat (2D) board. A player who has chosen keeps the choice. The themed sets and the 3D view stay in Settings | Suresh, 2026-11-22 |
 | G-D34 | The app's name on screen is "Chess Coach" (the header and the page title), not "Suresh's Chess Coach". Saved data is not touched | Suresh, 2026-11-22 |
+| G-D35 | Waiting items survive on wide screens too: opening the game or another tab's activity parks a lesson or set instead of ending it. Replaces D50 at every width | Suresh, 2026-11-23 (review found a sideways big phone used the wide layout and lost the waiting set) |
+| G-D36 | A game that ends while closed gets a result card first on Play and Home: "Your game ended", the result line, buttons "See the end" and "Review". It goes once opened or when a new game starts | Suresh, 2026-11-23 |
+| G-D37 | Home's Continue and Today's steps resume the waiting item when it is the one they would start ("Resume lesson", "Resume puzzles", "Resume drill"); a different one still replaces it with no question | Delegated to Claude (review, 2026-11-23) |
 
 ## New wording (all of it)
 - Button, top left of the activity screen: "Close" (spoken label; the button shows an X)

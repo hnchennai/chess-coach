@@ -43,7 +43,7 @@ Chess Coach takes you step by step from "how do the pieces move?" to club level 
 
 WHAT YOU GET
 • A quick level check, so you start in the right place: Beginner, Improver or Club.
-• 24 lessons in 5 levels: the board, piece values and checkmate, then forks and pins, endgames, strategy and deep calculation.
+• 31 lessons in 6 levels: the board, piece values and checkmate, then forks and pins, endgames, strategy, and up to expert planning and endgame theory.
 • 353 puzzles, each one checked by the Stockfish engine.
 • Games against a computer partner, from gentle first games up to full strength Stockfish.
 • Review any game move by move and see where it turned.
@@ -57,7 +57,7 @@ MADE FOR BEGINNERS
 
 YOUR BOARD, YOUR WAY
 • A flat board or a 3D board.
-• Piece sets: Classic, Ramayana, Wizard Academy, Dragon Kingdoms and Hero League. Tap a themed piece to see its name and how it moves.
+• 12 piece sets, from Classic to Ramayana, Mahabharata, Greek Myths, Norse Sagas and Hero League. Tap a themed piece to see its name and how it moves.
 
 WORKS OFFLINE
 Everything runs on your phone, including the Stockfish engine. No sign-up and no account.
@@ -144,5 +144,5 @@ Not collected: name, email, contacts, photos, files, messages, precise location,
 ## Assumption register
 - Confirmed by Suresh: P-D1 to P-D4, P-D11, and the listing wording as written (2026-11-23).
 - Delegated to Claude: P-D5, P-D6, P-D10, the first draft of the listing wording.
-- Verified by tool: 24 units in 5 levels and 353 puzzles (src/js/course.js, src/js/puzzles.js); engine levels from about 400 to full Stockfish (src/js/app.js); the five piece sets (src/js/avatar.js); the ads SDK data list (Google's page, SDK 25.5.0); the live privacy policy and app-ads.txt.
+- Verified by tool: 31 units in 6 levels (src/js/course.js plus src/js/roadmap.js) and 353 puzzles (src/js/puzzles.js); engine levels from about 400 to full Stockfish (src/js/app.js); 12 piece sets (src/js/avatar.js and src/js/themes.js); the ads SDK data list (Google's page, SDK 25.5.0); the live privacy policy and app-ads.txt.
 - Not verified: the 12 testers rule is from Google's help page for personal accounts made after 13 Nov 2023; the exact Play Console form wording can change, so the answers above are checked again on the day.

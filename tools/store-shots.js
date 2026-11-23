@@ -1,6 +1,6 @@
 // Store screenshots for the Play listing (docs/specs/play-listing.product.md, P-D6).
 // Takes 8 real app screens from the built www/ at 360 x 640 (x2.5), then frames each one with its caption at 1080 x 1920.
-// Also makes the feature graphic (1024 x 500) from the 3D board shot, and the 512 x 512 icon from assets/icon.png, one folder up.
+// Also makes the feature graphic (1024 x 500) with the 3D board (full runs only, not with ONLY), and the 512 x 512 icon from assets/icon.png, one folder up.
 // Run: node tools/store-shots.js [outDir]   (needs Playwright with Chromium on NODE_PATH; default outDir store/screenshots)
 // RAW=1 keeps the unframed screens as raw-NN.png next to them. ONLY=<regex> runs matching shots.
 const { chromium } = require('playwright');
@@ -44,6 +44,8 @@ async function open(p, o) {
 const tab = (page, t) => page.locator('#tab-' + t).click();
 const wait = (page, ms) => page.waitForTimeout(ms || 400);
 const top = (page) => page.evaluate(() => window.scrollTo(0, 0));
+// The 3D board has no ready signal: wait for its canvas, then give the models time to load and draw.
+const ready3d = async (page) => { await page.waitForFunction(() => [...document.querySelectorAll('canvas')].some((c) => c.getClientRects().length && c.width > 100), null, { timeout: 30000 }); await wait(page, 3000); };
 const resumeGame = async (page) => { await page.locator('#resumeHome .rs-go').click(); await H.idle(page); };
 
 // A Beginner on day three, two Foundations units done.
@@ -61,9 +63,10 @@ const SHOTS = [
     const page = await open(beginner(), { tab: 'coach' }); await wait(page, 800); return page;
   }],
   ['02', 'Short lessons in plain words', async () => {
-    const page = await open(beginner(), { tab: 'path' });
-    await page.evaluate(() => window.__coach.startPart('mate', 'learn')); await wait(page);
-    await page.locator('#navNext').click(); await wait(page, 600); return page;
+    const page = await open(beginner());
+    await page.evaluate(() => window.__coach.startPart('rules', 'learn')); await wait(page);
+    for (let i = 0; i < 3; i++) await page.locator('#navNext').click(); // the knight: plain words, no notation
+    await wait(page, 600); return page;
   }],
   ['03', '353 puzzles with free hints', async () => {
     const page = await open(improver({ course: done('fork', 'pin'), days: played(1, 2, 3) }), { tab: 'train' });
@@ -72,7 +75,7 @@ const SHOTS = [
   }],
   ['04', 'Play a partner at your level', async () => {
     const page = await open(club({ games: pastGames() }), { game: game(SANS22, { level: 3 }), v3d: true });
-    await resumeGame(page); await wait(page, 3000); await top(page); return page;
+    await resumeGame(page); await ready3d(page); await top(page); return page;
   }],
   ['05', 'Review every game', async () => {
     const page = await open(club({ games: pastGames() }));
@@ -93,7 +96,8 @@ const SHOTS = [
   }],
   ['08', 'See how far you have come', async () => {
     const page = await open(club({ games: pastGames(), puz: solved(), rating: 1340, course: done('board', 'values', 'mate', 'opening', 'blunder', 'fork', 'pin', 'disc', 'patterns', 'check2'), days: played(1, 2, 3, 4, 5, 6, 8, 9) }));
-    await tab(page, 'progress'); await wait(page, 800); return page;
+    await tab(page, 'progress'); await wait(page, 800);
+    await page.evaluate(() => window.scrollTo(0, document.getElementById('stats').getBoundingClientRect().top + window.scrollY - 12)); await wait(page); return page; // tiles at the top, so the coach card's lines clear the tab bar
   }]
 ];
 
@@ -119,12 +123,12 @@ function featureHtml(icon, board) {
     '.r img{display:block;width:500px;height:500px;object-fit:cover}' +
     '</style>' + FONTS + '</head><body><div class="l"><img src="' + icon + '"><h1>Chess Coach</h1><p>Learn with Rani</p></div><div class="r"><img src="' + board + '"></div></body></html>';
 }
-async function still(html, size, file) {
+async function still(html, size, file, alpha) {
   const ctx = await browser.newContext({ viewport: size, deviceScaleFactor: 1 });
   const pg = await ctx.newPage();
   await pg.setContent(html, { waitUntil: 'load' });
   await pg.evaluate(() => document.fonts.ready);
-  await pg.screenshot({ path: file, type: 'png' });
+  await pg.screenshot({ path: file, type: 'png', omitBackground: !!alpha });
   await ctx.close();
 }
 
@@ -145,7 +149,6 @@ async function still(html, size, file) {
         page = await fn();
         const raw = await page.screenshot({ type: 'png' });
         if (process.env.RAW) fs.writeFileSync(path.join(OUT, 'raw-' + n + '.png'), raw);
-        if (n === '04') board = await page.screenshot({ type: 'png', clip: { x: 0, y: 108, width: 360, height: 360 } });
         await still(frameHtml('data:image/png;base64,' + raw.toString('base64'), cap), { width: 1080, height: 1920 }, path.join(OUT, n + '.png'));
         console.log('ok   ' + n + ' ' + cap + (page.errors.length ? '  page errors: ' + JSON.stringify(page.errors) : ''));
         if (page.errors.length) bad++;
@@ -154,9 +157,15 @@ async function still(html, size, file) {
     }
     const up = path.dirname(OUT), icon = fs.readFileSync(path.join(__dirname, '../assets/icon.png'));
     // The icon: the app's own 1024 x 1024 icon at 512 x 512.
-    await still('<!doctype html><style>html,body{margin:0}img{display:block;width:512px;height:512px}</style><img src="data:image/png;base64,' + icon.toString('base64') + '">', { width: 512, height: 512 }, path.join(up, 'icon-512.png'));
+    await still('<!doctype html><style>html,body{margin:0}img{display:block;width:512px;height:512px;opacity:.99}</style><img src="data:image/png;base64,' + icon.toString('base64') + '">', { width: 512, height: 512 }, path.join(up, 'icon-512.png'), true); // 32-bit PNG, as Play asks
     console.log('ok   icon-512.png');
-    if (board) { await still(featureHtml('data:image/png;base64,' + icon.toString('base64'), 'data:image/png;base64,' + board.toString('base64')), { width: 1024, height: 500 }, path.join(up, 'feature-graphic.png')); console.log('ok   feature-graphic.png'); }
+    if (!ONLY) { // the feature graphic's board: the 3D start position, so no last-move arrow
+      const page = await open(club({ games: pastGames() }), { v3d: true });
+      await tab(page, 'play'); await page.locator('#colorSel').selectOption('w').catch(() => {}); await page.locator('#newBtn').click(); await H.idle(page); await ready3d(page); await top(page);
+      board = await page.screenshot({ type: 'png', clip: { x: 0, y: 108, width: 360, height: 360 } });
+      await page.context().close();
+      await still(featureHtml('data:image/png;base64,' + icon.toString('base64'), 'data:image/png;base64,' + board.toString('base64')), { width: 1024, height: 500 }, path.join(up, 'feature-graphic.png')); console.log('ok   feature-graphic.png');
+    }
   } finally { await browser.close(); srv.close(); }
   process.exit(bad ? 1 : 0);
 })();

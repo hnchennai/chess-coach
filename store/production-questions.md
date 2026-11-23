@@ -22,7 +22,7 @@ Feedback came by WhatsApp, email and Play's private feedback. [Summarise the mai
 People aged 13 and older who want to learn chess, from complete beginners who do not know how the pieces move to club players who want to improve.
 
 **Describe how your app provides value to users.**
-Chess Coach teaches chess step by step with a friendly coach character. It has 31 lessons in 6 levels, 353 puzzles, games against an offline engine at many strengths, and a move by move review of each game. It works fully offline, needs no account, and beginners see plain words instead of chess notation.
+Chess Coach teaches chess step by step with a friendly coach character. It has 31 lessons in 6 levels, 353 puzzles, games against an offline engine at many strengths, and a move by move review of each game. It works fully offline, needs no account, and beginners get every move explained in plain words, with no ratings or engine scores.
 
 **How many installs do you expect in your first year?**
 [Choose the matching range; an honest small number is fine for a first app.]
@@ -33,4 +33,4 @@ Chess Coach teaches chess step by step with a friendly coach character. It has 3
 [List the fixes and improvements, with the version numbers from GitHub Releases. If there were none: "Testers did not report problems that needed changes; I kept the build stable during the test."]
 
 **How did you decide that your app is ready for production?**
-Every build passes automated tests on phone and desktop sizes before release, and each feature was tested on a real phone before it shipped. During the 14-day closed test [no crashes were reported / the reported issues were fixed in version X]. The listing, privacy policy and data safety answers match what the app does.
+Every change is tested with automated tests at phone and desktop sizes before it is merged, and each feature was tested on a real phone before it shipped. During the 14-day closed test [no crashes were reported / the reported issues were fixed in version X]. The listing, privacy policy and data safety answers match what the app does.

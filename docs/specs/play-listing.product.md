@@ -45,13 +45,13 @@ WHAT YOU GET
 • A quick level check, so you start in the right place: Beginner, Improver or Club.
 • 31 lessons in 6 levels: the board, piece values and checkmate, then forks and pins, endgames, strategy, and up to expert planning and endgame theory.
 • 353 puzzles, each one checked by the Stockfish engine.
-• Games against a computer partner, from gentle first games up to full strength Stockfish.
+• Games against a computer partner, from gentle first games up to Stockfish at its strongest setting.
 • Review any game move by move and see where it turned.
 • Endgame drills, opening lines and "Safe or blunder?" practice.
 • Hints are free and unlimited.
 
 MADE FOR BEGINNERS
-• Beginners see plain words, not chess notation or ratings.
+• Beginners get every move explained in plain words, with no ratings or engine scores.
 • Home shows one clear next step.
 • Rani offers to move you up a level when you are ready.
 
@@ -72,13 +72,13 @@ Chess Coach is open source under the GNU GPL version 3. Source code: https://git
 ## Graphics (files in `store/`)
 | File | Size | Notes |
 |---|---|---|
-| `icon-512.png` | 512 x 512, 32-bit PNG | From `assets/icon.png` |
+| `icon-512.png` | 512 x 512, 32-bit PNG (with alpha) | From `assets/icon.png` |
 | `feature-graphic.png` | 1024 x 500, 24-bit PNG, no alpha | Icon, "Chess Coach", "Learn with Rani", a board. Nothing important near the edges |
 | `screenshots/01.png` to `08.png` | 1080 x 1920 | Caption over the top part, the real app screen below. Taken from the built `www/` with test data, no ad banner |
 
 Screenshot plan (caption, then the screen):
 1. "Start from zero with Rani": Beginner Home with Rani's line and the Continue card.
-2. "Short lessons in plain words": a Foundations lesson step on the board.
+2. "Short lessons in plain words": a Beginner lesson step (how the knight moves) on the board.
 3. "353 puzzles with free hints": a puzzle with a hint arrow showing.
 4. "Play a partner at your level": a game in progress on the 3D board.
 5. "Review every game": the review of a finished game.
@@ -93,7 +93,7 @@ Screenshot plan (caption, then the screen):
 | Ads | Yes, the app contains ads |
 | App access | All functions are available without special access (no login) |
 | Target audience | 13 to 15, 16 to 17, 18 and over. Not under 13 (constitution) |
-| Appeals to children | No. The answer to "could the app unintentionally appeal to children": the coach is a cartoon queen, so say the store text and the level check are written for teens and adults, and the policy states 13 and older |
+| Could the listing unintentionally appeal to children? | No. Justification to paste: "Chess Coach is a chess learning app for teens and adults. The store text and screenshots are written for players aged 13 and older, the app has no child-directed content or games for young children, and the privacy policy states that the app is for ages 13 and older." If Google disagrees, it will ask for changes in review; the fallback is to make the listing less toy-like, not to target children |
 | Content rating (IARC) | Category: Game. Violence, fear, sex, language, drugs: none. Gambling or simulated gambling: no. Users interact or share content: no. Shares the user's location: no. Digital purchases: no (until F5). Unrestricted internet: no. Expected rating: Everyone / PEGI 3 / IARC 3+ |
 | Advertising ID | Yes, the app uses the advertising ID, for advertising (the Google Mobile Ads SDK) |
 | Government app, financial features, health, news, COVID-19 | No, none |

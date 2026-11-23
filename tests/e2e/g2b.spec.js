@@ -586,10 +586,93 @@ const cases = [
     B = await onBoard(page);
     assert.deepEqual([B.mode, B.line, B.right, B.wrong], ['book', L0.line, 1, 0]);
     const R = await page.evaluate(() => { const b = window.__coach.st.bk, c = document.getElementById('sessionCard'); return { done: b.done, fen: b.g.fen(), title: c.querySelector('h3').textContent, next: !!c.querySelector('[data-act="next"]') }; });
-    assert.deepEqual(R, { done: true, fen: L0.fen, title: 'Line complete', next: true }, 'the line comes back complete, Next ready');
+    assert.deepEqual(R, { done: true, fen: L0.fen, title: 'Line complete, no mistakes', next: true }, 'the line comes back complete, Next ready (round 2: with its own outcome, saved)');
     await page.locator('#sessionCard [data-act="next"]').click();
     await page.waitForFunction(() => window.__coach.st.ses.finished);
     assert.deepEqual([await page.evaluate(() => window.__coach.st.ses.right), await rawSaved(page)], [1, null], 'Next ends the set with its one result');
+    assert.equal((await G.endCard(page, '#sessionCard')).title, 'Session complete', 'round 2, item 1: its end card');
+    return page;
+  }],
+  // ---------- fix round 2 ----------
+  ['Round 2, item 1: the last item of a set, counted, then a restart or a Close inside the wait: Resume shows the set’s end card', async (vp) => {
+    let page = await newPage(vp, club(), {});
+    if (!PH(vp)) return page;
+    const toLast = async () => {
+      await page.evaluate(() => window.__coach.startPart('board', 'practice'));
+      await page.waitForFunction(() => window.__coach.st.sq && !window.__coach.st.sq.done);
+      await page.evaluate(() => { const s = window.__coach.st.ses; s.i = s.count - 1; s.right = s.count - 1; }); // the last square, all right so far
+      const t = await page.evaluate(() => { const x = window.__coach.st.sq.target; return x === 'a1' ? 'h8' : 'a1'; });
+      await page.locator('#board .sq[data-sq="' + t + '"]').click(); // a miss: the end comes 1.5 seconds later
+    };
+    const endShown = async (why) => {
+      const L = await look(page), E = await G.endCard(page, '#sessionCard');
+      assert.deepEqual([L.scr, L.tab, L.board, L.tabs, L.end, E.shown, E.title], ['act', 'path', true, true, '1', true, 'Session complete'], why + ': the board screen with the set’s end card, the tabs back');
+    };
+    // a restart in the wait
+    await toLast();
+    const S = await saved(page);
+    assert.deepEqual([S.learn.i, S.learn.counted, S.learn.count], [11, true, 12]);
+    await page.reload(); await page.waitForFunction(() => window.__coach && window.Placement);
+    assert.deepEqual((await card(page, 'learn')).slice(0, 2), [WORDS.drill, '12 of 12']);
+    await open(page, 'learn');
+    await endShown('after a restart');
+    await shot(page, 'fix2_last_item_end');
+    // a Close in the wait: the set ends on its own while closed; its card stays and opens the end card
+    await closeX(page); await goTab(page, 'coach');
+    await toLast();
+    await closeX(page);
+    await page.waitForFunction(() => window.__coach.st.ses && window.__coach.st.ses.finished, null, { timeout: 5000 });
+    assert.deepEqual((await card(page, 'learn')).slice(0, 2), [WORDS.drill, '12 of 12'], 'the card stays until the end card is seen');
+    await open(page, 'learn');
+    await endShown('after a Close');
+    await closeX(page);
+    assert.equal(await card(page, 'learn'), null, 'seen: it is gone');
+    await page.context().close();
+    // a puzzle set: the last puzzle solved, a restart before Next: it comes back solved; Next shows the end card
+    page = await newPage(vp, club(), {});
+    await goTab(page, 'train');
+    await dueMulti(page);
+    await page.evaluate(() => window.__coach.trainStart('review'));
+    await puzzleReady(page); await solvePuzzle(page); await next(page); await puzzleReady(page); await solvePuzzle(page);
+    await page.reload(); await page.waitForFunction(() => window.__coach && window.Placement);
+    await open(page, 'train');
+    assert.deepEqual([(await onBoard(page)).done, (await onBoard(page)).i], [true, 1]);
+    await page.locator('#sessionCard [data-act="next"]').click();
+    const E = await G.endCard(page, '#sessionCard'), L = await look(page);
+    assert.deepEqual([E.shown, E.title, L.scr, L.tabs], [true, 'Session complete', 'act', true]);
+    return page;
+  }],
+  ['Round 2, items 4 and 5: a counted item comes back as the saved entry says (not the profile); Safe or blunder comes back answered', async (vp) => {
+    let page = await newPage(vp, club(), {});
+    if (!PH(vp)) return page;
+    await goTab(page, 'train'); await page.locator('#ratedBtn').click(); await solvePuzzle(page);
+    const pid = (await onBoard(page)).pid;
+    assert.deepEqual([(await saved(page)).train.counted, (await saved(page)).train.ok], [true, true], 'the outcome is saved with the item');
+    // the profile's record of that puzzle changes meanwhile (another set, or a merge): the set's own outcome wins
+    await page.evaluate(([k, id]) => { const p = JSON.parse(localStorage.getItem(k)); p.puz[id].box = 0; localStorage.setItem(k, JSON.stringify(p)); }, [G.PKEY, pid]);
+    await page.reload(); await page.waitForFunction(() => window.__coach && window.Placement);
+    await open(page, 'train');
+    assert.equal(await page.evaluate(() => document.querySelector('#sessionCard h3').textContent), 'Solved!', 'as the set recorded it');
+    await page.context().close();
+    // Safe or blunder: answered, then a reload; and answered, then Close and Resume
+    page = await newPage(vp, club(), {});
+    await goTab(page, 'train'); await page.locator('#panel-train [data-train="safety"]').click();
+    const q = await page.evaluate(() => ({ id: window.__coach.st.qz.it.p.id, blunder: window.__coach.st.qz.it.blunder }));
+    await page.locator(q.blunder ? '#qSafe' : '#qBlunder').click(); // the wrong answer
+    const A = await page.evaluate(() => ({ title: document.querySelector('#sessionCard h3').textContent, arrows: JSON.stringify(window.__coach.st.arrows) }));
+    assert.deepEqual([(await saved(page)).train.counted, (await saved(page)).train.ok], [true, false]);
+    await page.reload(); await page.waitForFunction(() => window.__coach && window.Placement);
+    await open(page, 'train');
+    const R = await page.evaluate(() => { const c = window.__coach.st; return { answered: c.qz.answered, id: c.qz.it.p.id, title: document.querySelector('#sessionCard h3').textContent, next: !!document.querySelector('#sessionCard [data-act="next"]'), quiz: !document.getElementById('quizControls').hidden, arrows: JSON.stringify(c.arrows), right: c.ses.right, wrong: c.ses.wrong }; });
+    assert.deepEqual(R, { answered: true, id: q.id, title: A.title, next: true, quiz: false, arrows: A.arrows, right: 0, wrong: 1 }, 'its verdict, Next ready, nothing counted again');
+    return page;
+  }],
+  ['Round 2, item 6: Today’s Train step, when it resumes a set, names that set', async (vp) => {
+    const page = await newPage(vp, club(), {});
+    await goTab(page, 'train'); await page.locator('#panel-train [data-train="safety"]').click();
+    if (PH(vp)) await closeX(page);
+    await goTab(page, 'coach');
+    assert.deepEqual(await page.evaluate(() => { const s = document.querySelector('#today .step3.z-train'); return [s.querySelector('.st').textContent, s.querySelector('.zb').textContent]; }), ['Safe or blunder?', WORDS.puzzles]);
     return page;
   }],
   // ---------- fix round 1, item 5 ----------
@@ -678,27 +761,26 @@ const cases = [
     assert.match(await page.evaluate(() => document.getElementById('vTitle').textContent), /^Hint 1/);
     return page;
   }],
+  // Round 2, item 7: the outcome only (a failed write is tried again on a later change; the key ends right), never how many
+  // renders one click makes (the game's own analysis may render in between)
   ['Item 8: a failed write of the saved key is tried again on the next change of any kind', async (vp) => {
     const page = await newPage(vp, club(), { game: GAME12, tab: 'play' });
     await lessonTo(page, 'kq', 1);
     assert.deepEqual((await saved(page)).learn, LESSON_E(1));
-    // the device refuses to write the key once (storage full); the step changes in that moment
-    await page.evaluate((k) => { const o = Storage.prototype.setItem; window.__fails = 0; Storage.prototype.setItem = function (a, b) { if (a === k && window.__fails < 1) { window.__fails++; throw new Error('QuotaExceededError'); } return o.call(this, a, b); }; }, RKEY);
-    await page.locator('#navNext').click();
-    assert.deepEqual([await page.evaluate(() => window.__fails), (await saved(page)).learn.i], [1, 1], 'the write failed: the old step is still on the device');
-    // the next change of any kind (here the Piece tags switch in Settings, which does not change the entry) writes it
-    await page.evaluate(() => window.__coach.openSettings());
-    await page.locator('#settingsSheet [data-act="tags"]').click();
-    assert.deepEqual((await saved(page)).learn, LESSON_E(2), 'written on the next change');
-    await page.locator('#settingsSheet [data-act="tags"]').click();
-    await page.locator('#settingsSheet [data-act="settingsclose"]').first().click();
-    // and a key that keeps failing is not tried in a loop: a try per change, and none in between
-    await page.evaluate((k) => { const o = Storage.prototype.setItem; window.__n = 0; Storage.prototype.setItem = function (a, b) { if (a === k) { window.__n++; throw new Error('QuotaExceededError'); } return o.call(this, a, b); }; }, RKEY);
-    await page.locator('#navNext').click();
-    const n = await page.evaluate(() => window.__n);
-    await page.waitForTimeout(600);
-    assert.ok(n >= 1 && n <= 3, 'a few tries for one change: ' + n);
-    assert.equal(await page.evaluate(() => window.__n), n, 'no tries while nothing changes');
+    // the device refuses to write the key while __block is on (storage full)
+    await page.evaluate((k) => { const o = Storage.prototype.setItem; window.__n = 0; window.__block = true; Storage.prototype.setItem = function (a, b) { if (a === k && window.__block) { window.__n++; throw new Error('QuotaExceededError'); } return o.call(this, a, b); }; }, RKEY);
+    const change = async () => { await page.evaluate(() => window.__coach.openSettings()); await page.locator('#settingsSheet [data-act="tags"]').click(); await page.locator('#settingsSheet [data-act="tags"]').click(); await page.locator('#settingsSheet [data-act="settingsclose"]').first().click(); };
+    for (const [step, why] of [[2, 'once'], [3, 'again, after more failures']]) {
+      await page.locator('#navNext').click();
+      await page.waitForTimeout(600);
+      const n = await page.evaluate(() => window.__n);
+      assert.ok(n >= 1 && n < 50, why + ': tried, and not in a loop: ' + n);
+      assert.equal((await saved(page)).learn.i, step - 1, why + ': the old step is still on the device');
+      await page.evaluate(() => { window.__block = false; });
+      await change(); // a change that does not change the entry (the Piece tags switch, on and off)
+      assert.deepEqual((await saved(page)).learn, LESSON_E(step), why + ': the next change writes the right step');
+      await page.evaluate(() => { window.__block = true; window.__n = 0; });
+    }
     assert.deepEqual(page.errors, []);
     return page;
   }],
@@ -719,16 +801,24 @@ const cases = [
       // wide: no card anywhere (there is no Resume game card on wide); the finished game is on the board as today
       assert.deepEqual(await visibleIds(page, '#resumePlay, #resumeHome'), []);
       await goTab(page, 'play'); await shot(page, 'fix1_ended_play');
+      // round 2, item 2: the note and the mode bar never call a finished game paused or offer to resume it
+      const Z = await page.evaluate(() => ({ note: document.getElementById('znote-play').innerText, btns: [...document.querySelectorAll('#znote-play button')].map((b) => b.textContent), bar: document.getElementById('modeExit').textContent }));
+      assert.ok(/Your game ended\./.test(Z.note) && !/paused/.test(Z.note), 'the note: ' + Z.note);
+      assert.deepEqual([Z.btns[0], Z.bar], ['See the end', 'See the end'], 'the note’s button and the mode bar');
+      await goTab(page, 'train');
+      assert.deepEqual(await page.evaluate(() => [...document.querySelectorAll('#znote-train button')].map((b) => b.textContent)).then((b) => b.filter((t) => /Resume game/.test(t))), [], 'no "Resume game" for a finished game on any note');
+      await goTab(page, 'play');
       await page.locator('#znote-play [data-act="close"]').click();
       const c = await G.endCard(page, '#gameEnd');
       assert.deepEqual([c.shown, c.title, c.main], [true, 'Checkmate', 'Review this game'], 'wide: the end card, as today');
+      assert.equal(await page.evaluate(() => window.__coach.st.unseen), false, 'seen');
       await shot(page, 'fix1_see_the_end');
       await goTab(page, 'coach');
       assert.deepEqual(await visibleIds(page, '.rs-card'), []);
       await shot(page, 'fix1_ended_home');
       return page;
     }
-    const ENDED = ['Your game ended', 'Checkmate', null, 'See the end'];
+    const ENDED = ['Your game ended', 'Checkmate. Engine wins.', null, 'See the end']; // round 2, item 3: the line says who won
     const C = await cards(page);
     assert.deepEqual(C.play, ENDED, 'Play: the result card, the end card’s own line');
     await goTab(page, 'play');
@@ -740,7 +830,7 @@ const cases = [
     await shot(page, 'fix1_ended_play');
     await goTab(page, 'coach');
     const H = await resume(page, 'resumeHome');
-    assert.deepEqual([H.title, H.line, H.button, H.primary], ['Your game ended', 'Checkmate', 'See the end', false], 'Home: the same card, under the Continue card');
+    assert.deepEqual([H.title, H.line, H.button, H.primary], ['Your game ended', 'Checkmate. Engine wins.', 'See the end', false], 'Home: the same card, under the Continue card');
     assert.ok(!/Resume game/.test(await G.text(page)), 'no Resume game for a finished game');
     await shot(page, 'fix1_ended_home');
     // through a restart
@@ -797,7 +887,7 @@ const cases = [
     // Beginner Home: the card under the Continue card, in Resume game's place; Beginner words
     page = await newPage(vp, prof(), { game: game(OVER, { recorded: true, unseen: true }), tab: 'play' });
     const B = await page.evaluate(() => { const e = document.querySelector('#bhome .rs-card'); return e && e.getClientRects().length ? { title: e.querySelector('.bh-title').textContent, line: e.querySelector('.rs-line').textContent, go: e.querySelector('.rs-go').textContent } : null; });
-    assert.deepEqual(B, { title: 'Your game ended', line: 'Checkmate', go: 'See the end' });
+    assert.deepEqual(B, { title: 'Your game ended', line: 'Checkmate. Rani’s partner wins.', go: 'See the end' }, 'G-D28: a Beginner never reads "engine"');
     await page.locator('#bhome .rs-go').click();
     const E = await G.endCard(page, '#gameEnd');
     assert.deepEqual([E.shown, E.title], [true, 'Checkmate']);

@@ -616,9 +616,11 @@
       var pz = t === 'path' ? 'learn' : t;
       if (ph || z === 'play' || pz === z) { el.hidden = true; return; }
       el.hidden = false; el.className = 'znote z-' + z;
-      el.innerHTML = '<p><span class="ztag">' + ZNAME[z] + '</span> The board is on <b>' + esc(zoneLabel()) + '</b>.' + (t === 'play' ? ' Your game is paused and saved.' : '') + '</p><div class="row2">' +
-        (t === 'play' ? '<button class="btn primary" type="button" data-act="close">\u25B6 Resume game</button><button class="btn" type="button" data-zgo="' + ZTAB[z] + '">Continue ' + ZNAME[z] + '</button>'
-          : '<button class="btn primary" type="button" data-zgo="' + ZTAB[z] + '">Continue ' + ZNAME[z] + '</button><button class="btn" type="button" data-act="close">\u25B6 Resume game</button>') + '</div>';
+      /* round 2, item 2: a finished game is never "paused", and is not resumed: "Your game ended." and "See the end" (G-D36) */
+      var over = G.game_over(), back = over ? esc(Flow.COPY.seeEnd) : '\u25B6 Resume game';
+      el.innerHTML = '<p><span class="ztag">' + ZNAME[z] + '</span> The board is on <b>' + esc(zoneLabel()) + '</b>.' + (t === 'play' ? (over ? ' ' + Flow.COPY.ended + '.' : ' Your game is paused and saved.') : '') + '</p><div class="row2">' +
+        (t === 'play' ? '<button class="btn primary" type="button" data-act="close">' + back + '</button><button class="btn" type="button" data-zgo="' + ZTAB[z] + '">Continue ' + ZNAME[z] + '</button>'
+          : '<button class="btn primary" type="button" data-zgo="' + ZTAB[z] + '">Continue ' + ZNAME[z] + '</button><button class="btn" type="button" data-act="close">' + back + '</button>') + '</div>';
     });
   }
   function renderMode() {
@@ -646,7 +648,7 @@
     else if (st.mode === 'reach') { tag = 'Piece drill'; text = 'Tap every square the ' + PNAME[st.rc.type] + ' can reach'; }
     else if (st.mode === 'quiz') { tag = 'Safe or blunder?'; text = (st.qz.side === 'w' ? 'White' : 'Black') + ' to move'; }
     $('modeTag').textContent = ZNAME[z]; $('modeText').textContent = tag + (text ? ': ' + text : '');
-    $('modeExit').textContent = st.mode === 'review' ? (st.rv.past ? 'Close review' : 'Resume game') : 'Resume game'; $('modeExit').dataset.zone = z;
+    $('modeExit').textContent = st.mode === 'review' && st.rv.past ? 'Close review' : G.game_over() ? Flow.COPY.seeEnd : 'Resume game'; $('modeExit').dataset.zone = z; /* round 2, item 2 */
   }
 
   /* ---------- Play panel ---------- */
@@ -853,7 +855,7 @@
   /* G-D36 (fix round 1): a game that ended while it was closed. Its card stands where Resume game stands, with the end card's
      own result line. "See the end" opens the board screen at the final position (as Resume game); "Review" opens the review
      as the end card's Review does. Phones only (Flow.endedCard): wide shows the finished game on the board, as before. */
-  function endedCard() { var r = result(G, st.user); return Flow.endedCard({ over: !!r, unseen: st.unseen, wide: !phone(), line: r ? speak(r.title) : '' }); }
+  function endedCard() { var r = result(G, st.user); return Flow.endedCard({ over: !!r, unseen: st.unseen, wide: !phone(), line: r ? Flow.endedLine({ r: r.r, title: speak(r.title), plain: plain() }) : '' }); } /* round 2: the line says who won */
   function endedHtml(c, main) {
     return '<div class="bh-tt"><h3 class="bh-title">' + esc(c.title) + '</h3><p class="rs-line">' + esc(c.line) + '</p></div>' +
       '<button class="btn big rs-go' + (main ? ' primary' : '') + '" type="button" data-act="resume" data-z="play">' + esc(c.main.label) + '</button>' +
@@ -866,7 +868,12 @@
     var ph = phone(), page = ph && st.scr !== 'act', game = page && gameOn(), ec = page ? endedCard() : null, f = resumeFacts();
     /* G-D35: on wide screens too a lesson or set that waits has its card on its tab; there, only while it is not on the board
        (the board beside the panel shows that one) */
-    function other(z) { var e = page ? waitOn(z) : !ph && liveZone() !== z ? st.park[z] : null, c = e ? Flow.resumeCard(e, f) : null; return c ? rsHtml(c.kind, c.kick, c.line, z, false) : ''; }
+    function other(z) {
+      var e = page ? waitOn(z) : !ph && liveZone() !== z ? st.park[z] : null, s = st.ses;
+      /* round 2, item 1: a set that ended while its board screen was closed keeps its card until its end card is seen */
+      if (!e && page && s && liveZone() === z && sesEnded() && s.late) e = { k: 'set', kind: s.kind, title: s.title, i: s.i, count: s.count, finished: true };
+      var c = e ? Flow.resumeCard(e, f) : null; return c ? rsHtml(c.kind, c.kick, c.line, z, false) : '';
+    }
     rsCard($('resumePlay'), game ? gameResume(true) : ec ? endedHtml(ec, true) : '');
     /* Play's start page has one main button: "Resume game" (or "See the end") while a game waits, otherwise "Start new game". Wide: never (unchanged). */
     $('newBtn').classList.toggle('primary', page && !game && !ec);
@@ -888,7 +895,7 @@
   function resumeAct(zone) {
     if (zone === 'play') { if (st.mode !== 'play') { exitMode(true); return; } openAct(); switchTab('play'); render(); return; }
     if (zone !== 'learn' && zone !== 'train') return;
-    if (liveZone() === zone) { if (sesEnded()) { render(); return; } openAct(); switchTab(ZTAB[zone]); render(); return; }
+    if (liveZone() === zone) { if (sesEnded() && !st.ses.late) { render(); return; } openAct(); switchTab(ZTAB[zone]); render(); return; } /* round 2: a set that ended while closed opens on its end card */
     var e = st.park[zone];
     if (!e) { render(); return; } /* G-D35: at every width */
     if (!Flow.entryOk(zone, e, resumeFacts())) { st.park[zone] = null; render(); return; } /* fail safe: checked again at the moment of use */
@@ -906,7 +913,7 @@
     var s = st.ses; if (!s) return null;
     var o = s.opts || {}, k = s.kind;
     var items = k === 'puzzles' ? s.items.filter(Boolean).map(function (p) { return p.id; }) : k === 'safety' ? s.items.map(function (it) { return [it.p.id, it.blunder ? 1 : 0]; }) : k === 'book' ? s.items.map(function (b) { return b.id; }) : [];
-    return Flow.entryOf({ over: sesEnded(), set: { kind: k, title: s.title, unit: s.unit, part: s.part, count: s.count, pass: s.pass, rated: s.rated, theme: o.theme, review: o.review, i: s.i, right: s.right, wrong: s.wrong, counted: s.cnt, items: items,
+    return Flow.entryOf({ over: sesEnded(), set: { kind: k, title: s.title, unit: s.unit, part: s.part, count: s.count, pass: s.pass, rated: s.rated, theme: o.theme, review: o.review, i: s.i, right: s.right, wrong: s.wrong, counted: s.cnt, ok: s.ok, items: items,
       drill: st.dr ? { fen: st.dr.g.fen(), moves: st.dr.moves } : null } });
   }
   function waitOn(z) { return liveZone() === z ? liveEntry() : st.park[z]; }
@@ -948,7 +955,7 @@
     if (e.rated) opts.pick = ratedPick(); else if (items.length) opts.items = items;
     if (e.theme) opts.theme = e.theme;
     if (e.review) opts.review = true;
-    st.ses = { kind: e.kind, title: e.title, count: e.count, pass: opts.pass, unit: e.unit || null, part: e.part || null, rated: !!e.rated, i: e.i, right: e.right, wrong: e.wrong, items: items, opts: opts, msg: null };
+    st.ses = { kind: e.kind, title: e.title, count: e.count, pass: opts.pass, unit: e.unit || null, part: e.part || null, rated: !!e.rated, i: e.i, right: e.right, wrong: e.wrong, items: items, opts: opts, msg: null, ok: e.counted ? e.ok : null };
     openAct(); switchTab(ZTAB[z]);
     nextItem(true, e.counted);
   }
@@ -1614,6 +1621,7 @@
         (s.end ? stepEnd(s.unit, 'session', s.end.passed, s) + slotHost('step', s) : ''); /* an endgame drill that is over */
     }
     if (c._h !== head + body) { c._h = head + body; c.innerHTML = head + body; }
+    if ((s.finished || s.end) && (actOpen() || !phone())) s.late = false; /* round 2: its end card is on screen */
     renderSlot(c.querySelector('[data-slot]'), 'step', s);
     if ((s.finished || s.end) && !s.told) { s.told = true; cardShown(c); clearBanner(c); }
   }
@@ -1631,20 +1639,26 @@
     if (!first) s.i++;
     /* Fix round 1 (item 4): a square or a piece drill already scored was about to move on by itself (its timer went with the
        old board): it moves on now, so it is never asked again */
-    if (first && counted && (s.kind === 'squares' || s.kind === 'reach')) { s.i++; counted = false; }
-    var done = !!(first && counted); /* a counted puzzle or opening line comes back finished, showing its result, Next ready */
+    if (first && counted && (s.kind === 'squares' || s.kind === 'reach')) {
+      /* round 2, item 1: the last one: the set ends now, on its own board screen with its end card (as its timer would have) */
+      if (s.i + 1 >= s.count) { resetHints(); s.cnt = true; if (s.kind === 'squares') { startSquare(); st.sq.done = true; } else { startReach(); st.rc.done = true; } s.i++; return finishSession(); }
+      s.i++; counted = false;
+    }
+    var done = !!(first && counted); /* a counted puzzle, question or opening line comes back finished, showing its result, Next ready */
     resetHints(); st.sel = null; st.flash = null; s.canNext = false; s.canRetry = false; s.msg = null; s.end = null; s.cnt = done;
+    if (!done) s.ok = null; /* round 2, item 4: the counted item's own outcome (true: solved or right) */
     if (s.i >= s.count) return finishSession();
     if (!first) boardUp();
     /* a puzzle that was already dealt for this place is dealt again (Resume); a rated set picks one only for a new place */
     if (s.kind === 'puzzles') { var p = s.items[s.i] || (s.opts.pick ? s.opts.pick(s) : null); if (!p) { s.count = s.i; return finishSession(); } s.items[s.i] = p; startPuzzle(p, done); }
-    else if (s.kind === 'safety') { if (!s.items[s.i]) { s.count = s.i; return finishSession(); } startQuiz(s.items[s.i]); }
+    else if (s.kind === 'safety') { if (!s.items[s.i]) { s.count = s.i; return finishSession(); } startQuiz(s.items[s.i], done); }
     else if (s.kind === 'squares') startSquare();
     else if (s.kind === 'reach') startReach();
     else if (s.kind === 'book') startBook(s.items[s.i], done);
   }
   function finishSession() {
     var s = st.ses; s.finished = true;
+    s.late = phone() && !actOpen(); /* round 2, item 1: it ended while its board screen was closed: its card stays until its end card is seen */
     if (s.unit && s.part && (s.pass == null || s.right >= s.pass)) markUnit(s.unit, s.part);
     saveProfile(); renderPath(); render();
   }
@@ -1722,7 +1736,7 @@
     var P = st.pz, s = st.ses;
     if (solved) {
       P.done = true;
-      if (!P.counted) { P.counted = true; s.cnt = true; s.right++; recordPuzzle(P.p, true); }
+      if (!P.counted) { P.counted = true; s.cnt = true; s.ok = true; s.right++; recordPuzzle(P.p, true); }
       s.msg = { title: alt ? 'Solved (another way!)' : 'Solved!', text: puzzleLesson(P.p) };
       s.canNext = true; render(); return;
     }
@@ -1741,7 +1755,7 @@
   }
   function puzzleFail(mv, want) {
     var P = st.pz, s = st.ses;
-    if (!P.counted) { P.counted = true; s.cnt = true; s.wrong++; recordPuzzle(P.p, false); }
+    if (!P.counted) { P.counted = true; s.cnt = true; s.ok = false; s.wrong++; recordPuzzle(P.p, false); }
     P.wait = true; render();
     setTimeout(function () {
       if (st.pz !== P) return; /* G2b */
@@ -1752,10 +1766,10 @@
       s.canNext = true; s.canRetry = true; render();
     }, 600);
   }
-  /* A counted puzzle, finished: solved or missed as its last record in the profile says (a miss sets its box to 0, a solve to 1
-     or more). Solved: the final position and "Solved!". Missed: the winning move shown, as after a miss, with Try again. */
+  /* A counted puzzle, finished: solved or missed as the set saved it (round 2, item 4: s.ok, not the profile's last record).
+     Solved: the final position and "Solved!". Missed: the winning move shown, as after a miss, with Try again. */
   function puzzleShown(p) {
-    var s = st.ses, g = new Chess(p.fen), rec = prof.puz[p.id], ok = !!(rec && rec.box > 0);
+    var s = st.ses, g = new Chess(p.fen), ok = s.ok === true;
     st.pz = { p: p, g: g, side: g.turn(), step: 0, done: true, wait: false, counted: true };
     if (ok) {
       if (p.sol.indexOf('*') === -1) p.sol.forEach(function (u) { var m = findMove(g, u); if (m) g.move(m); });
@@ -1802,19 +1816,27 @@
     var out = pool.slice(0, n).map(function (p, i) { return { p: p, blunder: i % 2 === 0 }; });
     return shuffle(out);
   }
-  function startQuiz(it) {
+  /* done (round 2, item 5): the question was already answered and counted: it comes back answered, its verdict shown */
+  function startQuiz(it, done) {
     st.mode = 'quiz';
     var g = new Chess(it.p.pre), mv = findMove(g, it.blunder ? it.p.last : it.p.preBest);
     st.qz = { it: it, g: g, side: g.turn(), mv: mv, answered: false };
     st.arrows = mv ? [{ from: mv.from, to: mv.to, color: 'var(--accent)' }] : [];
     st.ses.msg = { title: (g.turn() === 'w' ? 'White' : 'Black') + ' wants to play ' + (mv ? mv.san : '?'), titlePlain: (g.turn() === 'w' ? 'White' : 'Black') + ' wants to play this move.', text: 'Is it <b>safe</b>, or a <b>blunder</b>? Do your blunder check: what can the other side do after this move?' };
+    if (done && mv) { st.qz.answered = true; quizVerdict(st.qz, st.ses.ok === true); st.ses.canNext = true; }
     render();
   }
   function answerQuiz(sayBlunder) {
     var q = st.qz, s = st.ses; if (!q || q.answered || !q.mv) return;
     q.answered = true;
-    var right = sayBlunder === q.it.blunder, p = q.it.p;
-    if (!s.cnt) { s.cnt = true; if (right) s.right++; else s.wrong++; var d = dayRec(); d.puz++; if (right) d.solved++; } /* G2b: an item dealt again after Resume counts once */
+    var right = sayBlunder === q.it.blunder;
+    if (!s.cnt) { s.cnt = true; s.ok = right; if (right) s.right++; else s.wrong++; var d = dayRec(); d.puz++; if (right) d.solved++; } /* G2b: an item dealt again after Resume counts once */
+    quizVerdict(q, right);
+    s.canNext = true; saveProfile(); render();
+  }
+  /* The answer's verdict on the board and the card (round 2: also for a question that comes back answered) */
+  function quizVerdict(q, right) {
+    var s = st.ses, p = q.it.p;
     if (q.it.blunder) {
       var qf = q.g.fen(); q.g.move(q.mv); var ref = findMove(q.g, p.sol[0]);
       st.arrows = ref ? [{ from: ref.from, to: ref.to, color: 'var(--c-blund)' }] : [];
@@ -1822,7 +1844,6 @@
     } else {
       s.msg = { title: right ? 'Correct, it’s safe' : 'Actually, it’s safe', mv: q.mv.san, text: 'This is Stockfish’s top choice here. Nothing hangs and there’s no trick against it.' };
     }
-    s.canNext = true; saveProfile(); render();
   }
 
   /* squares */
@@ -1837,7 +1858,7 @@
   function tapSquare(sq) {
     var q = st.sq, s = st.ses; if (!q || q.done) return;
     q.done = true; var ok = sq === q.target, secs = ((Date.now() - q.t0) / 1000).toFixed(1);
-    if (!s.cnt) { s.cnt = true; if (ok) s.right++; else s.wrong++; }
+    if (!s.cnt) { s.cnt = true; s.ok = ok; if (ok) s.right++; else s.wrong++; }
     st.flash = { sq: q.target, ok: ok }; st.hls = ok ? [] : [q.target];
     s.msg = { title: ok ? 'Right! ' + secs + 's' : 'That was ' + sq, text: ok ? '' : q.target + ' is highlighted: file ' + q.target[0] + ', rank ' + q.target[1] + '.' };
     render();
@@ -1875,7 +1896,7 @@
     else { R.misses++; R.bad = sq; setTimeout(function () { if (st.rc === R) { R.bad = null; render(); } }, 600); }
     var left = R.targets.length - R.found.length;
     if (!left) {
-      R.done = true; var ok = R.misses <= 1; if (!s.cnt) { s.cnt = true; if (ok) s.right++; else s.wrong++; }
+      R.done = true; var ok = R.misses <= 1; if (!s.cnt) { s.cnt = true; s.ok = ok; if (ok) s.right++; else s.wrong++; }
       s.msg = { title: ok ? 'All ' + R.targets.length + ' found!' : 'Found them, with ' + R.misses + ' wrong taps', text: R.misses > 1 ? 'Try to see the whole pattern before tapping. Next one:' : '' };
       render(); setTimeout(function () { if (st.ses === s) nextItem(); }, 1100); return;
     }
@@ -1931,6 +1952,7 @@
     if (end === 'win' || end === 'held') { s.right = 1; markUnit(D.unit, 'apply'); s.msg = end === 'held' ? { title: 'Draw held!', text: 'You defended for ' + D.moves + ' moves against Stockfish. That is real endgame technique.' } : { title: 'Checkmate in ' + D.moves + ' moves!', text: 'Drill passed. That technique is yours now.' }; }
     else { s.wrong = 1; s.msg = { title: end === 'draw' ? (g.in_stalemate() ? 'Stalemate, a draw' : 'Draw') : end === 'limit' ? 'Out of moves' : 'Lost', text: end === 'draw' && g.in_stalemate() ? 'The king had no moves but wasn’t in check. Leave it a square until you can mate.' : 'Use Hint when you’re unsure, and follow the method from the lesson.' }; }
     s.end = { passed: end === 'win' || end === 'held' }; /* F1: the drill's end card (renderSession) */
+    s.late = phone() && !actOpen(); /* round 2, item 1 */
     renderPath();
     render(); return true;
   }
@@ -1940,7 +1962,7 @@
   function startBook(line, done) {
     st.mode = 'book';
     st.bk = { line: line, g: new Chess(), side: line.side, ply: 0, mistakes: 0, done: false, wait: false };
-    if (done) { line.moves.forEach(function (m) { st.bk.g.move(m); }); st.bk.ply = line.moves.length; st.bk.done = true; st.ses.msg = { title: 'Line complete' }; st.ses.canNext = true; render(); return; }
+    if (done) { line.moves.forEach(function (m) { st.bk.g.move(m); }); st.bk.ply = line.moves.length; st.bk.done = true; st.ses.msg = st.ses.ok ? { title: 'Line complete, no mistakes', text: 'You know this one.' } : { title: 'Line complete' }; st.ses.canNext = true; render(); return; }
     st.ses.msg = { title: line.name, text: 'Play your moves from memory. You’re ' + (line.side === 'w' ? 'White' : 'Black') + '.' };
     render(); bookAuto();
   }
@@ -1968,7 +1990,7 @@
   function bookHintData() { var B = st.bk, g = new Chess(B.g.fen()), m = g.move(B.line.moves[B.ply]); return m ? { best: { from: m.from, to: m.to, san: m.san, why: describe(m, 'your') }, theme: { idea: 'Think about the plan of this opening: ' + (B.side === 'w' ? 'center, develop, castle.' : 'match the center, develop, castle.') } } : null; }
   function bookDone() {
     var B = st.bk, s = st.ses; B.done = true;
-    if (!s.cnt) { s.cnt = true; if (B.mistakes === 0) s.right++; else s.wrong++; }
+    if (!s.cnt) { s.cnt = true; s.ok = B.mistakes === 0; if (B.mistakes === 0) s.right++; else s.wrong++; }
     s.msg = { title: B.mistakes === 0 ? 'Line complete, no mistakes' : 'Line complete', text: B.mistakes ? B.mistakes + ' mistake' + (B.mistakes === 1 ? '' : 's') + '. Repeat it until it’s automatic.' : 'You know this one.' };
     s.canNext = true; render();
   }
@@ -2063,7 +2085,7 @@
     var tw = tabOpen('train') ? waitOn('train') : null; /* G-D37: a set or drill that waits on Train is resumed by Today's Train step */
     var steps = [
       { z: 'learn', n: 1, h: 'Learn', done: !!d.course, t: nx ? nx.title : 'Course complete', s: nx ? PART_NAME[k] + ': ' + partDesc(nx, k) : 'Keep sharp with puzzles and games.', b: tl ? Flow.resumeTitle(w.kind) : nx ? 'Start lesson' : 'Open course', act: tl ? RESUME_LESSON : nx ? 'data-part="' + k + '" data-u="' + nx.id + '"' : 'data-zgo="path"' },
-      { z: 'train', n: 2, h: 'Train', done: d.puz >= 10, t: due ? 'Review ' + due + ' missed puzzle' + (due === 1 ? '' : 's') : pl ? '10 puzzles' : '10 rated puzzles', s: Math.min(d.puz, 10) + ' of 10 today.' + (pl ? '' : ' Puzzle rating ' + Math.round(prof.rating) + '.'), b: tw ? Flow.resumeTitle(tw.kind) : 'Start training', act: tw ? 'data-act="resume" data-z="train"' : due ? 'data-train="review"' : 'data-train="rated"' },
+      { z: 'train', n: 2, h: 'Train', done: d.puz >= 10, t: tw ? tw.title : due ? 'Review ' + due + ' missed puzzle' + (due === 1 ? '' : 's') : pl ? '10 puzzles' : '10 rated puzzles', s: Math.min(d.puz, 10) + ' of 10 today.' + (pl ? '' : ' Puzzle rating ' + Math.round(prof.rating) + '.'), b: tw ? Flow.resumeTitle(tw.kind) : 'Start training', act: tw ? 'data-act="resume" data-z="train"' : due ? 'data-train="review"' : 'data-train="rated"' },
       { z: 'play', n: 3, h: 'Play', done: d.games >= 1, t: 'One full game', s: 'Use what you learned against ' + (pl ? partnerName() + '.' : OPP[recLevel()].name + ' (~' + OPP[recLevel()].elo + ').'), b: G.history().length && !G.game_over() ? Flow.COPY.back : 'Play a game', act: G.history().length && !G.game_over() ? 'data-act="close"' : 'data-act="recgame"' }
     ].filter(function (x) { return x.z !== 'train' || tabOpen('train'); }); /* a Beginner's Train tab is still locked */
     steps.forEach(function (x, i) { x.n = i + 1; });

@@ -415,8 +415,11 @@ test('G-D19: what is saved for a lesson, a set and a drill (and nothing for what
   assert.deepEqual(F.entryOf({ lesson: { unit: 'kq', i: 1 } }), LESSON);
   assert.equal(F.entryOf({}), null); assert.equal(F.entryOf(null), null);
   assert.equal(F.entryOf({ over: true, set: setE() }), null, 'a finished set is not saved');
-  const e = F.entryOf({ set: { kind: 'puzzles', title: 'Rated puzzles', count: 10, rated: true, i: 2, right: 1, wrong: 1, counted: true, items: ['m1', 'm2', 'm3'], extra: 'x' } });
-  assert.deepEqual(e, setE({ counted: true }));
+  const e = F.entryOf({ set: { kind: 'puzzles', title: 'Rated puzzles', count: 10, rated: true, i: 2, right: 1, wrong: 1, counted: true, ok: false, items: ['m1', 'm2', 'm3'], extra: 'x' } });
+  assert.deepEqual(e, setE({ counted: true, ok: false }));
+  // round 2, item 4: the counted item's own outcome is kept (only while it is counted)
+  assert.equal(F.entryOf({ set: setE({ counted: true, ok: true }) }).ok, true);
+  assert.equal('ok' in F.entryOf({ set: setE({ counted: false, ok: true }) }), false, 'nothing to keep before it is answered');
   assert.equal('extra' in e, false, 'only the known fields');
   assert.deepEqual(F.entryOf({ set: DRILL }), DRILL);
   assert.equal('drill' in F.entryOf({ set: setE() }), false);
@@ -450,10 +453,11 @@ test('G-D19: a good saved entry is accepted, for every kind', () => {
   assert.equal(F.entryOk('learn', DRILL, f), true, 'a drill as the lesson’s task');
   assert.equal(F.entryOk('train', DRILL, f), true, 'the same drill from Train’s list');
   // fix round 1: the counts add up: the items played, plus the current one once it is counted
-  assert.equal(F.entryOk('train', setE({ right: 2, wrong: 1, counted: true }), f), true, 'the current puzzle is already counted');
+  assert.equal(F.entryOk('train', setE({ right: 2, wrong: 1, counted: true, ok: true }), f), true, 'the current puzzle is already counted');
   assert.equal(F.entryOk('train', setE({ i: 0, right: 0, wrong: 0 }), f), true, 'the first puzzle, nothing counted');
-  assert.equal(F.entryOk('train', setE({ i: 0, right: 1, wrong: 0, counted: true }), f), true);
-  assert.equal(F.entryOk('train', setE({ kind: 'book', rated: false, title: 'Opening drill', count: 1, i: 0, right: 0, wrong: 1, counted: true, items: ['italian'] }), f), true, 'the last line, scored');
+  assert.equal(F.entryOk('train', setE({ i: 0, right: 1, wrong: 0, counted: true, ok: true }), f), true);
+  assert.equal(F.entryOk('train', setE({ kind: 'book', rated: false, title: 'Opening drill', count: 1, i: 0, right: 0, wrong: 1, counted: true, ok: false, items: ['italian'] }), f), true, 'the last line, scored');
+  assert.equal(F.entryOk('train', setE({ kind: 'safety', rated: false, count: 3, i: 1, right: 1, wrong: 1, counted: true, ok: false, items: [['m1', 1], ['m2', 0], ['m3', 1]] }), f), true, 'an answered question');
 });
 
 test('G-D19 fails safe: a corrupt, stale or unknown entry is dropped (no error, no card)', () => {
@@ -488,9 +492,11 @@ test('G-D19 fails safe: a corrupt, stale or unknown entry is dropped (no error, 
   // fix round 1: the score must be exactly the items played so far, plus the current one when it is already counted
   bad('train', setE({ right: 2, wrong: 1 }), 'three results for two items played');
   bad('train', setE({ right: 0, wrong: 1 }), 'a result is missing');
-  bad('train', setE({ right: 1, wrong: 1, counted: true }), 'counted, but its result is not in the score');
+  bad('train', setE({ right: 1, wrong: 1, counted: true, ok: true }), 'counted, but its result is not in the score');
+  bad('train', setE({ right: 2, wrong: 1, counted: true }), 'round 2: counted, but its own outcome is missing');
+  bad('train', setE({ right: 2, wrong: 1, counted: true, ok: 'yes' }), 'an outcome that is not solved or missed');
   bad('train', setE({ right: 2, wrong: 0, counted: false, i: 1 }), 'the current item is not counted, but its result is');
-  bad('train', setE({ kind: 'book', rated: false, title: 'Opening drill', count: 1, i: 0, right: 1, wrong: 1, counted: true, items: ['italian'] }), 'more results than the set has items');
+  bad('train', setE({ kind: 'book', rated: false, title: 'Opening drill', count: 1, i: 0, right: 1, wrong: 1, counted: true, ok: true, items: ['italian'] }), 'more results than the set has items');
   bad('learn', Object.assign({}, DRILL, { right: 1 }), 'a drill still going has no result yet');
   // a function that throws inside the facts must not escape either
   assert.equal(F.entryOk('learn', LESSON, facts({ unit: () => { throw new Error('boom'); } })), false);
@@ -574,6 +580,14 @@ test('G-D36: a game that ends while it is not on screen is marked unseen; one th
   assert.equal(F.endsUnseen({ wide: true, mode: 'play', scr: 'tabs' }), false);
   assert.equal(F.endsUnseen({ wide: true, mode: 'puzzle', scr: 'act' }), true);
   assert.equal(F.endsUnseen(null), true, 'unknown: the card is the safe side');
+});
+test('G-D36 (round 2): the result line says who won; a Beginner never reads "engine"', () => {
+  assert.equal(F.endedLine({ r: 'W', title: 'Checkmate. You win!', plain: false }), 'Checkmate. You win!');
+  assert.equal(F.endedLine({ r: 'L', title: 'Checkmate', plain: false }), 'Checkmate. Engine wins.');
+  assert.equal(F.endedLine({ r: 'L', title: 'Checkmate', plain: true }), 'Checkmate. Rani\u2019s partner wins.');
+  assert.equal(F.endedLine({ r: 'D', title: 'Stalemate', plain: false }), 'Stalemate', 'a draw: the end card’s own title');
+  assert.equal(F.endedLine({ r: 'D', title: 'Draw', plain: true }), 'Draw');
+  assert.equal(F.endedLine(null), '');
 });
 test('G-D36: the result card: "Your game ended", the end card’s own result line, "See the end" and "Review"', () => {
   const c = F.endedCard({ over: true, unseen: true, wide: false, line: 'Checkmate' });

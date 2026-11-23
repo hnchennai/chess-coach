@@ -14,7 +14,9 @@
     close: 'Close', resumeGame: 'Resume game', resumeLesson: 'Resume lesson', resumePuzzles: 'Resume puzzles', resumeDrill: 'Resume drill',
     move: 'Move ', yourTurn: ', your turn', engineTurn: ', engine to move', recent: 'Recent games',
     /* G-D36 (fix round 1) */
-    ended: 'Your game ended', seeEnd: 'See the end', reviewShort: 'Review'
+    ended: 'Your game ended', seeEnd: 'See the end', reviewShort: 'Review',
+    /* G2b fix round 2: the result card's line for a loss (G-D28: a Beginner never reads "engine") */
+    engineWins: 'Checkmate. Engine wins.', partnerWins: 'Checkmate. Rani\u2019s partner wins.'
   };
   /* go names the action the app wires to a button: review, newgame, home, nextlesson (the next lesson's next part), tryagain
      (the lesson game again), again (the same step again), part (the lesson's next part), more (10 more puzzles), step (the
@@ -195,6 +197,8 @@
     var e = { k: 'set', kind: s.kind, title: s.title, unit: s.unit || null, part: s.part || null, count: s.count, pass: s.pass == null ? null : s.pass, rated: !!s.rated,
       theme: s.theme || null, review: !!s.review, i: s.i, right: s.right, wrong: s.wrong, counted: !!s.counted, items: (s.items || []).slice() };
     if (s.kind === 'drill' && s.drill) e.drill = { fen: s.drill.fen, moves: s.drill.moves };
+    /* round 2: the counted item's own outcome (true: solved or right, false: missed), so it comes back as it ended */
+    if (e.counted) e.ok = s.ok === true ? true : s.ok === false ? false : null;
     return e;
   }
   /* THE CHECK OF A SAVED ENTRY (G-D19: fail safe). zone: the tab it waits on. f: the facts of this app and this player:
@@ -217,6 +221,7 @@
     if (typeof e.counted !== 'boolean' || typeof e.rated !== 'boolean' || typeof e.review !== 'boolean' || !Array.isArray(it)) return false;
     /* fix round 1: one result per item played, plus the current one once it is counted; never more than the set has */
     if (e.right + e.wrong !== e.i + (e.counted ? 1 : 0) || e.right + e.wrong > e.count) return false;
+    if (e.counted && typeof e.ok !== 'boolean') return false; /* round 2: a counted item carries its outcome */
     if (e.theme != null && typeof e.theme !== 'string') return false;
     if (kind !== 'puzzles' && (e.rated || e.theme || e.review)) return false;
     if (u) {
@@ -289,12 +294,18 @@
   }
   /* The card. s: { over, unseen, wide, line (the end card's own result line) }. Wide: none (the finished game is on the
      board there, as today). go: 'seeend' (the board screen at the final position, with the game's end card) | 'review'. */
+  /* Round 2: the card's line says who won. A loss: "Checkmate. Engine wins." (a Beginner: Rani's partner); a win or a draw:
+     the end card's own title. s: { r: 'W' | 'L' | 'D', title, plain } */
+  function endedLine(s) {
+    if (!s) return '';
+    return s.r === 'L' ? (s.plain ? COPY.partnerWins : COPY.engineWins) : s.title || '';
+  }
   function endedCard(s) {
     if (!s || !s.over || !s.unseen || s.wide !== false) return null;
     return { title: COPY.ended, line: s.line || '', main: b(COPY.seeEnd, 'seeend'), small: [b(COPY.reviewShort, 'review')] };
   }
 
-  return { RESUME_KEY: RESUME_KEY, onOpen: onOpen, entryOf: entryOf, entryOk: entryOk, writeResume: writeResume, readResume: readResume, resumeCard: resumeCard, waitingPart: waitingPart, endsUnseen: endsUnseen, endedCard: endedCard, lessonLine: lessonLine, setLine: setLine,
+  return { RESUME_KEY: RESUME_KEY, onOpen: onOpen, entryOf: entryOf, entryOk: entryOk, writeResume: writeResume, readResume: readResume, resumeCard: resumeCard, waitingPart: waitingPart, endsUnseen: endsUnseen, endedCard: endedCard, endedLine: endedLine, lessonLine: lessonLine, setLine: setLine,
     firstLook: firstLook, drillZone: drillZone, resumesLesson: resumesLesson, bannerRoom: bannerRoom, actOpen: actOpen, tabsHidden: tabsHidden, keepsScreen: keepsScreen, inUse: inUse, slotOk: slotOk, resumeLine: resumeLine, resumeTitle: resumeTitle, startTab: startTab, closeTab: closeTab,
     afterGame: afterGame, goalCard: goalCard, afterReview: afterReview, afterStep: afterStep, cont: cont, asks: asks, COPY: COPY };
 });

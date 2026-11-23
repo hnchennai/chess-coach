@@ -360,7 +360,13 @@ Counts are estimates from reading and pattern matching. The suites were not run.
 - Item 6: `entryOk` requires `right + wrong === i + (counted ? 1 : 0)` and no more results than items.
 - Item 8: `st.flipped` is a getter over `st.gf` (the game, a review; saved as `flipped`) and `st.af` (everything else); a hint's words on the game's coach line go back to what they were before the first hint when the count is back to 0; `syncResume` marks a write done only when it succeeded.
 
+### Fix round 2 (2026-11-23)
+- A set entry whose item is counted carries `ok` (true: solved or right, false: missed); `entryOk` requires it while `counted`. A puzzle, a Safe or blunder question (now restored answered, its verdict shown) and an opening line come back as the set saved them, not as the profile's last record says.
+- The last item of a set restored counted ends the set on its board screen with its end card. A set or drill that ends while its board screen is closed (its timer or the engine's reply) keeps its Resume card (`s.late`) until its end card is seen.
+- The result card's line: `Flow.endedLine` ("Checkmate. Engine wins.", for a Beginner "Checkmate. Rani's partner wins.", else the end card's own title). Wide: for a finished game the note reads "Your game ended." and its button and the mode bar's read "See the end".
+- Today's Train step names the set it resumes.
+
 ### Known limits
+- A set that ended while closed and is then killed before its end card is seen loses that card (its results and the lesson part are saved).
 - The engine's reply to a closed game is saved once it is explained (as before); after a kill in between, the engine thinks again.
 - Not verified on a phone: a real system kill of the WebView. The browser cases reload the page, which exercises the same read path.
-- A counted Safe or blunder question is dealt again (no result is lost or counted twice; the answer given before is not known).

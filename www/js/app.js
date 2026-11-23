@@ -32,12 +32,13 @@
 
   /* ---------- state ---------- */
   var st = {
-    theme: 'classic', mode: 'play', tab: 'path', user: 'w', level: 2, flipped: false,
+    theme: 'classic', mode: 'play', tab: 'path', user: 'w', level: 2, gf: false, af: false,
     ann: {}, notes: {}, tags: {}, sel: null, arrows: [], hls: [], hintLvl: 0,
     gb: false, ab: false, evalW: 0, fb: null, opp: null, think: null, over: false,
     recorded: false, t: 0, goal: null, rv: null, pz: null, ses: null, ls: null, dr: null, bk: null, sq: null, qz: null, unitOpen: null, confirmNew: false, nm: null,
     scr: 'tabs', rvFrom: null, /* G2a: 'tabs' (a tab page) or 'act' (the board screen); memory only, never stored. Wide screens ignore it. */
-    park: { learn: null, train: null } /* G2b: what waits on Learn and on Train while something else is on the board (Flow entries) */
+    park: { learn: null, train: null }, /* G2b: what waits on Learn and on Train while something else is on the board (Flow entries) */
+    unseen: false, fbPre: null /* fix round 1: the game ended while it was not on screen (G-D36, saved with the game); the game's coach line before its first hint */
   };
   /* G2b: two things can be waiting for the engine at once: the game (st.gb: its move check and the engine's reply go on while
      the game is closed) and the lesson, set or drill on the board (st.ab). st.busy is the one the board on screen cares about,
@@ -45,6 +46,11 @@
   Object.defineProperty(st, 'busy', { enumerable: true,
     get: function () { return st.mode === 'play' ? st.gb : st.ab; },
     set: function (v) { if (st.mode === 'play') st.gb = !!v; else st.ab = !!v; } });
+  /* Fix round 1: the same for Flip. The game keeps its own (st.gf, saved with the game); a lesson, set, drill or the level check
+     uses another (st.af), so the game comes back the way the player turned it. A review shows the game's side. */
+  Object.defineProperty(st, 'flipped', { enumerable: true,
+    get: function () { return st.mode === 'play' || st.mode === 'review' ? st.gf : st.af; },
+    set: function (v) { if (st.mode === 'play' || st.mode === 'review') st.gf = !!v; else st.af = !!v; } });
   var boardId = 0; /* goes up whenever the board changes hands (clearSession): a late reply for the old one finds a new number */
   var prof = Profile.blank();
   var $ = function (id) { return document.getElementById(id); };
@@ -440,6 +446,9 @@
 
   function render() {
     scrHold = false; fixScreen();
+    /* Fix round 1: the game's hint count goes back to 0 when another activity takes the board (or at a restart); its words on
+       the coach line go back with it, to what they were before the first hint */
+    if (st.mode === 'play' && !st.hintLvl && st.fb && /^Hint [123]:/.test(st.fb.title || '')) { st.fb = st.fbPre || null; st.fbPre = null; }
     if (tipFor && !tipFor.isConnected) hideTip();
     if (st.builtFor !== orientWhite()) buildGrid();
     var g = viewGame(), hist = g.history({ verbose: true }), last = hist[hist.length - 1], targets = {}, checkSq = null;
@@ -609,7 +618,7 @@
       el.hidden = false; el.className = 'znote z-' + z;
       el.innerHTML = '<p><span class="ztag">' + ZNAME[z] + '</span> The board is on <b>' + esc(zoneLabel()) + '</b>.' + (t === 'play' ? ' Your game is paused and saved.' : '') + '</p><div class="row2">' +
         (t === 'play' ? '<button class="btn primary" type="button" data-act="close">\u25B6 Resume game</button><button class="btn" type="button" data-zgo="' + ZTAB[z] + '">Continue ' + ZNAME[z] + '</button>'
-          : '<button class="btn primary" type="button" data-zgo="' + ZTAB[z] + '">Continue ' + ZNAME[z] + '</button><button class="btn" type="button" data-act="close">Stop, resume game</button>') + '</div>';
+          : '<button class="btn primary" type="button" data-zgo="' + ZTAB[z] + '">Continue ' + ZNAME[z] + '</button><button class="btn" type="button" data-act="close">\u25B6 Resume game</button>') + '</div>';
     });
   }
   function renderMode() {
@@ -841,14 +850,28 @@
     el.hidden = false;
   }
   function gameResume(main) { return rsHtml('game', '', turnLine(), 'play', main); }
+  /* G-D36 (fix round 1): a game that ended while it was closed. Its card stands where Resume game stands, with the end card's
+     own result line. "See the end" opens the board screen at the final position (as Resume game); "Review" opens the review
+     as the end card's Review does. Phones only (Flow.endedCard): wide shows the finished game on the board, as before. */
+  function endedCard() { var r = result(G, st.user); return Flow.endedCard({ over: !!r, unseen: st.unseen, wide: !phone(), line: r ? speak(r.title) : '' }); }
+  function endedHtml(c, main) {
+    return '<div class="bh-tt"><h3 class="bh-title">' + esc(c.title) + '</h3><p class="rs-line">' + esc(c.line) + '</p></div>' +
+      '<button class="btn big rs-go' + (main ? ' primary' : '') + '" type="button" data-act="resume" data-z="play">' + esc(c.main.label) + '</button>' +
+      '<button class="btn rs-rv" type="button" data-act="review">' + esc(c.small[0].label) + '</button>';
+  }
+  /* The game's end card is seen (it is on screen, or its review opened): the result card goes, and the saved game says so. The
+     game's time stamp stays (as when it was recorded), so a merge still sees its real age. */
+  function seenEnd() { if (!st.unseen) return; st.unseen = false; var snap = snapshot(); lsSet(STORE, snap); push('game', snap); }
   function renderResume() {
-    var page = phone() && st.scr !== 'act', game = page && gameOn(), f = page ? resumeFacts() : null;
-    function other(z) { var c = page ? Flow.resumeCard(waitOn(z), f) : null; return c ? rsHtml(c.kind, c.kick, c.line, z, false) : ''; }
-    rsCard($('resumePlay'), game ? gameResume(true) : '');
-    /* Play's start page has one main button: "Resume game" while a game waits, otherwise "Start new game". Wide: never (unchanged). */
-    $('newBtn').classList.toggle('primary', page && !game);
+    var ph = phone(), page = ph && st.scr !== 'act', game = page && gameOn(), ec = page ? endedCard() : null, f = resumeFacts();
+    /* G-D35: on wide screens too a lesson or set that waits has its card on its tab; there, only while it is not on the board
+       (the board beside the panel shows that one) */
+    function other(z) { var e = page ? waitOn(z) : !ph && liveZone() !== z ? st.park[z] : null, c = e ? Flow.resumeCard(e, f) : null; return c ? rsHtml(c.kind, c.kick, c.line, z, false) : ''; }
+    rsCard($('resumePlay'), game ? gameResume(true) : ec ? endedHtml(ec, true) : '');
+    /* Play's start page has one main button: "Resume game" (or "See the end") while a game waits, otherwise "Start new game". Wide: never (unchanged). */
+    $('newBtn').classList.toggle('primary', page && !game && !ec);
     /* Beginner Home draws its own, under its Continue card. No card when the Continue card's own button is already the game. */
-    rsCard($('resumeHome'), game && !plain() && nextAction(currentStage()).info.kind !== 'beat' ? gameResume(false) : '');
+    rsCard($('resumeHome'), plain() ? '' : game && nextAction(currentStage()).info.kind !== 'beat' ? gameResume(false) : ec ? endedHtml(ec, false) : '');
     rsCard($('resumePath'), other('learn'));
     rsCard($('resumeTrain'), other('train'));
     var rc = $('recentPlay'), gs = prof.games, pl = plain();
@@ -867,7 +890,7 @@
     if (zone !== 'learn' && zone !== 'train') return;
     if (liveZone() === zone) { if (sesEnded()) { render(); return; } openAct(); switchTab(ZTAB[zone]); render(); return; }
     var e = st.park[zone];
-    if (!e || !phone()) { render(); return; }
+    if (!e) { render(); return; } /* G-D35: at every width */
     if (!Flow.entryOk(zone, e, resumeFacts())) { st.park[zone] = null; render(); return; } /* fail safe: checked again at the moment of use */
     stow(zone); restoreEntry(zone, e);
   }
@@ -903,19 +926,19 @@
       trainOpen: tabOpen('train')
     };
   }
-  /* Something else takes the board (to: the tab it belongs to). Phones: the lesson or set on the board waits on its own tab,
-     unless it is finished or the new one is for the same tab (the newest wins, no question). Wide: nothing is kept (D50).
-     The caller clears the board next (clearSession). */
+  /* Something else takes the board (to: the tab it belongs to). The lesson or set on the board waits on its own tab, unless it
+     is finished or the new one is for the same tab (the newest wins, no question). G-D35: the same on wide screens (D50 is
+     gone). The caller clears the board next (clearSession). */
   function stow(to) {
     var z = liveZone();
-    if (Flow.onOpen({ wide: !phone(), live: z, over: sesEnded(), to: to }) === 'park') st.park[z] = liveEntry();
+    if (Flow.onOpen({ live: z, over: sesEnded(), to: to }) === 'park') st.park[z] = liveEntry();
     if (to === 'learn' || to === 'train') st.park[to] = null;
   }
   /* Resume from an entry: the current item is dealt again. A lesson shows its step; a puzzle, question, square, piece or
      opening line starts that item again with the score kept (and its result, if it was already counted, not counted again);
      an endgame drill keeps its position. Nothing is thawed: timers and engine replies of the old one found a new board. */
   function restoreEntry(z, e) {
-    clearSession(); st.rv = null; st.flipped = false; st.sel = null; resetHints();
+    clearSession(); st.rv = null; st.af = false; st.sel = null; resetHints();
     if (e.k === 'lesson') { st.mode = 'lesson'; st.ls = { unit: UNIT[e.unit], i: e.i, g: null, side: 'w' }; openAct(); switchTab('path'); showLessonStep(); return; }
     if (e.kind === 'drill') { openDrill(e.unit, UNIT[e.unit].apply, z === 'train' ? 'train' : null, e.drill); return; }
     var items = e.kind === 'puzzles' ? e.items.map(function (id) { return PZ_BY[id]; }) : e.kind === 'safety' ? e.items.map(function (x) { return { p: PZ_BY[x[0]], blunder: !!x[1] }; })
@@ -929,14 +952,15 @@
     openAct(); switchTab(ZTAB[z]);
     nextItem(true, e.counted);
   }
-  /* The saved key follows what waits, in the same step as the change (render). Nothing waits: the key is removed. */
+  /* The saved key follows what waits, in the same step as the change (render). Nothing waits: the key is removed. A write the
+     device refuses (storage full) is not marked as done, so the next change of any kind (the next render) tries it again:
+     once per change, never in a loop. */
   var resumeOn = false, resumeStr = null;
   function syncResume() {
     if (!resumeOn) return;
     var o = Flow.writeResume({ learn: waitOn('learn'), train: waitOn('train') }), str = o ? JSON.stringify(o) : '';
     if (str === resumeStr) return;
-    resumeStr = str;
-    try { if (str) localStorage.setItem(Flow.RESUME_KEY, str); else localStorage.removeItem(Flow.RESUME_KEY); } catch (e) {}
+    try { if (str) localStorage.setItem(Flow.RESUME_KEY, str); else localStorage.removeItem(Flow.RESUME_KEY); resumeStr = str; } catch (e) {}
   }
   /* App start: what was waiting comes back as parked entries. Anything that does not pass the check is dropped silently. */
   function loadResume() { st.park = Flow.readResume(lsGet(Flow.RESUME_KEY), resumeFacts()); resumeOn = true; }
@@ -945,8 +969,9 @@
   /* G-D4, G-D23: Close. No question; nothing to save (a game is saved on every move, a lesson or set stays in memory).
      Lands on the activity's tab; a past game's review lands where it was opened. A review opened in the middle of a game
      goes back to that game. An end card that is up is over, so it is dropped. Returns false when there is nothing to close. */
-  /* The lesson that is waiting on a phone's tab pages (closed, parked, or read from the device), for Home's Continue card. */
-  function waitingLesson() { return phone() && st.scr !== 'act' ? Flow.waitingLesson(waitOn('learn')) : null; }
+  /* What waits on Learn as a lesson's part (the lesson, its practice set or its task: closed, parked, or read from the device),
+     for Home's Continue card and Today's Learn step (G-D37). G-D35: wide screens too, where it may also be the one on the board. */
+  function waitingPart() { return !phone() || st.scr !== 'act' ? Flow.waitingPart(waitOn('learn')) : null; }
   var RESUME_LESSON = 'data-act="resume" data-z="learn"';
   function closeAct() {
     if (!actOpen()) return false;
@@ -1227,6 +1252,7 @@
              main button never changes under the finger */
           full = !(gl && gl.status === 'active');
           if (full) {
+            seenEnd(); /* G-D36: the player sees the game's end card: its result card goes */
             endFull = key; /* known before the slot is asked for: an end card that is up means the board is no longer in use */
             var n = gl ? unitNext(gl.unit, gl.status === 'done') : { np: null, kind: null, nx: null };
             var c = Flow.afterGame({ goal: gl ? gl.status : null, nextPart: n.kind, next: n.nx });
@@ -1422,7 +1448,7 @@
     /* Fix round 1: on a phone the question comes whatever is on the board (a closed lesson or set may be waiting over the game) */
     if (!force && (st.mode === 'play' || phone()) && G.history().length > 2 && !G.game_over() && !st.confirmNew) { st.confirmNew = true; $('newConfirm').hidden = false; st.scr = 'tabs'; switchTab('play'); return; } /* G2a: the question is on Play's start page */
     $('newConfirm').hidden = true; st.confirmNew = false; st.nm = null; /* G1: a new game clears the name line */
-    stow('play'); /* G2b: on a phone a lesson or set that is open waits on its own tab; wide: it ends (D50) */
+    stow('play'); /* G2b, G-D35: a lesson or set that is open waits on its own tab, at every width */
     clearSession(); st.mode = 'play'; st.rv = null;
     st.gid = (st.gid || 0) + 1; st.gb = false; /* the old game's engine or grading reply is dropped: the new game is playable at once */
     var c = opts.color || $('colorSel').value; if (c === 'r') c = Math.random() < 0.5 ? 'w' : 'b';
@@ -1430,6 +1456,7 @@
     st.user = c; st.level = opts.level || (plain() ? Profile.LEVELS.beginner.opp : +$('levelSel').value); $('levelSel').value = String(st.level);
     st.goal = opts.goal || null;
     G.reset(); st.ann = {}; st.notes = {}; st.tags = {}; st.sel = null; resetHints(); st.evalW = 20; st.flipped = false; st.over = false; st.recorded = false; st.opp = null; st.think = null;
+    st.unseen = false; st.fbPre = null; /* G-D36: a new game ends the old game's result card */
     st.fb = st.user === 'w'
       ? { cls: 'info', sym: '♙', title: 'Your move', mv: 'You play White', noSan: true, text: 'Grab the center. ' + mvcSan(START_FEN, 'e4') + ' or ' + mvcSan(START_FEN, 'd4') + ' are the classic first moves. Tap a piece to see where it can go.', tip: '<b>First 10 moves:</b> center pawns, knights and bishops out, then castle.' }
       : { cls: 'info', sym: '♙', title: 'Engine to move', mv: 'You play Black', noSan: true };
@@ -1471,6 +1498,7 @@
       if (game) st.gb = false; else if (tok === boardId) st.ab = false;
       if (tok !== boardId || game !== (st.mode === 'play')) { render(); return; }
       if (!t || !t.best) { render(); return; }
+      if (game && !st.hintLvl) st.fbPre = st.fb; /* fix round 1: what the coach line said before the first hint */
       st.hintLvl = Math.min(3, st.hintLvl + 1);
       var fb;
       if (st.hintLvl === 1) { st.arrows = []; fb = { cls: 'info', sym: '♘', title: 'Hint 1: the idea', text: t.theme.idea, tip: 'Still stuck? Tap Hint again and I’ll show you which piece to move.' }; }
@@ -1493,6 +1521,7 @@
     if (st.recorded) return;
     var r = result(G, st.user); if (!r) return;
     st.recorded = true; checkGoal();
+    st.unseen = Flow.endsUnseen({ wide: !phone(), mode: st.mode, scr: st.scr }); /* G-D36: it ended while the player was elsewhere */
     var s = summarize(st.ann, st.tags, st.user, G.history());
     prof.games.unshift({ id: 'g' + Date.now(), d: Date.now(), r: r.r, user: st.user, level: st.level, acc: s.acc, counts: s.counts, tags: s.tags, sans: G.history(), ann: st.ann });
     prof.games = prof.games.slice(0, 30); dayRec().games++;
@@ -1521,7 +1550,8 @@
 
   /* ---------- review ---------- */
   function enterReview(src) {
-    stow('play'); /* G2b: as a game, a review never ends what waits on Learn or Train (phones) */
+    stow('play'); /* G2b: as a game, a review never ends what waits on Learn or Train (G-D35: wide too) */
+    if (!src) seenEnd(); /* G-D36: the review of the finished game opens its result card */
     clearSession();
     st.rvFrom = src && st.tab === 'progress' ? 'progress' : 'play'; /* G-D23: where Close goes back to */
     var past = !!src, sans = past ? src.sans : G.history(), notes = past ? {} : JSON.parse(JSON.stringify(st.notes));
@@ -1554,7 +1584,7 @@
   function clearSession() { st.nm = null; st.end = null; st.ses = null; st.pz = null; st.qz = null; st.sq = null; st.dr = null; st.bk = null; st.ls = null; st.rc = null; st.flash = null; st.ab = false; boardId++; }
   function exitMode(toGame) {
     var from = st.mode, unit = st.ses && st.ses.unit;
-    if (toGame === true) stow('play'); /* G2b (G-D20): on a phone "Resume game" keeps the open lesson or set for its Resume card; wide: D50, it ends */
+    if (toGame === true) stow('play'); /* G2b (G-D20, G-D35): "Resume game" keeps the open lesson or set for its Resume card, at every width */
     clearSession(); st.mode = 'play'; st.rv = null; st.sel = null; resetHints();
     var last = G.history({ verbose: true }).slice(-1)[0];
     if (last && last.color !== st.user) st.arrows = [{ from: last.from, to: last.to, color: 'var(--c-blund)' }];
@@ -1589,7 +1619,7 @@
   }
   function startSession(kind, opts) {
     stow(opts.unit ? 'learn' : 'train'); /* G2b: the newest wins on its own tab; another tab's waits (phones) */
-    clearSession(); st.rv = null; st.flipped = false;
+    clearSession(); st.rv = null; st.af = false;
     st.ses = { kind: kind, title: opts.title, count: opts.count || 10, pass: opts.pass, unit: opts.unit || null, part: opts.part || null, rated: !!opts.rated, i: 0, right: 0, wrong: 0, items: opts.items || [], opts: opts, msg: null };
     openAct(); switchTab(opts.unit ? 'path' : 'train');
     nextItem(true);
@@ -1599,15 +1629,19 @@
   function nextItem(first, counted) {
     var s = st.ses; if (!s) return;
     if (!first) s.i++;
-    resetHints(); st.sel = null; st.flash = null; s.canNext = false; s.canRetry = false; s.msg = null; s.end = null; s.cnt = !!(first && counted);
+    /* Fix round 1 (item 4): a square or a piece drill already scored was about to move on by itself (its timer went with the
+       old board): it moves on now, so it is never asked again */
+    if (first && counted && (s.kind === 'squares' || s.kind === 'reach')) { s.i++; counted = false; }
+    var done = !!(first && counted); /* a counted puzzle or opening line comes back finished, showing its result, Next ready */
+    resetHints(); st.sel = null; st.flash = null; s.canNext = false; s.canRetry = false; s.msg = null; s.end = null; s.cnt = done;
     if (s.i >= s.count) return finishSession();
     if (!first) boardUp();
     /* a puzzle that was already dealt for this place is dealt again (Resume); a rated set picks one only for a new place */
-    if (s.kind === 'puzzles') { var p = s.items[s.i] || (s.opts.pick ? s.opts.pick(s) : null); if (!p) { s.count = s.i; return finishSession(); } s.items[s.i] = p; startPuzzle(p); }
+    if (s.kind === 'puzzles') { var p = s.items[s.i] || (s.opts.pick ? s.opts.pick(s) : null); if (!p) { s.count = s.i; return finishSession(); } s.items[s.i] = p; startPuzzle(p, done); }
     else if (s.kind === 'safety') { if (!s.items[s.i]) { s.count = s.i; return finishSession(); } startQuiz(s.items[s.i]); }
     else if (s.kind === 'squares') startSquare();
     else if (s.kind === 'reach') startReach();
-    else if (s.kind === 'book') startBook(s.items[s.i]);
+    else if (s.kind === 'book') startBook(s.items[s.i], done);
   }
   function finishSession() {
     var s = st.ses; s.finished = true;
@@ -1648,8 +1682,11 @@
     };
   }
   function dueList() { var now = Date.now(); return PZ.filter(function (p) { var r = prof.puz[p.id]; return r && r.due && r.due <= now && r.box < 2 && r.n > r.ok - 1 && (r.n - r.ok) > 0; }); }
-  function startPuzzle(p) {
+  /* done (fix round 1, item 4): the puzzle's result is already counted (a Resume or a restart before Next): it comes back
+     finished, as the profile recorded it, never dealt again unsolved */
+  function startPuzzle(p, done) {
     st.mode = 'puzzle';
+    if (done) return puzzleShown(p);
     var g = new Chess(p.pre && p.last ? p.pre : p.fen), side = new Chess(p.fen).turn();
     st.pz = { p: p, g: g, side: side, step: 0, done: false, wait: !!(p.pre && p.last), counted: !!st.ses.cnt };
     var goal = p.themes.indexOf('mateIn1') > -1 ? 'Find the checkmate.' : p.themes.indexOf('mateIn2') > -1 ? 'Find mate in 2.' : p.themes.indexOf('mateIn3') > -1 ? 'Find the forced mate.' : 'Find the best move.';
@@ -1714,6 +1751,23 @@
       s.msg = { title: 'Not quite', mv: 'You played ' + mv.san, text: (wm ? 'The winning move was ' + mvc(wm) + '. ' : '') + puzzleLesson(P.p), tip: 'This puzzle comes back in your review list tomorrow.' };
       s.canNext = true; s.canRetry = true; render();
     }, 600);
+  }
+  /* A counted puzzle, finished: solved or missed as its last record in the profile says (a miss sets its box to 0, a solve to 1
+     or more). Solved: the final position and "Solved!". Missed: the winning move shown, as after a miss, with Try again. */
+  function puzzleShown(p) {
+    var s = st.ses, g = new Chess(p.fen), rec = prof.puz[p.id], ok = !!(rec && rec.box > 0);
+    st.pz = { p: p, g: g, side: g.turn(), step: 0, done: true, wait: false, counted: true };
+    if (ok) {
+      if (p.sol.indexOf('*') === -1) p.sol.forEach(function (u) { var m = findMove(g, u); if (m) g.move(m); });
+      st.pz.step = p.sol.length; st.arrows = [];
+      s.msg = { title: 'Solved!', text: puzzleLesson(p) };
+    } else {
+      var wm = findMove(g, p.sol[0]);
+      st.arrows = wm ? [{ from: wm.from, to: wm.to, color: 'var(--c-best)' }] : [];
+      s.msg = { title: 'Not quite', text: (wm ? 'The winning move was ' + mvc(wm) + '. ' : '') + puzzleLesson(p), tip: 'This puzzle comes back in your review list tomorrow.' };
+      s.canRetry = true;
+    }
+    s.canNext = true; render();
   }
   function puzzleLesson(p) {
     var t = p.themes, line = p.sol.length > 1 && p.sol.indexOf('*') === -1 ? ' Full line: ' + mline(p.fen, p.sol, p.sol.length) : '';
@@ -1833,13 +1887,14 @@
   function startDrill(unitId, d, from) {
     /* G2a: on a phone the board screen is on the activity's own tab: Train for a drill started from Train's list, Learn for
        one started as a lesson's task (zoneOf). */
-    var dz = Flow.drillZone(from, !phone());
+    var dz = Flow.drillZone(from);
     stow(dz || 'learn'); /* G2b */
-    clearSession(); st.rv = null; st.flipped = false;
+    clearSession(); st.rv = null; st.af = false;
     openDrill(unitId, d, dz, null);
   }
   /* at (G2b): a saved drill's place { fen, moves }: the same position; the engine is asked again when it is its move. */
   function openDrill(unitId, d, dz, at) {
+    st.sel = null; resetHints(); /* fix round 1 (item 5): no arrow or highlight from the game or an old drill */
     var g = new Chess(at ? at.fen : d.fen);
     st.mode = 'drill';
     st.dr = { g: g, side: new Chess(d.fen).turn(), goal: d.goal, limit: d.limit, moves: at ? at.moves : 0, done: false, unit: unitId, name: UNIT[unitId] ? UNIT[unitId].title : 'Endgame drill', ev: null };
@@ -1881,9 +1936,11 @@
   }
 
   /* opening book */
-  function startBook(line) {
+  /* done (fix round 1, item 4): the line was already played and scored: it comes back complete, Next ready */
+  function startBook(line, done) {
     st.mode = 'book';
     st.bk = { line: line, g: new Chess(), side: line.side, ply: 0, mistakes: 0, done: false, wait: false };
+    if (done) { line.moves.forEach(function (m) { st.bk.g.move(m); }); st.bk.ply = line.moves.length; st.bk.done = true; st.ses.msg = { title: 'Line complete' }; st.ses.canNext = true; render(); return; }
     st.ses.msg = { title: line.name, text: 'Play your moves from memory. You’re ' + (line.side === 'w' ? 'White' : 'Black') + '.' };
     render(); bookAuto();
   }
@@ -1925,7 +1982,7 @@
   /* ---------- lesson player ---------- */
   function startLesson(id) {
     stow('learn'); /* G2b: replaces what waits on Learn; a set on Train waits on (phones) */
-    clearSession(); st.rv = null; st.flipped = false;
+    clearSession(); st.rv = null; st.af = false;
     st.mode = 'lesson'; st.ls = { unit: UNIT[id], i: 0, g: null, side: 'w' };
     openAct(); switchTab('path'); showLessonStep();
   }
@@ -2002,10 +2059,11 @@
   function renderToday() {
     var d = dayRec(), nx = nextUnit(), due = dueList().length, el = $('today'), streak = streakDays(), pl = plain();
     var k = nx ? nextPart(nx) : null;
-    var tl = nx ? Flow.resumesLesson({ go: 'part', unit: nx.id, part: k }, waitingLesson()) : false; /* fix round 2: as the Continue card */
+    var w = waitingPart(), tl = nx ? Flow.resumesLesson({ go: 'part', unit: nx.id, part: k }, w) : false; /* fix round 2: as the Continue card; G-D37: a part too */
+    var tw = tabOpen('train') ? waitOn('train') : null; /* G-D37: a set or drill that waits on Train is resumed by Today's Train step */
     var steps = [
-      { z: 'learn', n: 1, h: 'Learn', done: !!d.course, t: nx ? nx.title : 'Course complete', s: nx ? PART_NAME[k] + ': ' + partDesc(nx, k) : 'Keep sharp with puzzles and games.', b: tl ? Flow.COPY.resumeLesson : nx ? 'Start lesson' : 'Open course', act: tl ? RESUME_LESSON : nx ? 'data-part="' + k + '" data-u="' + nx.id + '"' : 'data-zgo="path"' },
-      { z: 'train', n: 2, h: 'Train', done: d.puz >= 10, t: due ? 'Review ' + due + ' missed puzzle' + (due === 1 ? '' : 's') : pl ? '10 puzzles' : '10 rated puzzles', s: Math.min(d.puz, 10) + ' of 10 today.' + (pl ? '' : ' Puzzle rating ' + Math.round(prof.rating) + '.'), b: 'Start training', act: due ? 'data-train="review"' : 'data-train="rated"' },
+      { z: 'learn', n: 1, h: 'Learn', done: !!d.course, t: nx ? nx.title : 'Course complete', s: nx ? PART_NAME[k] + ': ' + partDesc(nx, k) : 'Keep sharp with puzzles and games.', b: tl ? Flow.resumeTitle(w.kind) : nx ? 'Start lesson' : 'Open course', act: tl ? RESUME_LESSON : nx ? 'data-part="' + k + '" data-u="' + nx.id + '"' : 'data-zgo="path"' },
+      { z: 'train', n: 2, h: 'Train', done: d.puz >= 10, t: due ? 'Review ' + due + ' missed puzzle' + (due === 1 ? '' : 's') : pl ? '10 puzzles' : '10 rated puzzles', s: Math.min(d.puz, 10) + ' of 10 today.' + (pl ? '' : ' Puzzle rating ' + Math.round(prof.rating) + '.'), b: tw ? Flow.resumeTitle(tw.kind) : 'Start training', act: tw ? 'data-act="resume" data-z="train"' : due ? 'data-train="review"' : 'data-train="rated"' },
       { z: 'play', n: 3, h: 'Play', done: d.games >= 1, t: 'One full game', s: 'Use what you learned against ' + (pl ? partnerName() + '.' : OPP[recLevel()].name + ' (~' + OPP[recLevel()].elo + ').'), b: G.history().length && !G.game_over() ? Flow.COPY.back : 'Play a game', act: G.history().length && !G.game_over() ? 'data-act="close"' : 'data-act="recgame"' }
     ].filter(function (x) { return x.z !== 'train' || tabOpen('train'); }); /* a Beginner's Train tab is still locked */
     steps.forEach(function (x, i) { x.n = i + 1; });
@@ -2196,15 +2254,15 @@
       slot.appendChild(b); render();
     },
     showPuzzle: function (p, cb) {
-      if (st.mode !== 'placement') st.plPrev = { mode: st.mode, flipped: st.flipped, arrows: st.arrows, hls: st.hls, flash: st.flash };
-      st.mode = 'placement'; st.flipped = false; st.sel = null; st.flash = null; resetHints();
+      if (st.mode !== 'placement') st.plPrev = { mode: st.mode, af: st.af, arrows: st.arrows, hls: st.hls, flash: st.flash };
+      st.mode = 'placement'; st.af = false; st.sel = null; st.flash = null; resetHints();
       var g = new Chess(p.fen);
       st.pl = { p: p, g: g, side: g.turn(), done: false, cb: cb };
       render();
     },
     endBoard: function () {
       if (boardHome) { boardHome.parent.insertBefore(boardHome.el, boardHome.next && boardHome.next.parentNode === boardHome.parent ? boardHome.next : null); boardHome = null; }
-      if (st.mode === 'placement') { var pv = st.plPrev || { mode: 'play' }; st.mode = pv.mode; st.flipped = !!pv.flipped; st.arrows = pv.arrows || []; st.hls = pv.hls || []; st.flash = pv.flash || null; }
+      if (st.mode === 'placement') { var pv = st.plPrev || { mode: 'play' }; st.mode = pv.mode; st.af = !!pv.af; st.arrows = pv.arrows || []; st.hls = pv.hls || []; st.flash = pv.flash || null; }
       st.pl = null; st.plPrev = null; st.sel = null; render();
     },
     finish: function (r) {
@@ -2455,10 +2513,10 @@
   function renderCont() {
     var el = $('contCard'), C = contCard();
     /* Fix round 1: a lesson that is waiting is resumed at its step */
-    var rl = Flow.resumesLesson({ go: C.go, unit: C.unit && C.unit.id, part: C.part }, waitingLesson());
+    var w = waitingPart(), rl = Flow.resumesLesson({ go: C.go, unit: C.unit && C.unit.id, part: C.part }, w); /* G-D37: or its practice set or task */
     var html = '<div class="bh-row"><span class="bh-ic z-' + C.zone + '" aria-hidden="true">' + GLYPH[C.icon] + VS + '</span><div class="bh-tt"><p class="bh-kick">' + esc(C.kicker) + '</p><h3 class="bh-title" id="ccTitle">' + esc(C.title) + '</h3></div></div>' +
       (C.bar ? '<div class="bh-bar" role="progressbar" aria-labelledby="ccTitle" aria-valuemin="0" aria-valuemax="' + C.bar.m + '" aria-valuenow="' + C.bar.done + '" aria-valuetext="' + esc(C.bar.text) + '"><i style="width:' + Math.round(100 * C.bar.done / Math.max(1, C.bar.m)) + '%"></i></div>' : '') +
-      '<button class="btn primary big bh-go" type="button" ' + (rl ? RESUME_LESSON : contAttr(C)) + '>' + esc(rl ? Flow.COPY.resumeLesson : C.button) + '</button>';
+      '<button class="btn primary big bh-go" type="button" ' + (rl ? RESUME_LESSON : contAttr(C)) + '>' + esc(rl ? Flow.resumeTitle(w.kind) : C.button) + '</button>';
     if (el._k === html) return;
     var keep = el.contains(document.activeElement);
     el._k = html; el.innerHTML = html;
@@ -2486,17 +2544,18 @@
     var rs = on && phone();
     if (rs && L.alt === 'back') L.second = null;
     if (rs && L.go === 'back') rs = false; /* the Continue card's own button is the game: no second button for the same action */
-    var rl = Flow.resumesLesson({ go: L.go, unit: s.unit && s.unit.id, part: s.part }, waitingLesson());
-    /* D50: "Resume game" is exitMode(true), as today's Home button: an open lesson or puzzle set ends (the lesson starts
-       again at step 1; puzzle results so far are already saved). D49: a lesson game with a game going asks first. */
+    var w = waitingPart(), rl = Flow.resumesLesson({ go: L.go, unit: s.unit && s.unit.id, part: s.part }, w);
+    /* "Resume game" is exitMode(true): an open lesson or puzzle set waits on its tab (G-D20, G-D35 replaced D50 at every
+       width). D49: a lesson game with a game going asks first. G-D36: a game that ended while closed has its result card here. */
+    var ec = phone() ? endedCard() : null;
     var act = bhAttr(s);
     var html = '<div class="bh-hero"><div class="bh-av">' + Avatar.coach(s.kind === 'lesson' ? 'happy' : 'proud', 112) + '</div>' +
       '<div class="bh-bub"><h2 class="bh-head">' + esc(L.head) + '</h2>' + (L.line ? '<p class="bh-line">' + esc(L.line) + '</p>' : '') + '</div>' +
       (sk ? '<p class="bh-streak" role="img" aria-label="' + esc(sk.label) + '"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3c2 4 5 5 5 10a5 5 0 0 1-10 0c0-3 2-4 2-7 2 1 3 2 3 4"/></svg>' + esc(sk.text) + '</p>' : '') + '</div>' +
       '<div class="card bh-card"><div class="bh-row"><span class="bh-ic z-' + L.zone + '" aria-hidden="true">' + GLYPH[L.icon] + VS + '</span><div class="bh-tt"><p class="bh-kick">' + esc(L.kicker) + '</p><h3 class="bh-title" id="bhTitle">' + esc(L.title) + '</h3></div></div>' +
       (L.bar ? '<div class="bh-bar" role="progressbar" aria-labelledby="bhTitle" aria-valuemin="0" aria-valuemax="' + L.bar.m + '" aria-valuenow="' + L.bar.done + '" aria-valuetext="' + esc(L.bar.text) + '"><i style="width:' + Math.round(100 * L.bar.done / Math.max(1, L.bar.m)) + '%"></i></div>' : '') +
-      '<button class="btn primary big bh-go" type="button" ' + (rl ? RESUME_LESSON : act[L.go]) + '>' + esc(rl ? Flow.COPY.resumeLesson : L.button) + '</button></div>' +
-      (rs ? '<div class="card bh-card rs-card" id="resumeBHome">' + gameResume(false) + '</div>' : '') +
+      '<button class="btn primary big bh-go" type="button" ' + (rl ? RESUME_LESSON : act[L.go]) + '>' + esc(rl ? Flow.resumeTitle(w.kind) : L.button) + '</button></div>' +
+      (rs ? '<div class="card bh-card rs-card" id="resumeBHome">' + gameResume(false) + '</div>' : ec ? '<div class="card bh-card rs-card" id="resumeBHome">' + endedHtml(ec, false) + '</div>' : '') +
       (L.second ? '<button class="btn big bh-alt" type="button" ' + act[L.alt] + '>' + esc(L.second) + '</button>' : '');
     var key = html + '|' + coach; if (el._k === key) return;
     var a = document.activeElement, keep = a && el.contains(a) ? (a.classList.contains('bh-alt') ? '.bh-alt' : a.classList.contains('rs-go') ? '.rs-go' : '.bh-go') : null;
@@ -2600,7 +2659,7 @@
   /* ---------- persistence ---------- */
   /* Sync safety: no push until this session's first pull has finished (merged, or cloud confirmed empty). */
   var cloud = { game: null, prof: null, gt: null, pt: null, ready: false, busy: null, tries: 0, retry: null }, KSEEN = 'suresh-chess-coach.cloudSeen', RETRY = [2000, 5000, 15000, 60000];
-  function snapshot() { return { sans: G.history(), user: st.user, level: st.level, ann: st.ann, notes: st.notes, tags: st.tags, fb: st.fb, opp: st.opp, evalW: st.evalW, flipped: st.flipped, recorded: st.recorded, goal: st.goal, t: st.t || 0 }; }
+  function snapshot() { return { sans: G.history(), user: st.user, level: st.level, ann: st.ann, notes: st.notes, tags: st.tags, fb: st.fb, opp: st.opp, evalW: st.evalW, flipped: st.gf, recorded: st.recorded, goal: st.goal, unseen: st.unseen, t: st.t || 0 }; }
   function save() { st.t = Date.now(); var s = snapshot(); lsSet(STORE, s); push('game', s); }
   function saveProfile() {
     prof.t = Date.now();
@@ -2622,7 +2681,7 @@
     var g2 = new Chess(); if (!saved.sans.every(function (m) { return !!g2.move(m); })) return false;
     G.reset(); saved.sans.forEach(function (m) { G.move(m); });
     st.user = saved.user || 'w'; st.level = saved.level || 2; st.ann = saved.ann || {}; st.notes = saved.notes || {}; st.tags = saved.tags || {};
-    st.fb = saved.fb || null; st.opp = saved.opp || null; st.evalW = saved.evalW || 0; st.flipped = !!saved.flipped; st.recorded = !!saved.recorded; st.t = saved.t || 0; st.goal = saved.goal || null;
+    st.fb = saved.fb || null; st.opp = saved.opp || null; st.evalW = saved.evalW || 0; st.gf = !!saved.flipped; st.recorded = !!saved.recorded; st.unseen = !!saved.unseen && G.game_over(); st.fbPre = null; st.t = saved.t || 0; st.goal = saved.goal || null;
     st.sel = null; resetHints();
     $('levelSel').value = String(st.level);
     var last = G.history({ verbose: true }).slice(-1)[0];
@@ -2827,7 +2886,7 @@
     if (e.target && e.target.id === 'settingsSheet') { closeSettings(); return; }
     var t = e.target.closest('button'); if (!t || t.closest('.tabs')) return;
     var d = t.dataset;
-    if (d.unit) { if (!phone() && st.mode !== 'play' && st.mode !== 'review') { clearSession(); st.mode = 'play'; resetHints(); } /* phones: looking at a lesson's page keeps what is waiting; only starting something ends it */ st.end = null; st.unitOpen = d.unit; switchTab('path'); render(); return; }
+    if (d.unit) { if (!phone() && st.mode !== 'play' && st.mode !== 'review') { stow('play'); clearSession(); st.mode = 'play'; resetHints(); } /* phones: looking at a lesson's page keeps what is waiting; only starting something ends it. Wide (G-D35): the lesson or set on the board waits */ st.end = null; st.unitOpen = d.unit; switchTab('path'); render(); return; }
     if (d.part) { st.unitOpen = d.u; startPart(d.u, d.part); return; }
     if (d.zgo) { switchTab(d.zgo); return; }
     if (d.coach) { Coach3D.set(d.coach); $('coachAv').dataset.k = ''; $('coachStrip').dataset.k = ''; var sc = $('sessionCard'); if (sc) sc._h = ''; renderLook(); renderCoach(); render(); return; }

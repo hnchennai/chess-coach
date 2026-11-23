@@ -332,7 +332,7 @@ test('Fix 6: on a phone a drill belongs to the tab it was started from', () => {
   assert.equal(F.drillZone('train', false), 'train');
   assert.equal(F.drillZone('learn', false), null, 'from Learn (or Home, or an end card): the lesson’s own zone');
   assert.equal(F.drillZone(undefined, false), null);
-  assert.equal(F.drillZone('train', true), null, 'wide screens: as before');
+  assert.equal(F.drillZone('train', true), 'train', 'G-D35: wide screens too (what waits on Train survives there now)');
 });
 
 test('Fix 7: the Continue card resumes a lesson that is waiting at its step', () => {
@@ -401,8 +401,14 @@ test('G-D20: what happens to the lesson or set on the board when something else 
   // nothing on the board
   assert.equal(F.onOpen({ wide: false, live: null, over: false, to: 'play' }), 'none');
   assert.equal(F.onOpen(null), 'none');
-  // wide screens keep D50: whatever opens ends it
-  for (const to of ['play', 'learn', 'train']) for (const live of ['learn', 'train']) assert.equal(F.onOpen({ wide: true, live, over: false, to }), 'end', 'wide ' + live + ' to ' + to);
+  // G-D35 (fix round 1): wide screens follow the same rule; D50 is gone at every width
+  for (const live of ['learn', 'train']) {
+    assert.equal(F.onOpen({ wide: true, live, over: false, to: 'play' }), 'park', 'wide: the game opens over ' + live);
+    assert.equal(F.onOpen({ wide: true, live, over: false, to: live }), 'end', 'wide: the newest on its own tab wins');
+    assert.equal(F.onOpen({ wide: true, live, over: true, to: 'play' }), 'end', 'wide: what is finished is over');
+  }
+  assert.equal(F.onOpen({ wide: true, live: 'learn', over: false, to: 'train' }), 'park');
+  assert.equal(F.onOpen({ wide: true, live: 'train', over: false, to: 'learn' }), 'park');
 });
 
 test('G-D19: what is saved for a lesson, a set and a drill (and nothing for what is over)', () => {
@@ -443,6 +449,11 @@ test('G-D19: a good saved entry is accepted, for every kind', () => {
   assert.equal(F.entryOk('learn', setE({ kind: 'book', rated: false, unit: 'rep', part: 'apply', count: 2, pass: 2, i: 1, wrong: 0, items: ['italian', 'london'] }), f), true);
   assert.equal(F.entryOk('learn', DRILL, f), true, 'a drill as the lesson’s task');
   assert.equal(F.entryOk('train', DRILL, f), true, 'the same drill from Train’s list');
+  // fix round 1: the counts add up: the items played, plus the current one once it is counted
+  assert.equal(F.entryOk('train', setE({ right: 2, wrong: 1, counted: true }), f), true, 'the current puzzle is already counted');
+  assert.equal(F.entryOk('train', setE({ i: 0, right: 0, wrong: 0 }), f), true, 'the first puzzle, nothing counted');
+  assert.equal(F.entryOk('train', setE({ i: 0, right: 1, wrong: 0, counted: true }), f), true);
+  assert.equal(F.entryOk('train', setE({ kind: 'book', rated: false, title: 'Opening drill', count: 1, i: 0, right: 0, wrong: 1, counted: true, items: ['italian'] }), f), true, 'the last line, scored');
 });
 
 test('G-D19 fails safe: a corrupt, stale or unknown entry is dropped (no error, no card)', () => {
@@ -474,6 +485,13 @@ test('G-D19 fails safe: a corrupt, stale or unknown entry is dropped (no error, 
   bad('learn', Object.assign({}, DRILL, { drill: null }), 'a drill needs its position');
   bad('learn', Object.assign({}, DRILL, { drill: { fen: 'nonsense', moves: 1 } }));
   bad('learn', Object.assign({}, DRILL, { drill: { fen: DRILL.drill.fen, moves: -3 } }));
+  // fix round 1: the score must be exactly the items played so far, plus the current one when it is already counted
+  bad('train', setE({ right: 2, wrong: 1 }), 'three results for two items played');
+  bad('train', setE({ right: 0, wrong: 1 }), 'a result is missing');
+  bad('train', setE({ right: 1, wrong: 1, counted: true }), 'counted, but its result is not in the score');
+  bad('train', setE({ right: 2, wrong: 0, counted: false, i: 1 }), 'the current item is not counted, but its result is');
+  bad('train', setE({ kind: 'book', rated: false, title: 'Opening drill', count: 1, i: 0, right: 1, wrong: 1, counted: true, items: ['italian'] }), 'more results than the set has items');
+  bad('learn', Object.assign({}, DRILL, { right: 1 }), 'a drill still going has no result yet');
   // a function that throws inside the facts must not escape either
   assert.equal(F.entryOk('learn', LESSON, facts({ unit: () => { throw new Error('boom'); } })), false);
   assert.equal(F.entryOk('learn', LESSON, null), false);
@@ -515,8 +533,54 @@ test('G-D30: the Resume card reads the same from a saved entry as from the live 
   assert.equal(F.resumeTitle(F.resumeCard(DRILL, f).kind), 'Resume drill');
   assert.equal(F.resumeCard(null, f), null);
   assert.equal(F.resumeCard({ k: 'lesson', unit: 'gone', i: 0 }, f), null, 'no card for a lesson that is gone');
-  // Home's Continue card and Today's Learn step: the waiting lesson, live or saved
-  assert.deepEqual(F.waitingLesson(LESSON), { unit: 'kq', part: 'learn' });
-  assert.equal(F.waitingLesson(setE()), null); assert.equal(F.waitingLesson(null), null);
-  assert.equal(F.resumesLesson({ go: 'part', unit: 'kq', part: 'learn' }, F.waitingLesson(LESSON)), true);
+  // Home's Continue card and Today's Learn step: the waiting lesson, live or saved (fix round 1: or its practice or task)
+  assert.deepEqual(F.waitingPart(LESSON), { unit: 'kq', part: 'learn', kind: 'lesson' });
+  assert.equal(F.waitingPart(setE()), null); assert.equal(F.waitingPart(null), null);
+  assert.equal(F.resumesLesson({ go: 'part', unit: 'kq', part: 'learn' }, F.waitingPart(LESSON)), true);
+});
+
+test('G-D37: Home’s Continue card and Today’s Learn step resume the lesson, its practice set or its drill that waits', () => {
+  const prac = setE({ rated: false, unit: 'values', part: 'practice', pass: 2, count: 3 });
+  const sq = setE({ kind: 'squares', rated: false, unit: 'board', part: 'practice', count: 12, pass: 10, items: [] });
+  const book = setE({ kind: 'book', rated: false, unit: 'rep', part: 'apply', count: 2, pass: 2, i: 1, wrong: 0, items: ['italian', 'london'] });
+  assert.deepEqual(F.waitingPart(prac), { unit: 'values', part: 'practice', kind: 'puzzles' });
+  assert.deepEqual(F.waitingPart(sq), { unit: 'board', part: 'practice', kind: 'squares' });
+  assert.deepEqual(F.waitingPart(DRILL), { unit: 'kq', part: 'apply', kind: 'drill' });
+  assert.deepEqual(F.waitingPart(book), { unit: 'rep', part: 'apply', kind: 'book' });
+  // the button's words are the Resume card's own
+  assert.equal(F.resumeTitle(F.waitingPart(prac).kind), 'Resume puzzles');
+  assert.equal(F.resumeTitle(F.waitingPart(sq).kind), 'Resume drill');
+  assert.equal(F.resumeTitle(F.waitingPart(DRILL).kind), 'Resume drill');
+  assert.equal(F.resumeTitle(F.waitingPart(LESSON).kind), 'Resume lesson');
+  // the same unit and part only: anything else replaces it, with no question (G-D20)
+  assert.equal(F.resumesLesson({ go: 'part', unit: 'values', part: 'practice' }, F.waitingPart(prac)), true);
+  assert.equal(F.resumesLesson({ go: 'part', unit: 'kq', part: 'apply' }, F.waitingPart(DRILL)), true);
+  assert.equal(F.resumesLesson({ go: 'part', unit: 'values', part: 'learn' }, F.waitingPart(prac)), false, 'another part of the same lesson');
+  assert.equal(F.resumesLesson({ go: 'part', unit: 'fork', part: 'practice' }, F.waitingPart(prac)), false, 'another lesson');
+  assert.equal(F.resumesLesson({ go: 'next', unit: 'values', part: 'practice' }, F.waitingPart(prac)), false, 'not a lesson step');
+  // a set that is not a lesson's part never stands for one
+  assert.equal(F.waitingPart(setE({ kind: 'safety', rated: false, count: 3, items: [['m1', 1], ['m2', 0], ['m3', 1]] })), null);
+  assert.equal(F.waitingPart({ k: 'set', kind: 'puzzles', unit: 'values', part: 'review' }), null, 'an unknown part');
+});
+
+/* ---------- G-D36: a game that ended while it was closed ---------- */
+test('G-D36: a game that ends while it is not on screen is marked unseen; one that ends on screen is not', () => {
+  // phones: on screen = the game on the board screen
+  assert.equal(F.endsUnseen({ wide: false, mode: 'play', scr: 'act' }), false, 'the player is watching it');
+  assert.equal(F.endsUnseen({ wide: false, mode: 'play', scr: 'tabs' }), true, 'closed: the player is on a tab page');
+  assert.equal(F.endsUnseen({ wide: false, mode: 'lesson', scr: 'act' }), true, 'a lesson is on the board');
+  assert.equal(F.endsUnseen({ wide: false, mode: 'review', scr: 'act' }), true);
+  // wide: the board always shows something; the game is on screen when it is the one on the board
+  assert.equal(F.endsUnseen({ wide: true, mode: 'play', scr: 'tabs' }), false);
+  assert.equal(F.endsUnseen({ wide: true, mode: 'puzzle', scr: 'act' }), true);
+  assert.equal(F.endsUnseen(null), true, 'unknown: the card is the safe side');
+});
+test('G-D36: the result card: "Your game ended", the end card’s own result line, "See the end" and "Review"', () => {
+  const c = F.endedCard({ over: true, unseen: true, wide: false, line: 'Checkmate' });
+  assert.deepEqual(c, { title: 'Your game ended', line: 'Checkmate', main: { label: 'See the end', go: 'seeend' }, small: [{ label: 'Review', go: 'review' }] });
+  assert.equal(F.endedCard({ over: true, unseen: false, wide: false, line: 'Draw' }), null, 'seen: no card');
+  assert.equal(F.endedCard({ over: false, unseen: true, wide: false, line: '' }), null, 'a game going on has the Resume game card instead');
+  assert.equal(F.endedCard({ over: true, unseen: true, wide: true, line: 'Draw' }), null, 'wide: the finished game is on the board, as today');
+  assert.equal(F.endedCard(null), null);
+  for (const w of [c.title, c.main.label, c.small[0].label]) assert.ok(w.indexOf('—') === -1, 'no em dash');
 });

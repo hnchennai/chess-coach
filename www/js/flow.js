@@ -12,7 +12,9 @@
     kicker: 'Continue', lessonOf: 'Continue · Lesson ', reach: 'Puzzles to reach ', sharp: 'Keep sharp: rated puzzles',
     /* G2a (board-screens.product.md, "New wording") */
     close: 'Close', resumeGame: 'Resume game', resumeLesson: 'Resume lesson', resumePuzzles: 'Resume puzzles', resumeDrill: 'Resume drill',
-    move: 'Move ', yourTurn: ', your turn', engineTurn: ', engine to move', recent: 'Recent games'
+    move: 'Move ', yourTurn: ', your turn', engineTurn: ', engine to move', recent: 'Recent games',
+    /* G-D36 (fix round 1) */
+    ended: 'Your game ended', seeEnd: 'See the end', reviewShort: 'Review'
   };
   /* go names the action the app wires to a button: review, newgame, home, nextlesson (the next lesson's next part), tryagain
      (the lesson game again), again (the same step again), part (the lesson's next part), more (10 more puzzles), step (the
@@ -150,9 +152,10 @@
     return s.learnEnd ? 'path' : s.zoneTab;
   }
 
-  /* Fix round 1 (G-D20's wording: "a set or drill on Train"): on a phone a drill started from Train's list belongs to Train
-     (it closes to Train, and its Resume card is there). Started anywhere else it stays with its lesson, on Learn (null). */
-  function drillZone(from, wide) { return !wide && from === 'train' ? 'train' : null; }
+  /* Fix round 1 (G-D20's wording: "a set or drill on Train"): a drill started from Train's list belongs to Train (it closes
+     to Train, and its Resume card is there). Started anywhere else it stays with its lesson, on Learn (null). G-D35 (G2b fix
+     round 1): at every width, since what waits on a tab now survives on wide screens too. */
+  function drillZone(from) { return from === 'train' ? 'train' : null; }
   /* Home's Continue card resumes a lesson that is waiting, at its step, instead of starting it again.
      c: the card's { go, unit (id), part }. w: the waiting lesson { unit (id), part: 'learn' } or null. */
   function resumesLesson(c, w) { return !!(c && w && c.go === 'part' && c.unit === w.unit && c.part === w.part); }
@@ -170,13 +173,13 @@
   var RESUME_KEY = 'suresh-chess-coach.resume.v1', RESUME_V = 1;
   var SET_KINDS = { puzzles: 1, safety: 1, squares: 1, reach: 1, book: 1, drill: 1 };
   function isInt(n, lo, hi) { return typeof n === 'number' && isFinite(n) && Math.floor(n) === n && n >= lo && n <= hi; }
-  /* G-D20: what happens to the lesson or set on the board when something else opens.
-     s: { wide, live: 'learn' | 'train' | null (the tab of what is on the board), over (it is finished), to: 'play' | 'learn' | 'train' }
-     'park': it waits on its own tab. 'end': it is over or replaced (a new activity on the same tab wins, with no question;
-     wide screens keep D50: whatever opens ends it). 'none': nothing was there. */
+  /* G-D20, G-D35: what happens to the lesson or set on the board when something else opens, at every width (G-D35 replaced
+     D50 on wide screens too). s: { live: 'learn' | 'train' | null (the tab of what is on the board), over (it is finished),
+     to: 'play' | 'learn' | 'train' }. 'park': it waits on its own tab. 'end': it is over or replaced (a new activity on the
+     same tab wins, with no question). 'none': nothing was there. */
   function onOpen(s) {
     if (!s || !s.live) return 'none';
-    return s.wide || s.over || s.to === s.live ? 'end' : 'park';
+    return s.over || s.to === s.live ? 'end' : 'park';
   }
   /* The words of a place (G-D30), from live state or from an entry. */
   function lessonLine(i, n) { return 'Lesson · step ' + (i + 1) + ' of ' + n; }
@@ -209,9 +212,11 @@
     if (e.k !== 'set' || !SET_KINDS.hasOwnProperty(e.kind)) return false;
     var kind = e.kind, it = e.items, n, j;
     if (typeof e.title !== 'string' || !e.title || e.title.length > 120) return false;
-    if (!isInt(e.count, 1, 60) || !isInt(e.i, 0, e.count - 1) || !isInt(e.right, 0, 60) || !isInt(e.wrong, 0, 60) || e.right + e.wrong > e.i + 1) return false;
+    if (!isInt(e.count, 1, 60) || !isInt(e.i, 0, e.count - 1) || !isInt(e.right, 0, 60) || !isInt(e.wrong, 0, 60)) return false;
     if (e.pass != null && !isInt(e.pass, 0, e.count)) return false;
     if (typeof e.counted !== 'boolean' || typeof e.rated !== 'boolean' || typeof e.review !== 'boolean' || !Array.isArray(it)) return false;
+    /* fix round 1: one result per item played, plus the current one once it is counted; never more than the set has */
+    if (e.right + e.wrong !== e.i + (e.counted ? 1 : 0) || e.right + e.wrong > e.count) return false;
     if (e.theme != null && typeof e.theme !== 'string') return false;
     if (kind !== 'puzzles' && (e.rated || e.theme || e.review)) return false;
     if (u) {
@@ -265,10 +270,31 @@
     if (e.k === 'lesson') { var u = f && f.unit(e.unit); return u ? { kind: 'lesson', kick: u.title, line: lessonLine(e.i, u.steps) } : null; }
     return e.k === 'set' ? { kind: e.kind, kick: e.title, line: setLine(e) } : null;
   }
-  /* The lesson that waits on Learn, for Home's Continue card and Today's Learn step (resumesLesson). e: Learn's entry. */
-  function waitingLesson(e) { return e && e.k === 'lesson' ? { unit: e.unit, part: 'learn' } : null; }
+  /* What waits on Learn as a lesson's part, for Home's Continue card and Today's Learn step (resumesLesson, G-D37): the
+     lesson itself, its practice set or its task (a drill or the opening lines). kind: for resumeTitle. e: Learn's entry. */
+  function waitingPart(e) {
+    if (!e) return null;
+    if (e.k === 'lesson') return { unit: e.unit, part: 'learn', kind: 'lesson' };
+    return e.k === 'set' && e.unit && (e.part === 'practice' || e.part === 'apply') ? { unit: e.unit, part: e.part, kind: e.kind } : null;
+  }
 
-  return { RESUME_KEY: RESUME_KEY, onOpen: onOpen, entryOf: entryOf, entryOk: entryOk, writeResume: writeResume, readResume: readResume, resumeCard: resumeCard, waitingLesson: waitingLesson, lessonLine: lessonLine, setLine: setLine,
+  /* ---------- G-D36 (fix round 1): a game that ended while it was closed. Its result card stands first on Play and Home, in
+     the Resume game card's place, until the player opens it (either button) or starts a new game. The flag lives in the
+     saved game itself (unseen), so it survives a restart with no new key. ---------- */
+  /* The game ends now: is it on screen? Phones: only on the board screen, as the game. Wide: when the game is the one on the
+     board. s: { wide, mode, scr }. Unknown facts mean not on screen (the card is the safe side: it only offers the end). */
+  function endsUnseen(s) {
+    if (!s || typeof s.wide !== 'boolean') return true;
+    return s.mode !== 'play' || (!s.wide && s.scr !== 'act');
+  }
+  /* The card. s: { over, unseen, wide, line (the end card's own result line) }. Wide: none (the finished game is on the
+     board there, as today). go: 'seeend' (the board screen at the final position, with the game's end card) | 'review'. */
+  function endedCard(s) {
+    if (!s || !s.over || !s.unseen || s.wide !== false) return null;
+    return { title: COPY.ended, line: s.line || '', main: b(COPY.seeEnd, 'seeend'), small: [b(COPY.reviewShort, 'review')] };
+  }
+
+  return { RESUME_KEY: RESUME_KEY, onOpen: onOpen, entryOf: entryOf, entryOk: entryOk, writeResume: writeResume, readResume: readResume, resumeCard: resumeCard, waitingPart: waitingPart, endsUnseen: endsUnseen, endedCard: endedCard, lessonLine: lessonLine, setLine: setLine,
     firstLook: firstLook, drillZone: drillZone, resumesLesson: resumesLesson, bannerRoom: bannerRoom, actOpen: actOpen, tabsHidden: tabsHidden, keepsScreen: keepsScreen, inUse: inUse, slotOk: slotOk, resumeLine: resumeLine, resumeTitle: resumeTitle, startTab: startTab, closeTab: closeTab,
     afterGame: afterGame, goalCard: goalCard, afterReview: afterReview, afterStep: afterStep, cont: cont, asks: asks, COPY: COPY };
 });

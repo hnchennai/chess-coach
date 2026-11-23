@@ -318,8 +318,8 @@ Counts are estimates from reading and pattern matching. The suites were not run.
 ### Decisions taken (orchestrator, 2026-11-22)
 - One waiting item per tab: the game on Play, a lesson or a drill started from Learn on Learn, a set or drill on Train. The newest wins on its own tab, with no question.
 - Saved items never expire by time. They go when finished, replaced, ended, or no longer valid.
-- Parking is for phones only. Wide screens keep D50: opening the game ends an open lesson or set.
-- The saved key is read and written at every width, because it costs nothing and shows nothing on a wide screen (no Resume cards there, Home's Continue card is unchanged). A phone turned upright again shows its cards.
+- Parking is for phones only. Wide screens keep D50: opening the game ends an open lesson or set. (Replaced by G-D35 in fix round 1: parking is at every width, see below.)
+- The saved key is read and written at every width. A phone turned upright again shows its cards.
 - A level change (Settings, the level check, a sign-in merge) drops a saved entry the player can no longer open. Today that is a set on Train while Train is locked for a Beginner.
 
 ### Model
@@ -351,7 +351,16 @@ Counts are estimates from reading and pattern matching. The suites were not run.
 - The entry also carries `count, pass, rated, theme, review` and, for a drill, its position, so "Go again" and the end card work after a restart.
 - The rules live in `flow.js` (`onOpen`, `entryOf`, `entryOk`, `readResume`, `writeResume`, `resumeCard`, `waitingLesson`) with unit tests; `g2b.spec.js` is its own suite built on `g2.spec.js`'s helpers.
 
+### Fix round 1 (2026-11-23: G-D35 to G-D37 and the review's items 4 to 8)
+- G-D35: `Flow.onOpen` no longer reads the width: opening the game, a review or another tab's activity parks a lesson or set on wide screens too (D50 is gone). On wide, Learn and Train show the Resume card of what is parked (not of what is on the board, which sits beside the panel). Tapping a lesson in Learn's list while something is on the wide board parks it too (it ended before). `Flow.drillZone` is the same at every width, so a drill from Train's list waits on Train there too. The wide note's second button read "Stop, resume game"; it no longer stops anything, so it reads "▶ Resume game", as on Play's note.
+- G-D36: the saved game (`suresh-chess-coach.v1`, not the profile) gets one field, `unseen`, set when the game ends while it is not on screen (`Flow.endsUnseen`: phones, not the game on the board screen; wide, not the game on the board). Absent in older saves, so an old finished game shows no card. `Flow.endedCard` draws the card on phones only, in Resume game's place on Play, Home and Beginner Home: the title, the end card's own title as the line, "See the end" (`data-act="resume" data-z="play"`, as Resume game) and "Review" (the end card's `data-act="review"`). It goes (`seenEnd`, saved without a new time stamp) when the game's full end card is drawn, when the game's review opens, or with a new game.
+- G-D37: `Flow.waitingPart` (was `waitingLesson`) also returns a lesson's practice set or task that waits on Learn, with its kind, so Home's Continue card, Beginner Home's card and Today's Learn step read "Resume lesson", "Resume puzzles" or "Resume drill" and resume it. Today's Train step resumes what waits on Train. At every width (on wide this may be what is on the board).
+- Item 4: an entry whose current item is counted comes back finished: a puzzle with its result as the profile recorded it (a miss sets the box to 0, a solve to 1 or more), "Solved!" or the miss with the winning move and Try again; an opening line complete; a square or a piece drill moves on to the next item (its own timer did that, and went with the old board). The quiz of Safe or blunder is dealt again as before (it never counts twice).
+- Item 5: `openDrill` resets the hints, arrows and selection.
+- Item 6: `entryOk` requires `right + wrong === i + (counted ? 1 : 0)` and no more results than items.
+- Item 8: `st.flipped` is a getter over `st.gf` (the game, a review; saved as `flipped`) and `st.af` (everything else); a hint's words on the game's coach line go back to what they were before the first hint when the count is back to 0; `syncResume` marks a write done only when it succeeded.
+
 ### Known limits
-- A flipped board in the game is not kept when a lesson or set takes the board (as before G2b).
 - The engine's reply to a closed game is saved once it is explained (as before); after a kill in between, the engine thinks again.
 - Not verified on a phone: a real system kill of the WebView. The browser cases reload the page, which exercises the same read path.
+- A counted Safe or blunder question is dealt again (no result is lost or counted twice; the answer given before is not known).

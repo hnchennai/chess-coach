@@ -91,7 +91,7 @@ jobs:
       - name: Copy the web app into Android
         run: |
           set -o pipefail
-          npx cap sync android | tee "$RUNNER_TEMP/sync.txt"
+          NO_COLOR=1 npx cap sync android | tee "$RUNNER_TEMP/sync.txt" # no colour codes inside the version the grep below looks for
           # G2c: without the App plugin in the Android project the back button would leave the app again. Fail if it is missing.
           grep -qF '@capacitor/app@8.1.2' "$RUNNER_TEMP/sync.txt" || { echo "::error::cap sync did not list @capacitor/app@8.1.2"; exit 1; }
           grep -qF "include ':capacitor-app'" android/capacitor.settings.gradle || { echo "::error::android/capacitor.settings.gradle does not include @capacitor/app"; exit 1; }

@@ -3005,8 +3005,11 @@
      match wins; this does it, each step with the same code as its Esc, its Close or its tab tap. Returns false only on Home
      with nothing open: the caller then puts the app in the background, as back did before. ---------- */
   function backPressed() {
-    var sh = $('settingsSheet');
-    switch (Flow.backStep({ settings: !!sh && !sh.hidden, check: Placement.isOpen(), note: !!noteCur, wide: !phone(), scr: st.scr, tab: st.tab })) {
+    var sh = $('settingsSheet'), step = Flow.backStep({ settings: !!sh && !sh.hidden, check: Placement.isOpen(), note: !!noteCur, wide: !phone(), scr: st.scr, tab: st.tab });
+    /* fix round 1: Close, Home and leaving drop a sticky move tip and a move preview, as the X or a tab tap does. A sheet or a
+       note closes as its Esc does, which leaves a tip behind it alone (s2a). */
+    if (step === 'close' || step === 'home' || step === 'leave') { hideTip(); if (st.pv) endPreview(); }
+    switch (step) {
       case 'settings': closeSettings(); return true;
       case 'check': Placement.onEsc(); return true; /* where Esc does nothing the press is still used up: never leave from the level check */
       case 'note': escNote(); return true;

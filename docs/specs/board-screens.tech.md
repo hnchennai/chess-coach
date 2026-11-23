@@ -384,3 +384,9 @@ Counts are estimates from reading and pattern matching. The suites were not run.
   6. Home: return false (leave).
 - Tests: a fake `Capacitor.Plugins.App` (as f3b fakes AdMob) records `addListener` and `minimizeApp`; the e2e suite fires the recorded back handler. Unit test for the order if it is put in `flow.js` as a pure function.
 - Not verified in Chromium: Android 16 predictive back and the real plugin; the phone test covers them.
+
+### Technical choices (fix round 1, 2026-11-23)
+- If `backPressed()` throws, the listener calls `App.minimizeApp()`: back's old behaviour, so a fault never traps the player, and a game is saved on every move. Covered by a g2c case.
+- If `addListener` itself fails on a phone, back does nothing at all: with the plugin installed and no listener, the plugin's callback still takes the press and only steps the web view's history. Only the phone test can show this.
+- Close, Home and leaving first drop a sticky move tip and a move preview, as the X and a tab tap do. A Settings sheet or a note closes as its Esc does, which leaves a tip behind it alone (s2a).
+- CI runs the sync as `NO_COLOR=1 npx cap sync android`, so the version check never depends on the CLI's colour detection (with colour on, the version sits inside escape codes).

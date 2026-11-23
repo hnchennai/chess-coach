@@ -54,7 +54,8 @@ const outcome = (page) => page.evaluate((k) => {
     // rated puzzles are dealt at random: the ids differ between two pages, their number does not
     park: JSON.stringify(c.park).replace(/"items":\[[^\]]*\]/g, (m) => '"items":' + JSON.parse(m.slice(8)).length),
     saved: (localStorage.getItem(k) || '').replace(/"items":\[[^\]]*\]/g, (m) => '"items":' + JSON.parse(m.slice(8)).length), first: [...document.querySelectorAll('#panel-' + c.tab + ' > *')].filter(on).map((e) => e.id)[0] || null,
-    focus: a ? (a.id || a.className) : null, boardOn: on(document.querySelector('.boardcol')) && on(document.getElementById('board')) };
+    focus: a ? (a.id || a.className) : null, boardOn: on(document.querySelector('.boardcol')) && on(document.getElementById('board')),
+    tip: on(document.querySelector('.santip')) && !document.querySelector('.santip').hidden, pv: !!c.pv }; // fix round 1: a sticky move tip and a move preview
 }, RKEY);
 // Back and Close from the same start, on two pages: the outcome must be the same.
 async function sameAsClose(vp, p, o, setup) {
@@ -81,6 +82,19 @@ const lessonAt = async (page, unit, clicks) => {
   for (let i = 0; i < clicks; i++) await page.locator('#navNext').click();
 };
 const startDrill = async (page) => { await goTab(page, 'train'); await page.locator('#drillList [data-drill]').first().click(); await idle(page); };
+// Fix round 1: a move chip as the app draws it (mvc() in app.js), put into Rani's card; tapping it opens a preview on the
+// board and a sticky tip. (No chip is in the card for a seeded game until the engine has spoken.)
+const CHIP = '<button type="button" class="mvc" data-from="g1" data-to="f3" data-p="n" data-c="w" data-san="Nf3" data-lab="White knight to f3" title="Nf3: White knight to f3. Tap to see it on the board." aria-label="White knight to f3 (Nf3)"><span class="mvi"></span><span class="mvt">f3</span></button>';
+const tapChip = async (page) => {
+  await page.evaluate((h) => { const c = document.getElementById('coach'); const s = document.createElement('span'); s.id = 'testChip'; s.innerHTML = h; c.appendChild(s); }, CHIP);
+  await page.locator('#testChip .mvc').click();
+  await page.waitForFunction(() => !!window.__coach.st.pv && !!document.querySelector('.santip:not([hidden])'));
+};
+const tapSan = async (page) => { await page.locator('#movesCard .sanhint .san').click(); await page.waitForSelector('.santip:not([hidden])'); };
+const tipShown = (page) => page.evaluate(() => { const t = document.querySelector('.santip'); return !!t && !t.hidden && t.getClientRects().length > 0; });
+// A beginner whose Foundations are done and whose last "Not yet" is 8 days old: the level-up offer comes at app start.
+const OFFER_P = () => G.prof({ start: 'board', placed: 'check', levelT: G.NOW - 30 * G.DAY, levelOfferT: G.NOW - 8 * G.DAY, course: G.done('rules', 'special', 'board', 'values', 'mate', 'opening', 'blunder') });
+const storedProf = (page) => page.evaluate((k) => localStorage.getItem(k), G.PKEY);
 const toPuzzleStep = async (page) => {
   await page.evaluate(() => window.__coach.openPlacement(false));
   await page.locator('#placement [data-pl-path="knows"]').click();
@@ -300,6 +314,75 @@ const cases = [
     assert.deepEqual([L.tab, L.mode, L.board], ['coach', 'play', true]);
     assert.deepEqual(await hist(page), SANS22);
     assert.equal(await page.evaluate(() => window.__coach.st.park.learn.i), 1, 'the lesson waits as it did');
+    return page;
+  }],
+
+  // ---------- fix round 1 ----------
+  ['Fix 1: back clears a sticky move tip and a move preview, as the X and a tab tap do (412: back = Close; wide: Home)', async (vp) => {
+    if (PH(vp)) {
+      // a preview and its tip, then the plain notation tip: each time back leaves the same screen as the X
+      for (const tap of [tapChip, tapSan]) {
+        const { page, out } = await sameAsClose(vp, club(), { game: GAME12 }, async (p) => { await openGame(p); await tap(p); });
+        assert.deepEqual([out.tip, out.pv, out.tab, out.scr], [false, false, 'play', null], 'no tip or preview over the Play page');
+        await page.context().close();
+      }
+      return page0(vp, club());
+    }
+    const page = await page0(vp, club(), { game: GAME12, tab: 'play' });
+    await goTab(page, 'play'); await tapChip(page);
+    await back(page);
+    assert.deepEqual([await tipShown(page), await st(page, 'pv'), await st(page, 'tab')], [false, null, 'coach'], 'wide: Home with no tip over it and no preview on the board');
+    await goTab(page, 'play'); await tapSan(page);
+    await back(page);
+    assert.deepEqual([await tipShown(page), await st(page, 'tab')], [false, 'coach']);
+    assert.deepEqual(await hist(page), SANS22);
+    return page;
+  }],
+  ['Fix 1: Settings over a sticky move tip: back closes only the sheet and leaves the tip, as Esc does (s2a)', async (vp) => {
+    const page = await page0(vp, club(), { game: GAME12, tab: 'play' });
+    if (PH(vp)) await openGame(page); else await goTab(page, 'play');
+    await tapSan(page);
+    await page.evaluate(() => window.__coach.openSettings());
+    await back(page);
+    assert.deepEqual([await sheetOpen(page), await tipShown(page), await mins(page)], [false, true, 0]);
+    return page;
+  }],
+  ['Fix 2: back on the level-up offer closes it as Esc does: nothing saved, and it comes back at the next app start', async (vp) => {
+    const A = await page0(vp, OFFER_P()), B = await page0(vp, OFFER_P());
+    for (const p of [A, B]) await p.waitForSelector('#raniNote [data-act="offeryes"]');
+    const before = await storedProf(A);
+    await back(A); await B.keyboard.press('Escape');
+    const a = await outcome(A), b = await outcome(B);
+    assert.deepEqual(a, b, 'back = Esc');
+    assert.deepEqual([await noteUp(A), await mins(A)], [false, 0]);
+    assert.equal(await storedProf(A), before, 'nothing was saved (no level change, no "Not yet" date)');
+    assert.equal(await A.evaluate(() => window.__coach.getProf().level), 'beginner');
+    await B.context().close();
+    await A.reload(); await A.waitForFunction(() => window.__coach);
+    await A.waitForSelector('#raniNote [data-act="offeryes"]');
+    return A;
+  }],
+  ['Fix 2: back on Rani’s question before a lesson game closes it as Esc does: the old game is kept', async (vp) => {
+    const P = () => G.prof({ course: Object.assign(G.done('rules', 'special', 'board', 'values', 'mate'), { opening: { learn: G.NOW - G.DAY } }) });
+    const open4 = G.game(['e4', 'e5', 'Nf3', 'Nc6']);
+    const A = await page0(vp, P(), { game: open4 }), B = await page0(vp, P(), { game: open4 });
+    for (const p of [A, B]) { await p.locator('#bhome .bh-go').click(); await p.waitForSelector('#raniNote [data-act="askback"]'); }
+    await back(A); await B.keyboard.press('Escape');
+    assert.deepEqual(await outcome(A), await outcome(B), 'back = Esc');
+    assert.deepEqual([await noteUp(A), await mins(A)], [false, 0]);
+    assert.deepEqual(await hist(A), open4.sans, 'the old game is kept');
+    assert.equal(await A.evaluate(() => JSON.parse(localStorage.getItem('suresh-chess-coach.v1')).sans.length), 4);
+    await B.context().close();
+    return A;
+  }],
+  ['Fix 4: if backPressed throws, the app goes to the background (back’s old behaviour) and nothing is logged', async (vp) => {
+    const page = await page0(vp, club(), { game: GAME12 });
+    await goTab(page, 'path');
+    await page.evaluate(() => { window.Flow.backStep = () => { throw new Error('broken'); }; });
+    await back(page);
+    assert.equal(await mins(page), 1, 'minimizeApp');
+    assert.equal(await st(page, 'tab'), 'path', 'nothing else happened');
+    assert.deepEqual(await hist(page), SANS22);
     return page;
   }],
 

@@ -305,7 +305,21 @@
     return { title: COPY.ended, line: s.line || '', main: b(COPY.seeEnd, 'seeend'), small: [b(COPY.reviewShort, 'review')] };
   }
 
-  return { RESUME_KEY: RESUME_KEY, onOpen: onOpen, entryOf: entryOf, entryOk: entryOk, writeResume: writeResume, readResume: readResume, resumeCard: resumeCard, waitingPart: waitingPart, endsUnseen: endsUnseen, endedCard: endedCard, endedLine: endedLine, lessonLine: lessonLine, setLine: setLine,
+  /* ---------- G2c: the phone's back button (G-D38 to G-D40). What one press does, first match wins, at every width.
+     s: { settings (the Settings sheet is open), check (the level check is open), note (a note from Rani is up), wide, scr
+     ('tabs' | 'act'), tab }. Only true counts as open. 'settings' | 'check' | 'note': do what that one's Esc does ('check'
+     consumes the press even when Esc does nothing there). 'close': the board screen's Close (phones only, so wide screens
+     never end or park what is on the board, G-D39). 'home': Home, as a tab tap. 'leave': the app goes to the background. */
+  function backStep(s) {
+    if (!s || typeof s !== 'object') return 'leave';
+    if (s.settings === true) return 'settings';
+    if (s.check === true) return 'check';
+    if (s.note === true) return 'note';
+    if (actOpen(s)) return 'close';
+    return s.tab !== 'coach' ? 'home' : 'leave';
+  }
+
+  return { RESUME_KEY: RESUME_KEY, backStep: backStep, onOpen: onOpen, entryOf: entryOf, entryOk: entryOk, writeResume: writeResume, readResume: readResume, resumeCard: resumeCard, waitingPart: waitingPart, endsUnseen: endsUnseen, endedCard: endedCard, endedLine: endedLine, lessonLine: lessonLine, setLine: setLine,
     firstLook: firstLook, drillZone: drillZone, resumesLesson: resumesLesson, bannerRoom: bannerRoom, actOpen: actOpen, tabsHidden: tabsHidden, keepsScreen: keepsScreen, inUse: inUse, slotOk: slotOk, resumeLine: resumeLine, resumeTitle: resumeTitle, startTab: startTab, closeTab: closeTab,
     afterGame: afterGame, goalCard: goalCard, afterReview: afterReview, afterStep: afterStep, cont: cont, asks: asks, COPY: COPY };
 });

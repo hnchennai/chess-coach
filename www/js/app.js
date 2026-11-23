@@ -2404,9 +2404,13 @@
   document.addEventListener('keydown', function (e) {
     if (e.key !== 'Escape' || e.defaultPrevented || !noteCur) return;
     var sh = $('settingsSheet'); if ((sh && !sh.hidden) || Placement.isOpen()) return;
-    e.preventDefault(); nextNote();
-    var a = document.activeElement; if (!noteCur && (!a || a === document.body)) focusTab();
+    e.preventDefault(); escNote();
   });
+  /* What Esc does to a note, shared with the phone's back button (G2c, G-D40) */
+  function escNote() {
+    nextNote();
+    var a = document.activeElement; if (!noteCur && (!a || a === document.body)) focusTab();
+  }
   function nextNote() {
     var el = $('raniNote'), had = !!(el && el.contains(document.activeElement));
     noteCur = noteQ.shift() || null; drawNote();
@@ -2997,12 +3001,42 @@
     adBoot(); /* F3b: the one moment the ads start-up may begin (from day two, no activity open); on day one and on the web, nothing */
     initCloud();
   }
+  /* ---------- G2c: the phone's back button (G-D38 to G-D40, board-screens.tech.md section 16). Flow.backStep decides, first
+     match wins; this does it, each step with the same code as its Esc, its Close or its tab tap. Returns false only on Home
+     with nothing open: the caller then puts the app in the background, as back did before. ---------- */
+  function backPressed() {
+    var sh = $('settingsSheet'), step = Flow.backStep({ settings: !!sh && !sh.hidden, check: Placement.isOpen(), note: !!noteCur, wide: !phone(), scr: st.scr, tab: st.tab });
+    /* fix round 1: Close, Home and leaving drop a sticky move tip and a move preview, as the X or a tab tap does. A sheet or a
+       note closes as its Esc does, which leaves a tip behind it alone (s2a). */
+    if (step === 'close' || step === 'home' || step === 'leave') { hideTip(); if (st.pv) endPreview(); }
+    switch (step) {
+      case 'settings': closeSettings(); return true;
+      case 'check': Placement.onEsc(); return true; /* where Esc does nothing the press is still used up: never leave from the level check */
+      case 'note': escNote(); return true;
+      case 'close': closeAct(); return true; /* phones only: a review opened mid-game goes back to the game (G-D27) */
+      case 'home': switchTab('coach'); focusTab(); return true; /* as a tab tap; wide screens keep what is on the board (G-D39) */
+      default: return false;
+    }
+  }
+  /* The listener, only inside the Android app with the App plugin (@capacitor/app, pinned). In a browser or without the plugin
+     nothing is added, so the web build is unchanged. With the plugin a listener must exist (without one the plugin swallows
+     back). Every plugin call is guarded; a failure inside backPressed leaves the app, as back did before G2c. */
+  (function () {
+    var App = null, none = function () {};
+    try { var C = window.Capacitor; if (C && typeof C.isNativePlatform === 'function' && C.isNativePlatform() && C.Plugins && C.Plugins.App) App = C.Plugins.App; } catch (e) {}
+    if (!App) return;
+    function leave() { try { var r = App.minimizeApp(); if (r && typeof r.catch === 'function') r.catch(none); } catch (e) {} }
+    try {
+      var r = App.addListener('backButton', function () { var used = false; try { used = backPressed(); } catch (e) {} if (!used) leave(); });
+      if (r && typeof r.catch === 'function') r.catch(none);
+    } catch (e) {}
+  })();
   if (window.claude && window.claude.hot && window.claude.hot.snapshot) { try { window.claude.hot.snapshot(snapshot); } catch (e) {} }
   window.claude && window.claude.hot && window.claude.hot.ready ? window.claude.hot.ready(start) : start((window.claude && window.claude.hot && window.claude.hot.data) || {});
   window.__coach = { st: st, getProf: function () { return prof; }, PZ: PZ, startPart: startPart, trainStart: trainStart, openPlacement: openPlacement, nextUnit: nextUnit, hist: function () { return G.history(); }, openSettings: openSettings,
     ads: function () { return { state: ad.state, banner: ad.banner, h: ad.h, loaded: ad.loaded }; }, /* the ads glue's state (e2e) */
     note: function (t) { showNote(t); }, /* one of Rani's notes, as the app shows them (e2e) */
     reveals: function () { return revealN; },
-    closeAct: closeAct, /* G2a: what the Close button does (and, from G2c, the phone's back button) */ /* how often an end card was scrolled into view (e2e) */
+    closeAct: closeAct, /* G2a: what the Close button does */ backPressed: backPressed, /* G2c: what the phone's back button does (true: used) */ /* how often an end card was scrolled into view (e2e) */
     nextLabel: function () { return nextAction(currentStage()).label; } /* today's Next step, for the e2e check that the Continue card follows it */ };
 })();

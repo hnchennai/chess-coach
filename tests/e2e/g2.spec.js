@@ -90,6 +90,7 @@ async function newPage(vp, p, o) {
   await ctx.route(/fonts\.(googleapis|gstatic)\.com/, (r) => r.fulfill({ status: 200, contentType: 'text/css', body: '' }));
   await ctx.addInitScript(seedFn, [PKEY, p, GKEY, o.game || null, TKEY, o.tab || null, SKEY, o.set || null, K3D, !!o.v3d, o.ls || null]);
   if (o.ads) await ctx.addInitScript(fakeAds, o.ads === true ? {} : o.ads);
+  if (o.init) await ctx.addInitScript(o.init[0], o.init[1]); // o.init: [fn, arg], one more fake that runs before the app (g2c.spec.js)
   const page = await ctx.newPage();
   if (process.env.G2_TIMEOUT) { page.setDefaultTimeout(+process.env.G2_TIMEOUT); page.setDefaultNavigationTimeout(60000); }
   page.errors = []; page.outside = []; page.dialogs = [];

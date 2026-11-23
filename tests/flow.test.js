@@ -598,3 +598,41 @@ test('G-D36: the result card: "Your game ended", the end card’s own result lin
   assert.equal(F.endedCard(null), null);
   for (const w of [c.title, c.main.label, c.small[0].label]) assert.ok(w.indexOf('—') === -1, 'no em dash');
 });
+
+/* ---------- G2c: the phone's back button (G-D38 to G-D40). One pure decision, first match wins, every width. ---------- */
+test('G-D40: the back button order, first match wins', () => {
+  const base = { settings: false, check: false, note: false, wide: false, scr: 'tabs', tab: 'coach' };
+  const S = (o) => F.backStep(Object.assign({}, base, o));
+  // 1. Settings beats everything else that could be open at the same time
+  assert.equal(S({ settings: true, check: true, note: true, scr: 'act', tab: 'play' }), 'settings');
+  // 2. the level check beats a note, the board screen and the tabs
+  assert.equal(S({ check: true, note: true, scr: 'act', tab: 'play' }), 'check');
+  assert.equal(S({ check: true }), 'check', 'on Home too: never leave the app from the level check');
+  // 3. a note from Rani beats the board screen and the tabs
+  assert.equal(S({ note: true, scr: 'act', tab: 'play' }), 'note');
+  assert.equal(S({ note: true }), 'note', 'on Home too');
+  // 4. phones, the board screen open (with or without an end card): Close
+  for (const tab of ['play', 'path', 'train', 'progress', 'coach']) assert.equal(S({ scr: 'act', tab }), 'close', tab);
+  // 5. G-D38: a tab other than Home opens Home
+  for (const tab of ['path', 'train', 'play', 'progress']) assert.equal(S({ tab }), 'home', tab);
+  // 6. Home: leave (the app stays in memory)
+  assert.equal(S({}), 'leave');
+});
+test('G-D39: wide screens never close, end or park what is on the board: a sheet or a note, else the tab rule', () => {
+  const W = (o) => F.backStep(Object.assign({ settings: false, check: false, note: false, wide: true, scr: 'act', tab: 'path' }, o));
+  assert.equal(W({}), 'home', 'a lesson on the board, back on Learn: Home, not Close');
+  assert.equal(W({ tab: 'play' }), 'home');
+  assert.equal(W({ tab: 'coach' }), 'leave');
+  assert.equal(W({ scr: 'tabs', tab: 'train' }), 'home');
+  assert.equal(W({ settings: true }), 'settings');
+  assert.equal(W({ check: true }), 'check');
+  assert.equal(W({ note: true }), 'note');
+  for (const tab of ['coach', 'path', 'train', 'play', 'progress']) assert.notEqual(W({ tab }), 'close', tab);
+});
+test('G-D40: the facts are read strictly; a missing width never opens Close, and nothing throws', () => {
+  assert.equal(F.backStep({ scr: 'act', tab: 'play' }), 'home', 'unknown width: not the board screen');
+  assert.equal(F.backStep({ settings: 1, tab: 'coach' }), 'leave', 'only true counts');
+  assert.equal(F.backStep(null), 'leave');
+  assert.equal(F.backStep(undefined), 'leave');
+  assert.equal(F.backStep({ tab: 'coach', wide: false, scr: 'act' }), 'close');
+});

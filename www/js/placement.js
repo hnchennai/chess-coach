@@ -201,13 +201,17 @@
       case 'start': done(); return;
     }
   }
+  /* What Esc does, shared with the phone's back button (G2c, G-D40): skip the puzzles at the puzzle step, cancel a retake,
+     else nothing. true: it did something. */
+  function onEsc() {
+    if (!isOpen() || !S) return false;
+    if (S.step === 'puzzle') { skipPuzzles(); return true; }
+    if (S.retake) { cancel(); return true; }
+    return false;
+  }
   function onKey(e) {
     if (!isOpen() || !S) return;
-    if (e.key === 'Escape') {
-      if (S.step === 'puzzle') { e.preventDefault(); skipPuzzles(); }
-      else if (S.retake) { e.preventDefault(); cancel(); }
-      return;
-    }
+    if (e.key === 'Escape') { if (onEsc()) e.preventDefault(); return; }
     var t = e.target, d = { ArrowLeft: -1, ArrowUp: -1, ArrowRight: 1, ArrowDown: 1 }[e.key];
     if (d && t && t.dataset && t.dataset.plLevel) {
       e.preventDefault();
@@ -232,5 +236,5 @@
   /* Test hook (e2e only reads state; it never changes progress). */
   function peek() { if (!S) return null; var p = S.step === 'puzzle' ? S.items[S.i] : null; return { step: S.step, path: S.path, kind: S.kind, i: S.i, n: S.items.length, fen: p && p.fen, sol: p && p.sol[0], res: S.res, chosen: S.chosen }; }
 
-  return { pick: pick, ask: ask, isCorrect: isCorrect, BANDS: BANDS, open: open, close: close, isOpen: isOpen, peek: peek };
+  return { pick: pick, ask: ask, isCorrect: isCorrect, BANDS: BANDS, open: open, close: close, isOpen: isOpen, onEsc: onEsc, peek: peek };
 });

@@ -44,7 +44,12 @@ jobs:
           yes | "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
 
       - name: Install Capacitor
-        run: npm install
+        run: |
+          npm install
+          # G2c (G-D18): the back button library is pinned. Fail if npm installed anything but exactly @capacitor/app 8.1.2.
+          V=$(node -p "require('./node_modules/@capacitor/app/package.json').version" 2>/dev/null || true)
+          echo "@capacitor/app $V"
+          [ "$V" = "8.1.2" ] || { echo "::error::@capacitor/app must be exactly 8.1.2 (found '$V')"; exit 1; }
 
       - name: Create the Android project
         run: |
@@ -84,7 +89,12 @@ jobs:
         continue-on-error: true
 
       - name: Copy the web app into Android
-        run: npx cap sync android
+        run: |
+          set -o pipefail
+          npx cap sync android | tee "$RUNNER_TEMP/sync.txt"
+          # G2c: without the App plugin in the Android project the back button would leave the app again. Fail if it is missing.
+          grep -qF '@capacitor/app@8.1.2' "$RUNNER_TEMP/sync.txt" || { echo "::error::cap sync did not list @capacitor/app@8.1.2"; exit 1; }
+          grep -qF "include ':capacitor-app'" android/capacitor.settings.gradle || { echo "::error::android/capacitor.settings.gradle does not include @capacitor/app"; exit 1; }
 
       - name: Build the APK (and Play Store bundle when signed)
         env:

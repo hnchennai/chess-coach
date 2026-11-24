@@ -2650,7 +2650,9 @@
     var d = s.opts.daily; prof.daily = Daily.record(prof.daily, typeof d === 'string' ? d : prof.daily.d, id, ok);
     if (ok) rateHappy = true; /* D2 (DP-D4): a solved daily puzzle is a happy moment */
     remindSync(); /* D2 (AC6): today is done, so today's reminder goes */
-    remindDelivered([dayKey(), typeof d === 'string' ? d : '']); /* fix 2: and one already on the phone's screen */
+    /* fix 2: and one already on the phone's screen. Today's only when today is now done: yesterday's daily finished
+       after midnight (DP-D12) leaves today's reminder in place, since today's puzzle is still to do. */
+    remindDelivered([Daily.state(prof.daily, dayKey()) !== 'todo' ? dayKey() : '', typeof d === 'string' ? d : '']);
   }
   /* Fix 3c: Home turns over at local midnight, and when the app comes back to the front (a phone that slept through it). */
   var dayTimer = null;

@@ -44,7 +44,7 @@ async function toEnd(page) {
   await page.waitForFunction(() => window.__coach.st.ses && window.__coach.st.ses.finished);
   return page.evaluate(() => {
     const c = document.getElementById('sessionCard'), on = (e) => !!e && e.getClientRects().length > 0, tx = (q) => { const e = c.querySelector(q); return on(e) ? e.textContent.replace(/\s+/g, ' ').trim() : null; };
-    return { title: tx('.ec-title'), text: tx('.ec-text'), main: tx('.ec-main'), small: [...c.querySelectorAll('.ec-small')].filter(on).map((b) => b.textContent.trim()) };
+    return { title: tx('.ec-title'), text: tx('.ec-text'), main: tx('.ec-main'), small: [...c.querySelectorAll('.ec-small')].filter(on).map((b) => b.textContent.trim()), primaries: [...c.querySelectorAll('.btn.primary')].filter(on).length };
   });
 }
 const goHome = async (page) => { await page.locator('#sessionCard [data-act="home"]').click(); await page.waitForFunction(() => window.__coach.st.tab === 'coach'); };
@@ -57,6 +57,9 @@ async function miss(page) {
   await page.waitForFunction(() => { const z = window.__coach.st.pz; return z && z.done; }, null, { timeout: 30000 });
 }
 
+// A fixed local time, for the clock cases: 25 Nov, h:m:s.
+const at = (d, h, m, s) => new Date(2026, 10, d, h, m, s || 0).getTime();
+const K25 = '2026-11-25', K26 = '2026-11-26';
 const cases = [
   // ---------- AC1, DP-D1, DP-D9, wording, AC11 ----------
   ['AC1: Improver, Club and Show-everything Home show the card under the Continue card, as signed; one-handed; one primary button', async (vp) => {
@@ -97,6 +100,10 @@ const cases = [
       assert.equal(c.primary, false, kind + ': the main card keeps the one primary button');
       const main = await page.evaluate(() => document.querySelector('#bhome > .bh-card').getBoundingClientRect().bottom);
       assert.ok(c.top >= main, kind + ': under the main card');
+      const order = await page.evaluate(() => [...document.querySelectorAll('#bhome > *')].filter((e) => e.getClientRects().length).map((e) => e.id || e.className));
+      const mi = order.indexOf('card bh-card'), di = order.indexOf('dailyBHome');
+      assert.equal(di, mi + 1, kind + ': directly under the main card: ' + order);
+      if (order.includes('btn big bh-alt')) assert.ok(order.indexOf('btn big bh-alt') > di, kind + ': above "Just play a game"');
       assert.ok(c.bh >= 44 && c.right <= c.vw && c.scrollW <= c.vw, kind + ': one-handed, no sideways scroll');
       assert.equal(await page.locator('#homeSlot').evaluate((e) => !e.nextElementSibling), true, kind + ': the tip slot is still the last thing on Home');
     }
@@ -113,11 +120,15 @@ const cases = [
     await solveIt(page, '#dailyCard');
     const s = await page.evaluate(() => { const s = window.__coach.st.ses; return { count: s.count, id: s.items[0].id, title: s.title }; });
     assert.deepEqual(s, { count: 1, id, title: W.kicker }, 'a 1-puzzle set with today’s puzzle');
+    const meta = await page.locator('#sessionCard .meta span').first().innerText();
+    assert.equal(meta, W.kicker, 'fix 5: the header says Daily puzzle, not 1 of 1');
+    if (PH(vp)) assert.equal(await page.locator('#actPlace').innerText(), W.kicker, 'and so does the Close bar');
     await solvePuzzle(page);
     assert.equal(await page.locator('#sessionCard [data-act="retry"]').count(), 0);
     const e = await toEnd(page);
     assert.equal(e.title, W.title); assert.equal(e.text, W.solved, 'the end card says it was solved');
-    assert.equal(e.main, 'Home', 'one try a day: no "Go again" and no second daily puzzle'); assert.deepEqual(e.small, []);
+    assert.equal(e.main, '10 more puzzles', 'DP-D11: the main button'); assert.deepEqual(e.small, ['Home'], 'and a small Home; no "Go again"');
+    assert.equal(e.primaries, 1, 'one primary button');
     const after = await saved(page);
     assert.equal(after.rn, before.rn + 1, 'AC3: one rated puzzle'); assert.ok(after.rating > before.rating, 'the puzzle rating goes up');
     assert.equal(after.puz[id].ok, 1);
@@ -160,7 +171,8 @@ const cases = [
     await page.waitForFunction(() => document.querySelector('#sessionCard [data-act="next"]'));
     assert.equal(await page.locator('#sessionCard [data-act="retry"]').count(), 0, 'one try a day: no "Try again"');
     const e = await toEnd(page);
-    assert.equal(e.title, W.title); assert.equal(e.text, W.missed, 'the end card says it was not this time'); assert.equal(e.main, 'Home');
+    assert.equal(e.title, W.title); assert.equal(e.text, W.missed, 'the end card says it was not this time');
+    assert.equal(e.main, '10 more puzzles'); assert.deepEqual(e.small, ['Home']);
     const after = await saved(page);
     assert.equal(after.rn, before.rn + 1); assert.ok(after.rating < before.rating, 'the puzzle rating goes down');
     assert.deepEqual([after.puz[M0].n, after.puz[M0].ok, after.puz[M0].box], [1, 0, 0], 'a miss, as in a rated set');
@@ -211,5 +223,99 @@ const cases = [
     return page;
   }]
 ];
+
+// ---------- fix round 1 ----------
+cases.push(
+  ['Fix 1: opening Home on a new day keeps prof.t (no profile write before the cloud pull); the pick is still kept on the device', async (vp) => {
+    const T = NOW - DAY;
+    const page = await newPage(vp, improver({ t: T, daily: { d: dkey(1), id: M0, r: 'solved', n: 1 } }));
+    if ((await st(page, 'tab')) !== 'coach') await goTab(page, 'coach');
+    assert.equal((await card(page, '#dailyCard')).button, W.button);
+    const p = await saved(page);
+    assert.equal(p.t, T, 'prof.t is not bumped by opening Home');
+    assert.equal(p.daily.d, TODAY, 'today’s pick is kept on the device all the same (AC2)');
+    await reload(page);
+    assert.equal((await saved(page)).daily.id, p.daily.id, 'the same pick after a restart'); assert.equal((await saved(page)).t, T);
+    return page;
+  }],
+  ['Fix 3b: the end card’s "10 more puzzles" starts a rated set', async (vp) => {
+    const page = await newPage(vp, club({ daily: { d: TODAY, id: M0, r: null, n: 0 } }));
+    if ((await st(page, 'tab')) !== 'coach') await goTab(page, 'coach');
+    await solveIt(page, '#dailyCard'); await solvePuzzle(page); await toEnd(page);
+    await page.locator('#sessionCard .ec-main').click();
+    await page.waitForFunction(() => { const s = window.__coach.st.ses; return s && s.rated && s.count === 10; });
+    assert.equal(await page.evaluate(() => !!window.__coach.st.ses.opts.daily), false, 'a plain rated set');
+    return page;
+  }],
+  ['Fix 4: a restart after the result is counted but before Next: no double count, and it comes back as it ended', async (vp) => {
+    const page = await newPage(vp, club({ rn: 30, days: played(1), daily: { d: TODAY, id: M0, r: null, n: 0 } }));
+    if ((await st(page, 'tab')) !== 'coach') await goTab(page, 'coach');
+    const before = await profNow(page);
+    await solveIt(page, '#dailyCard'); await solvePuzzle(page);
+    const one = await saved(page);
+    assert.equal(one.rn, before.rn + 1);
+    await reload(page);
+    if ((await st(page, 'tab')) !== 'coach') await goTab(page, 'coach');
+    assert.equal((await card(page, '#dailyCard')).line, W.solved, 'Home: solved');
+    await goTab(page, 'train');
+    await page.locator('#resumeTrain .rs-go, #panel-train [data-act="resume"]').first().click();
+    await page.waitForFunction(() => window.__coach.st.pz && window.__coach.st.pz.done);
+    const e = await toEnd(page);
+    assert.equal(e.text, W.solved);
+    const two = await saved(page);
+    assert.deepEqual([two.rn, two.days[TODAY].puz, two.daily.n, two.puz[M0].n], [one.rn, 1, 1, 1], 'counted once');
+    return page;
+  }],
+  ['Fix 3a / DP-D12: dealt before midnight, solved after: it counts for the day it was dealt; the end card says today’s is on Home', async (vp) => {
+    const page = await newPage(vp, club({ days: {}, daily: { d: K25, id: M0, r: null, n: 4 } }), { clock: at(25, 23, 59, 0) });
+    if ((await st(page, 'tab')) !== 'coach') await goTab(page, 'coach');
+    await solveIt(page, '#dailyCard');
+    await page.clock.setSystemTime(at(26, 0, 0, 30));
+    await solvePuzzle(page);
+    const e = await toEnd(page);
+    assert.equal(e.text, 'Solved. Today’s new puzzle is on Home.');
+    assert.deepEqual((await saved(page)).daily, { d: K25, id: M0, r: 'solved', n: 5 }, 'the dealt day’s record, n up by one');
+    await page.locator('#sessionCard [data-act="home"]').click();
+    await page.waitForFunction(() => window.__coach.st.tab === 'coach');
+    const c = await card(page, '#dailyCard');
+    assert.deepEqual([c.line, c.button], [W.line, W.button], 'Home: the new day’s puzzle');
+    const d = (await profNow(page)).daily;
+    assert.equal(d.d, K26); assert.notEqual(d.id, M0); assert.equal(d.n, 5);
+    return page;
+  }],
+  ['Fix 3a / DP-D12: Home turned over first, then the old one is missed: n goes up, the new day stays to do', async (vp) => {
+    const page = await newPage(vp, club({ days: {}, daily: { d: K25, id: M0, r: null, n: 0 } }), { clock: at(25, 23, 59, 0) });
+    if ((await st(page, 'tab')) !== 'coach') await goTab(page, 'coach');
+    await solveIt(page, '#dailyCard');
+    await page.waitForFunction(() => { const z = window.__coach.st.pz; return z && !z.wait; });
+    if (PH(vp)) await closeX(page);
+    await goTab(page, 'coach');
+    await page.clock.runFor(120000); // midnight passes on Home
+    await page.waitForFunction(() => window.__coach.getProf().daily.d === '2026-11-26');
+    await goTab(page, 'train');
+    if (PH(vp)) await page.locator('#resumeTrain .rs-go').click(); // wide: it stayed on the board beside the tabs
+    await miss(page);
+    const e = await toEnd(page);
+    assert.equal(e.text, 'Not this time. It’s in your missed puzzles. Today’s new puzzle is on Home.');
+    const d = (await saved(page)).daily;
+    assert.deepEqual([d.d, d.r, d.n], [K26, null, 1], 'the new day is untouched; one more finished');
+    return page;
+  }],
+  ['Fix 3c: Home turns over at local midnight with no tab switch, and when the app comes back to the front', async (vp) => {
+    const page = await newPage(vp, club({ days: {}, daily: { d: K25, id: M0, r: 'solved', n: 1 } }), { clock: at(25, 23, 59, 50) });
+    if ((await st(page, 'tab')) !== 'coach') await goTab(page, 'coach');
+    assert.equal((await card(page, '#dailyCard')).line, W.solved);
+    await page.clock.runFor(20000);
+    let c = await card(page, '#dailyCard');
+    assert.deepEqual([c.line, c.button], [W.line, W.button], 'midnight: the new puzzle, by itself');
+    await page.evaluate(() => { const d = window.__coach.getProf().daily; d.r = 'solved'; });
+    await page.clock.setSystemTime(at(27, 9, 0, 0)); // the phone slept through the next midnight
+    await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+    await page.waitForFunction(() => window.__coach.getProf().daily.d === '2026-11-27');
+    c = await card(page, '#dailyCard');
+    assert.deepEqual([c.line, c.button], [W.line, W.button], 'back to the front: the new puzzle');
+    return page;
+  }]
+);
 
 if (require.main === module) G.run(cases, VIEWPORTS, ONLY);

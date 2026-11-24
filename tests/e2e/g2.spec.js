@@ -83,7 +83,7 @@ function fakeAds(cfg) {
   A.release = () => { const p = A.pending; A.pending = null; if (p) p(); };
   window.Capacitor = { isNativePlatform: () => true, getPlatform: () => 'android', Plugins: { AdMob: P } };
 }
-// o: { game, tab, set, v3d, ads (true: the fake ads plugin), size (another viewport), ls (other local storage keys, raw strings) }
+// o: { game, tab, set, v3d, ads (true: the fake ads plugin), size (another viewport), ls (other local storage keys, raw strings), clock }
 async function newPage(vp, p, o) {
   o = o || {};
   const ctx = await browser.newContext({ viewport: o.size || vp, deviceScaleFactor: 1 });
@@ -92,6 +92,7 @@ async function newPage(vp, p, o) {
   if (o.ads) await ctx.addInitScript(fakeAds, o.ads === true ? {} : o.ads);
   if (o.init) await ctx.addInitScript(o.init[0], o.init[1]); // o.init: [fn, arg], one more fake that runs before the app (g2c.spec.js)
   const page = await ctx.newPage();
+  if (o.clock != null) await page.clock.install({ time: o.clock }); // o.clock: a fake clock from this time (daily.spec.js: local midnight)
   if (process.env.G2_TIMEOUT) { page.setDefaultTimeout(+process.env.G2_TIMEOUT); page.setDefaultNavigationTimeout(60000); }
   page.errors = []; page.outside = []; page.dialogs = [];
   page.on('console', (m) => { if ((m.type() === 'error' || m.type() === 'warning') && !/GL Driver Message|WebGL context was lost|THREE\.WebGLRenderer: Context (Lost|Restored)/.test(m.text())) page.errors.push(m.type() + ': ' + m.text()); });

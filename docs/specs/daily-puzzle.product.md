@@ -27,6 +27,8 @@ Ad income and Play ranking both depend on players coming back. The app has a str
 | DP-D8 | Tapping the reminder opens the app straight into today's daily puzzle (or the card, if it is already done) | Claude, approved by Suresh 2026-11-24 |
 | DP-D9 | Where the card sits: on Improver and Club Home, under the Continue card. On Beginner Home, under the main card | Claude, approved by Suresh 2026-11-24 |
 | DP-D10 | Two new Android plugins, both free (MIT), no network of their own: `@capacitor/local-notifications` 8.3.1 (official) and `@capacitor-community/in-app-review` 8.0.0 (uses Google's Play review library). Pinned to exact versions | Claude, approved by Suresh 2026-11-24 |
+| DP-D11 | The daily puzzle's end card: title "Today's puzzle" and the card's result line, main button "10 more puzzles" (a rated set at the player's level), small button "Home" | Suresh, 2026-11-24 |
+| DP-D12 | A daily puzzle finished after midnight counts as the daily of the day it was dealt; its end card ends with "Today's new puzzle is on Home." instead of "A new one tomorrow." | Claude, from the review, 2026-11-24 |
 
 ## Wording (draft, needs Suresh's yes)
 - Card: kicker "Daily puzzle", title "Today's puzzle", line "One puzzle at your level. About a minute.", button "Solve it".

@@ -59,8 +59,8 @@ test('AC2 / scenario 2: today() keeps the same puzzle all day, even after a rest
   assert.equal(r0.d, DAY); assert.equal(r0.r, null); assert.equal(r0.n, 0);
   assert.ok(['b', 'c', 'd', 'e'].includes(r0.id));
   const saved = JSON.parse(JSON.stringify(r0)); // through local storage
-  const r1 = D.today(saved, DAY, BANK, 1500, { [r0.id]: { n: 1, ok: 1 } });
-  assert.equal(r1, saved, 'same day: the stored record, untouched (rating and results changed meanwhile)');
+  const r1 = D.today(saved, DAY, BANK, 1500, { [r0.id]: { n: 1, ok: 0 }, zz: { n: 1, ok: 1 } });
+  assert.equal(r1, saved, 'same day: the stored record, untouched (rating and results changed meanwhile; solved elsewhere: fix 2)');
   const done = Object.assign({}, r0, { r: 'solved', n: 1 });
   assert.equal(D.today(done, DAY, BANK, 1100, {}), done, 'same day, done: kept');
   const r2 = D.today(done, NEXT, BANK, 1100, {});
@@ -90,7 +90,7 @@ test('AC4 / DP-D6: one try per day: record() takes the first result only, for to
   assert.equal(D.record(s, DAY, 'b', false), s, 'a second result the same day changes nothing');
   assert.deepEqual(D.record(r, DAY, 'b', false), { d: DAY, id: 'b', r: 'missed', n: 1 });
   assert.equal(D.record(r, DAY, 'c', true), r, 'another puzzle is not the daily puzzle');
-  assert.equal(D.record(r, NEXT, 'b', true), r, 'yesterday\'s daily puzzle finished after midnight is not today\'s');
+  assert.equal(D.record(r, NEXT, 'b', true), r, 'a deal day newer than the record: nothing to record on');
   assert.equal(D.record(null, DAY, 'b', true), null);
 });
 
@@ -137,4 +137,44 @@ test('AC10: merge never loses a daily result or the count of finished daily puzz
   assert.deepEqual(m({ d: '2026-12-1', id: 'b', r: null, n: 0 }, { d: '2026-11-30', id: 'c', r: 'solved', n: 1 }), { d: '2026-12-1', id: 'b', r: null, n: 1 }, 'days compare as dates, not as text');
   assert.deepEqual(m({ d: DAY, id: 'b', r: 'solved', n: 1 }, undefined), { d: DAY, id: 'b', r: 'solved', n: 1 }, 'an older cloud copy without the field changes nothing');
   assert.deepEqual(P.merge({ v: 5 }, { v: 5, daily: { d: DAY, id: 'b', r: 'solved', n: 1 } }).daily, { d: DAY, id: 'b', r: 'solved', n: 1 }, 'an older device copy takes the cloud result');
+});
+
+// ---------- fix round 1 ----------
+test('Fix 2: never-tried puzzles first, so the daily is not a puzzle from the missed-review list', () => {
+  const missed = { c: { n: 1, ok: 0, box: 0, due: 1 }, d: { n: 1, ok: 0, box: 0, due: 1 }, e: { n: 2, ok: 0, box: 0, due: 1 } };
+  for (const day of ['2026-11-25', '2026-11-26', '2026-11-27', '2026-11-28']) assert.equal(D.pick(BANK, 1100, missed, day).id, 'b', day + ': the one never-tried puzzle near 1100');
+  const tried = {}; BANK.forEach((p) => { tried[p.id] = { n: 1, ok: 0 }; });
+  assert.ok(['b', 'c', 'd', 'e'].includes(D.pick(BANK, 1100, tried, DAY).id), 'all tried, none solved: an unsolved one near the rating');
+  tried.b = { n: 1, ok: 1 }; tried.c = { n: 1, ok: 1 }; tried.d = { n: 1, ok: 1 }; tried.e = { n: 1, ok: 1 };
+  assert.equal(D.pick(BANK, 1100, tried, DAY).id, 'f', 'an unsolved one beats a solved one');
+});
+
+test('Fix 2: the stored pick solved somewhere else before the daily was tried gives a new pick (no double count)', () => {
+  const r0 = D.today(null, DAY, BANK, 1100, {});
+  const r1 = D.today(r0, DAY, BANK, 1100, { [r0.id]: { n: 1, ok: 1 } });
+  assert.notEqual(r1, r0); assert.notEqual(r1.id, r0.id, 'a new puzzle'); assert.equal(r1.d, DAY); assert.equal(r1.r, null); assert.equal(r1.n, r0.n);
+  assert.equal(D.today(r0, DAY, BANK, 1100, { [r0.id]: { n: 1, ok: 0 } }), r0, 'missed elsewhere: it stays (it is still unsolved)');
+  const done = Object.assign({}, r0, { r: 'solved', n: 1 });
+  assert.equal(D.today(done, DAY, BANK, 1100, { [r0.id]: { n: 1, ok: 1 } }), done, 'solved as the daily puzzle: the result stands');
+});
+
+test('Fix 3a / DP-D12: finished after midnight: it counts for the day it was dealt, and n goes up', () => {
+  const r = { d: DAY, id: 'b', r: null, n: 2 };
+  assert.deepEqual(D.record(r, DAY, 'b', true), { d: DAY, id: 'b', r: 'solved', n: 3 }, 'the record still holds the dealt day: its result');
+  const moved = { d: NEXT, id: 'c', r: null, n: 3 };
+  assert.deepEqual(D.record(moved, DAY, 'b', false), { d: NEXT, id: 'c', r: null, n: 4 }, 'Home already moved to the new day: n only; the new day stays to do');
+  assert.deepEqual(D.record({ d: '2026-12-1', id: 'c', r: null, n: 0 }, '2026-11-30', 'b', true), { d: '2026-12-1', id: 'c', r: null, n: 1 }, 'days compare as dates');
+  assert.equal(D.record(moved, NEXT, 'b', true), moved, 'the new day\'s record is not this puzzle');
+});
+
+test('Fix 3a / DP-D12: the end card line, on the day and after midnight', () => {
+  assert.equal(D.endLine(true, false), 'Solved. A new one tomorrow.');
+  assert.equal(D.endLine(false, false), 'Not this time. It’s in your missed puzzles. A new one tomorrow.');
+  assert.equal(D.endLine(true, true), 'Solved. Today’s new puzzle is on Home.');
+  assert.equal(D.endLine(false, true), 'Not this time. It’s in your missed puzzles. Today’s new puzzle is on Home.');
+});
+
+test('Fix 3c: ms to the next local midnight', () => {
+  assert.equal(D.untilMidnight(new Date(2026, 10, 25, 23, 59, 0)), 60000);
+  assert.equal(D.untilMidnight(new Date(2026, 10, 25, 0, 0, 0)), 86400000);
 });

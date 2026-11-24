@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- D2: the daily puzzle reminder's small notification icon (an original pawn silhouette, white on transparent, as Android
+     needs for a status bar icon). scripts/android-d2.sh copies it to android/app/src/main/res/drawable/ic_stat_daily.xml. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M12,3a3,3 0,1 1,0 6a3,3 0,1 1,0 -6z M8.5,9.8h7a0.8,0.8 0,0 1,0 1.6h-7a0.8,0.8 0,0 1,0 -1.6z M10.2,11.4h3.6c0,2.6 1,4.6 2.9,6.6h-9.4c1.9,-2 2.9,-4 2.9,-6.6z M6,18.6h12a1,1 0,0 1,1 1v1.4a0.5,0.5 0,0 1,-0.5 0.5h-13a0.5,0.5 0,0 1,-0.5 -0.5v-1.4a1,1 0,0 1,1 -1z" />
+</vector>

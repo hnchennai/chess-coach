@@ -185,7 +185,7 @@
         <!-- F2 (F-D3): the tip slot at the bottom of Progress, above the license credits -->
         <div class="tipslot" id="progSlot" hidden></div>
         <!-- License credits stay for every level, Beginners too (constitution; D37 is the one exception to D23). -->
-        <p class="credit">Chess Coach is free software under the <a href="https://www.gnu.org/licenses/gpl-3.0.html" target="_blank" rel="noopener">GNU GPL version 3</a>. Source code: <a href="https://github.com/hnchennai/chess-coach" target="_blank" rel="noopener">github.com/hnchennai/chess-coach</a>. The app’s own code carries an added permission (LICENSE-EXCEPTION in the source) to be combined with Google Mobile Ads, Google User Messaging Platform and Google Play Billing. Stockfish is separate and unchanged.</p>
+        <p class="credit">Chess Coach is free software under the <a href="https://www.gnu.org/licenses/gpl-3.0.html" target="_blank" rel="noopener">GNU GPL version 3</a>. Source code: <a href="https://github.com/hnchennai/chess-coach" target="_blank" rel="noopener">github.com/hnchennai/chess-coach</a>. The app’s own code carries an added permission (LICENSE-EXCEPTION in the source) to be combined with Google Mobile Ads, Google User Messaging Platform, Google Play Billing, Google Play In-App Review and Google Play Core Common, and the Google Play services libraries they use. Stockfish is separate and unchanged.</p>
         <p class="credit">Analysis by Stockfish 19 (GPLv3, stockfishchess.org) via stockfish.js. Puzzles mined from engine games and verified by Stockfish.</p>
         <p class="credit">3D marble set and board: “A Beautiful Game” by the MaterialX Project (ASWF), glTF conversion by Ed Mackey, licensed <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener">CC BY 4.0</a>. Simplified and resized for this app. Three.js (MIT) draws the 3D view.</p>
       </div>
@@ -205,6 +205,8 @@
     <div class="card levelcard" id="levelCard"></div>
     <!-- S2b, D41: Coach and pieces for every level (the same markup as Home's card, rendered by renderLook) -->
     <section class="card lookset" aria-labelledby="lookSetTitle"><h3 class="settitle" id="lookSetTitle">Coach and pieces</h3><div id="lookSet"></div></section>
+    <!-- D2 (DP-D3, AC7): the daily puzzle reminder, Android app only. Empty and hidden on the web (app.js renderRemind fills it) -->
+    <section class="card remindset" id="remindSet" hidden></section>
     <!-- F3b (A-D17): "Privacy policy" for everyone; "Privacy choices" only where Google reports a choice applies (app.js adChoice) -->
     <div class="card privset"><a class="linkbtn rowlink" data-act="privacy" href="https://hnchennai.github.io/privacy.html" target="_blank" rel="noopener">Privacy policy</a><button class="linkbtn rowlink" type="button" data-act="privchoices" id="privChoices" hidden>Privacy choices</button><p class="adsdebug" id="adDebug" hidden></p></div> <!-- adDebug: test builds only (launch switch off), the ads state for phone tests; empty and hidden on the web and once real ads are on -->
   </div>

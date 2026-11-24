@@ -3,6 +3,7 @@
 const crypto = require('node:crypto');
 const { makeOps } = require('../src/ops');
 const { MemStore } = require('../src/memstore');
+const { makeJobs } = require('../src/jobs');
 
 const T0 = Date.UTC(2026, 10, 24, 6, 0, 0); // 24 Nov 2026, 11:30 IST
 const DAY = 24 * 60 * 60 * 1000;
@@ -25,16 +26,28 @@ function setup(opts = {}) {
   const pushes = [];
   const store = new MemStore();
   const logs = [];
-  const ops = makeOps({
+  const authDeleted = [];
+  const deps = {
     store,
     now: () => clock.t,
     rand: opts.rand || seededRand(opts.seed || 'fc1'),
     push: opts.push || (async (p) => { pushes.push(p); }),
     log: (...a) => logs.push(a),
-    syncMax: opts.syncMax,
-  });
+    deleteAuthUser: opts.deleteAuthUser || (async (uid) => { authDeleted.push(uid); }),
+  };
+  const authLastActive = opts.authLastActive || (async () => null); // no recent sign-in or token refresh
+  const ops = makeOps({ ...deps, syncMax: opts.syncMax, deletePage: opts.deletePage });
+  const jobs = makeJobs({ ...deps, authLastActive, page: opts.page, max: opts.max });
   const call = (uid, data) => ops.handle(uid ? { uid } : null, data);
-  return { ops, store, clock, pushes, logs, call };
+  return { ops, jobs, store, clock, pushes, logs, authDeleted, call };
+}
+
+// A started game: a invites as White (or col), b accepts. Pushes so far are cleared. Returns the game id.
+async function startGame(s, a, b, col = 'w') {
+  const inv = await s.call(a, { op: 'invite', col });
+  await s.call(b, { op: 'accept', code: inv.code });
+  s.pushes.length = 0;
+  return inv.games[0].id;
 }
 
 // Expect an OpError with this status (and message code)
@@ -60,4 +73,4 @@ function strings(v, out = []) {
 
 const sha12 = (a, b) => crypto.createHash('sha256').update(a + ':' + b).digest('hex').slice(0, 12);
 
-module.exports = { T0, DAY, setup, fails, strings, seededRand, sha12 };
+module.exports = { T0, DAY, setup, startGame, fails, strings, seededRand, sha12 };

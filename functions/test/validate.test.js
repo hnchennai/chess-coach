@@ -17,7 +17,7 @@ test('every op needs a signed-in caller', async () => {
 test('the request must be an object with a known op', async () => {
   const { call } = setup();
   for (const data of [null, undefined, 'hello', 42, [], ['hello'], {}, { op: 'nope' }, { op: 7 },
-    { op: 'resign', g: GID }, { op: 'draw', g: GID, a: 'offer' }, { op: 'deleteMe' }, { op: '__proto__' },
+    { op: 'tick' }, { op: 'daily' }, { op: 'Resign', g: GID }, { op: '__proto__' },
     { op: 'toString' }]) {
     await fails(call(A, data), 'invalid-argument');
   }
@@ -31,6 +31,9 @@ test('unknown fields fail, so names or free text can never reach the server', as
   await fails(call(A, { op: 'move', g: GID, ply: 0, from: 'e2', to: 'e4', note: 'hi' }), 'invalid-argument');
   await fails(call(A, { op: 'sync', since: 0, x: 1 }), 'invalid-argument');
   await fails(call(A, { op: 'cancel', g: GID, why: 'oops' }), 'invalid-argument');
+  await fails(call(A, { op: 'resign', g: GID, why: 'tired' }), 'invalid-argument');
+  await fails(call(A, { op: 'draw', g: GID, a: 'offer', msg: 'draw?' }), 'invalid-argument');
+  await fails(call(A, { op: 'deleteMe', uid: A }), 'invalid-argument');
 });
 
 test('wrong types and missing required fields fail', async () => {
@@ -64,6 +67,13 @@ test('wrong types and missing required fields fail', async () => {
     { op: 'sync', since: '0' },
     { op: 'cancel' },
     { op: 'cancel', g: 12 },
+    { op: 'resign' },
+    { op: 'resign', g: 'short' },
+    { op: 'draw', g: GID },
+    { op: 'draw', a: 'offer' },
+    { op: 'draw', g: GID, a: 'Offer' },
+    { op: 'draw', g: GID, a: 'propose' },
+    { op: 'draw', g: GID, a: true },
   ];
   for (const data of bad) await fails(call(A, data), 'invalid-argument', undefined);
 });

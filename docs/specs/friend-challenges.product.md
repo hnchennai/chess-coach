@@ -36,6 +36,7 @@ Two friends play a turn-based game of chess in the app: one sends a challenge li
 | FC-D19 | Spending guard: the $5 budget email alert plus the server instance caps. No automatic billing shut-off | Suresh, 2026-11-24 |
 | FC-D20 | `google-services.json` is committed to the public repo (it holds no secret); safety comes from deny-all Firestore rules, API key restrictions and App Check. Data safety says there are no accounts and gives the deletion page URL | Claude (technical), 2026-11-24 |
 | FC-D21 | A friend game that reaches 600 plies (300 moves each) ends automatically as a draw, reason "move limit" | Suresh, 2026-11-24 |
+| FC-D22 | When a player deletes their friend game data, a game already past its deadline ends on time (the side that ran out of time loses), as the timer job would have ended it. Every other open game counts as a win for the friend (FC-D17) | Suresh, 2026-11-24 |
 
 ## Scenarios
 1. **Invite.** Priya taps Challenge a friend on Play, picks Random, and shares the link to Ravi on WhatsApp. Her Play tab shows the game as "Waiting for your friend", with an expiry date 7 days ahead.
@@ -47,7 +48,7 @@ Two friends play a turn-based game of chess in the app: one sends a challenge li
 7. **Draw offer.** Ravi offers a draw. Priya sees it with Accept and Decline; she declines and the game goes on.
 8. **Offline.** Priya moves with no internet. The move shows as "Not sent yet" and sends by itself when the phone is online again. Her clock does not stop.
 9. **New phone.** Ravi reinstalls the app. His open friend games are gone (FC-D3); Priya's side shows them as waiting until they run out of time.
-10. **Delete.** Priya taps Delete my friend game data in Settings. Her ID, push token and server games are deleted; open games end for her opponents as abandoned. Her phone history stays.
+10. **Delete.** Priya taps Delete my friend game data in Settings. Her ID, push token and server games are deleted; open games end for her opponents as abandoned (a game where someone had already run out of time ends on time instead, FC-D22). Her phone history stays.
 11. **Web.** On the web version there is no Challenge a friend button.
 
 ## Acceptance criteria (to refine in the tech spec)
@@ -75,7 +76,7 @@ Two friends play a turn-based game of chess in the app: one sends a challenge li
 - Moving games to a new phone (a later Play Games link could do it).
 
 ## Assumption register
-- Confirmed by Suresh: FC-D1 to FC-D8, FC-D17 to FC-D19, FC-D21 (2026-11-24).
+- Confirmed by Suresh: FC-D1 to FC-D8, FC-D17 to FC-D19, FC-D21, FC-D22 (2026-11-24).
 - Proposed by Claude, approved by Suresh on 2026-11-24: FC-D9 to FC-D16 and the beyond-code changes.
 - Verified by tool: none yet; Firebase pricing, the Blaze free quotas and the Play deletion rule are checked in readiness.
 

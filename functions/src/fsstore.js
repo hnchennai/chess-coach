@@ -1,7 +1,7 @@
 'use strict';
 // Firestore data layer (Admin SDK) with the same interface as memstore.js.
 // Ops see plain ms numbers; here expireAt (the TTL field) becomes a Firestore Timestamp and back.
-const { Timestamp } = require('firebase-admin/firestore');
+const { Timestamp, FieldPath } = require('firebase-admin/firestore');
 
 function toDoc(o) {
   if (o && typeof o.expireAt === 'number') return { ...o, expireAt: Timestamp.fromMillis(o.expireAt) };
@@ -37,6 +37,7 @@ class FsStore {
           return a.data().count + b.data().count;
         },
         setUser: (uid, doc) => { tx.set(this.users.doc(uid), toDoc(doc)); },
+        delUser: (uid) => { tx.delete(this.users.doc(uid)); },
         setGame: (id, doc) => { tx.set(this.games.doc(id), toDoc(doc)); },
         newGame: (id, doc) => { tx.create(this.games.doc(id), toDoc(doc)); },
         setInvite: (code, doc) => { tx.set(this.invites.doc(code), toDoc(doc)); },
@@ -50,6 +51,47 @@ class FsStore {
   async since(uid, since, limit) {
     const q = await this.games.where('uids', 'array-contains', uid).where('t', '>', since).orderBy('t').limit(limit).get();
     return q.docs.map((d) => ({ id: d.id, doc: fromSnap(d) }));
+  }
+
+  async getUser(uid) {
+    return fromSnap(await this.users.doc(uid).get());
+  }
+
+  // Ids only (select() with no fields): deleteMe re-reads each game in its transaction
+  async gamesOf(uid, limit) {
+    const q = await this.games.where('uids', 'array-contains', uid).select().limit(limit).get();
+    return q.docs.map((d) => d.id);
+  }
+
+  async invitesBy(uid, limit) {
+    const q = await this.invites.where('by', '==', uid).select().limit(limit).get();
+    return q.docs.map((d) => d.id);
+  }
+
+  // tick: games in state st with field <= upto, ordered by (field, document id), after a cursor.
+  // Indexes (st, dl), (st, rem), (st, expireAt); every index ends with the document id, so the cursor needs no other.
+  async due(st, field, upto, after, limit) {
+    const conv = (v) => (field === 'expireAt' ? Timestamp.fromMillis(v) : v);
+    let q = this.games.where('st', '==', st).where(field, '<=', conv(upto)).orderBy(field).orderBy(FieldPath.documentId());
+    if (after) q = q.startAfter(conv(after.v), after.id);
+    const s = await q.limit(limit).get();
+    return s.docs.map((d) => ({ id: d.id, doc: fromSnap(d) }));
+  }
+
+  // daily: unfinished deleteMe tombstones ({ gone, at }; a finished one has no at), single-field index on at
+  async tombstones(before, after, limit) {
+    let q = this.users.where('at', '<', before).orderBy('at').orderBy(FieldPath.documentId());
+    if (after) q = q.startAfter(after.v, after.id);
+    const s = await q.limit(limit).get();
+    return s.docs.map((d) => ({ id: d.id, doc: fromSnap(d) }));
+  }
+
+  // daily: users with seen < before, ordered by (seen, document id), after a cursor (single-field index on seen)
+  async idleUsers(before, after, limit) {
+    let q = this.users.where('seen', '<', before).orderBy('seen').orderBy(FieldPath.documentId());
+    if (after) q = q.startAfter(after.v, after.id);
+    const s = await q.limit(limit).get();
+    return s.docs.map((d) => ({ id: d.id, doc: fromSnap(d) }));
   }
 }
 

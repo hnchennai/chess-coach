@@ -31,7 +31,19 @@
         { "fieldPath": "st", "order": "ASCENDING" },
         { "fieldPath": "rem", "order": "ASCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "games",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "st", "order": "ASCENDING" },
+        { "fieldPath": "expireAt", "order": "ASCENDING" }
+      ]
     }
   ],
-  "fieldOverrides": []
+  "fieldOverrides": [
+    { "collectionGroup": "games", "fieldPath": "expireAt", "ttl": true, "indexes": [] },
+    { "collectionGroup": "invites", "fieldPath": "expireAt", "ttl": true, "indexes": [] },
+    { "collectionGroup": "users", "fieldPath": "expireAt", "ttl": true, "indexes": [] }
+  ]
 }

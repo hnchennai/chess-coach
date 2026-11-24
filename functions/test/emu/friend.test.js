@@ -1,17 +1,19 @@
 'use strict';
 // The real callable on the emulators (Auth, Firestore, Functions), called over HTTP like the app.
-// Product scenarios 1, 2, 4 and 6; criteria 1, 2, 3 and 5. Time-based rules (late, expiry) are unit tested
-// with an injected clock (test/ops.*.test.js); here the clock is real.
+// Product scenarios 1, 2, 4, 6, 7 and 10; criteria 1, 2, 3, 5 and 9. Time-based rules (late, expiry) are unit tested
+// with an injected clock (test/ops.*.test.js); here the clock is real. tick and daily: test/emu/jobs.test.js.
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { initializeApp, getApps } = require('firebase-admin/app');
 const { getFirestore, Timestamp } = require('firebase-admin/firestore');
-const { signUp, call, ok, err, PROJECT } = require('./client');
+const { getAuth } = require('firebase-admin/auth');
+const { signUp, call, ok, err, PROJECT, requireEmulators } = require('./client');
 
 // Admin client for reading what the function stored; closed at the end so node --test can exit
 let db = null;
 function adminDb() {
   if (!db) {
+    requireEmulators();
     if (!getApps().length) initializeApp({ projectId: PROJECT });
     db = getFirestore();
   }
@@ -40,7 +42,8 @@ test('no ID token: UNAUTHENTICATED', async () => {
 test('bad input: INVALID_ARGUMENT (unknown field, unknown op)', async () => {
   const a = await signUp();
   await err(a.token, { op: 'hello', name: 'Priya' }, 'INVALID_ARGUMENT');
-  await err(a.token, { op: 'resign', g: 'abcdefghijABCDEFGHIJ' }, 'INVALID_ARGUMENT');
+  await err(a.token, { op: 'tick' }, 'INVALID_ARGUMENT');
+  await err(a.token, { op: 'resign', g: 'abcdefghijABCDEFGHIJ', why: 'tired' }, 'INVALID_ARGUMENT');
 });
 
 test('hello returns the server time', async () => {
@@ -158,4 +161,93 @@ test('the callable answers HTTP like the documented protocol: result wrapper and
   const e = await call(a.token, { op: 'peek', code: '0000000000' });
   assert.equal(e.http, 404);
   assert.equal(e.error.status, 'NOT_FOUND');
+});
+
+// A started game between two new players: a invites as White, b accepts
+async function started() {
+  const a = await signUp();
+  const b = await signUp();
+  const inv = await ok(a.token, { op: 'invite', col: 'w' });
+  await ok(b.token, { op: 'accept', code: inv.code });
+  return { a, b, g: inv.games[0].id };
+}
+
+test('resign: the friend wins, both see it, later actions fail "over"', async () => {
+  const { a, b, g } = await started();
+  await err(a.token, { op: 'resign', g: 'ZZZZZZZZZZZZZZZZZZZZ' }, 'NOT_FOUND');
+  const r = await ok(a.token, { op: 'resign', g });
+  assert.equal(r.games[0].st, 'over');
+  assert.deepEqual(r.games[0].res, { r: 'b', why: 'resign' });
+  const sb = await ok(b.token, { op: 'sync', since: 0 });
+  assert.deepEqual(sb.games.find((x) => x.id === g).res, { r: 'b', why: 'resign' });
+  await err(b.token, { op: 'resign', g }, 'FAILED_PRECONDITION', 'over');
+  await err(b.token, { op: 'move', g, ply: 0, from: 'e2', to: 'e4' }, 'FAILED_PRECONDITION', 'over');
+  const doc = await adminDb().collection('games').doc(g).get();
+  assert.ok(doc.get('expireAt') instanceof Timestamp, 'a finished game has its 30-day TTL time');
+  assert.ok(Math.abs(doc.get('expireAt').toMillis() - (doc.get('t') + 30 * 24 * 3600 * 1000)) < 1000);
+  noUid(r, a.uid, b.uid);
+});
+
+test('scenario 7: draw offer, decline, one offer per own move, offer again, accept', async () => {
+  const { a, b, g } = await started();
+  const o = await ok(a.token, { op: 'draw', g, a: 'offer' });
+  assert.equal(o.games[0].draw, 'w');
+  assert.equal((await ok(b.token, { op: 'sync', since: 0 })).games.find((x) => x.id === g).draw, 'w');
+  await err(a.token, { op: 'draw', g, a: 'accept' }, 'FAILED_PRECONDITION', 'draw');
+  const d = await ok(b.token, { op: 'draw', g, a: 'decline' });
+  assert.equal(d.games[0].draw, null);
+  assert.equal(d.games[0].st, 'active');
+  await err(a.token, { op: 'draw', g, a: 'offer' }, 'FAILED_PRECONDITION', 'draw');
+  await ok(a.token, { op: 'move', g, ply: 0, from: 'e2', to: 'e4' });
+  await ok(a.token, { op: 'draw', g, a: 'offer' });
+  const acc = await ok(b.token, { op: 'draw', g, a: 'accept' });
+  assert.equal(acc.games[0].st, 'over');
+  assert.deepEqual(acc.games[0].res, { r: 'd', why: 'agreed' });
+  assert.deepEqual((await ok(a.token, { op: 'sync', since: 0 })).games.find((x) => x.id === g).res, { r: 'd', why: 'agreed' });
+});
+
+test('scenario 10 and criterion 9: deleteMe ends open games for friends (friend wins), removes the data and the Auth user', async () => {
+  const db = adminDb();
+  const { a, b, g } = await started();
+  await ok(a.token, { op: 'hello', tok: 'emulator-push-token-a' });
+  const waiting = await ok(a.token, { op: 'invite', col: 'r' });
+  const before = (await ok(b.token, { op: 'sync', since: 0 })).games.find((x) => x.id === g);
+  const r = await ok(a.token, { op: 'deleteMe' });
+  assert.equal(typeof r.now, 'number');
+  assert.deepEqual(Object.keys(r), ['now']);
+
+  // The friend wins, and keeps the same opponent key
+  const after = (await ok(b.token, { op: 'sync', since: 0 })).games.find((x) => x.id === g);
+  assert.equal(after.st, 'over');
+  assert.deepEqual(after.res, { r: 'b', why: 'abandoned' });
+  assert.equal(after.opp, before.opp);
+  noUid(after, a.uid, b.uid);
+
+  // The data is gone: the user doc is a tombstone that holds nothing and expires in 2 hours
+  const tomb = await db.collection('users').doc(a.uid).get();
+  assert.deepEqual(Object.keys(tomb.data()).sort(), ['expireAt', 'gone']);
+  assert.equal(tomb.get('gone'), true);
+  assert.ok(tomb.get('expireAt') instanceof Timestamp);
+  assert.equal((await db.collection('games').where('uids', 'array-contains', a.uid).get()).size, 0);
+  assert.equal((await db.collection('invites').where('by', '==', a.uid).get()).size, 0);
+  assert.equal((await db.collection('invites').doc(waiting.code).get()).exists, false);
+  const wg = await db.collection('games').doc(waiting.games[0].id).get();
+  assert.deepEqual(wg.get('res'), { r: null, why: 'expired' });
+  assert.deepEqual(wg.get('uids'), ['x', null]);
+  assert.deepEqual((await db.collection('games').doc(g).get()).get('uids'), ['x', b.uid]);
+
+  // The Auth user is gone
+  await assert.rejects(getAuth().getUser(a.uid), (e) => e.code === 'auth/user-not-found');
+  assert.ok((await getAuth().getUser(b.uid)).uid, 'the friend is untouched');
+
+  // Fix round 1, fix 1: the old ID token may still be accepted for a while; any further call brings nothing back
+  for (const data of [{ op: 'hello', tok: 'emulator-push-token-a2' }, { op: 'sync', since: 0 }, { op: 'invite', col: 'w' }]) {
+    const e = await call(a.token, data);
+    assert.ok(e.error && ['NOT_FOUND', 'UNAUTHENTICATED'].includes(e.error.status), JSON.stringify(e));
+  }
+  assert.deepEqual(Object.keys((await db.collection('users').doc(a.uid).get()).data()).sort(), ['expireAt', 'gone']);
+  assert.equal((await db.collection('games').where('uids', 'array-contains', a.uid).get()).size, 0);
+  // A client retry of deleteMe is harmless
+  const again = await call(a.token, { op: 'deleteMe' });
+  assert.ok(again.result || ['UNAUTHENTICATED'].includes(again.error && again.error.status), JSON.stringify(again));
 });

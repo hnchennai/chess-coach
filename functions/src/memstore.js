@@ -1,6 +1,8 @@
 'use strict';
 // In-memory data layer with the same interface as fsstore.js, for fast local tests (no Java, no network).
-// Like a Firestore transaction: all reads before any write, writes staged and applied only on success.
+// Like a Firestore transaction: all reads before any write, writes staged and applied only on success, and a
+// transaction whose read documents were changed by another commit runs again (up to 5 times, then 'aborted').
+// Like Firestore, query results (openCount, since) are not protected against new matches: only document reads are.
 // Times are plain ms numbers here; fsstore.js turns expireAt into a Firestore Timestamp.
 
 const COLS = ['users', 'games', 'invites'];
@@ -10,15 +12,36 @@ class MemStore {
   constructor() {
     this.data = { users: new Map(), games: new Map(), invites: new Map() };
     this.writeLog = []; // [collection, id] of every committed write, for tests
+    this.ver = new Map(); // 'col/id' -> version, bumped on every committed write
+    this.barrier = null;
+  }
+
+  // Test hook: the next n transactions wait before committing until all n have read everything
+  commitBarrier(n) {
+    let release;
+    const all = new Promise((r) => { release = r; });
+    this.barrier = { n, waiting: 0, all, release };
   }
 
   async tx(fn) {
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const r = await this.attempt(fn);
+      if (r.ok) return r.out;
+    }
+    throw new Error('aborted: too much contention');
+  }
+
+  async attempt(fn) {
     const writes = [];
+    const seen = new Map(); // 'col/id' -> version when read
     const read = (f) => async (...a) => {
       if (writes.length) throw new Error('Firestore transactions need all reads before writes');
       return f(...a);
     };
-    const get = (col, id) => (this.data[col].has(id) ? copy(this.data[col].get(id)) : null);
+    const get = (col, id) => {
+      seen.set(col + '/' + id, this.ver.get(col + '/' + id) || 0);
+      return this.data[col].has(id) ? copy(this.data[col].get(id)) : null;
+    };
     const t = {
       user: read((uid) => get('users', uid)),
       game: read((id) => get('games', id)),
@@ -37,15 +60,26 @@ class MemStore {
       delInvite: (code) => writes.push(['invites', code, undefined]),
     };
     const out = await fn(t);
+    const b = this.barrier;
+    if (b) {
+      if (++b.waiting >= b.n) {
+        this.barrier = null;
+        b.release();
+      }
+      await b.all;
+    }
+    // From here to the end runs without awaiting, so the check and the writes are atomic
+    for (const [key, v] of seen) if ((this.ver.get(key) || 0) !== v) return { ok: false };
     for (const [col, id, , mode] of writes) {
       if (mode === 'create' && this.data[col].has(id)) throw new Error(`${col}/${id} already exists`);
     }
     for (const [col, id, doc] of writes) {
       this.writeLog.push([col, id]);
+      this.ver.set(col + '/' + id, (this.ver.get(col + '/' + id) || 0) + 1);
       if (doc === undefined) this.data[col].delete(id);
       else this.data[col].set(id, doc);
     }
-    return out;
+    return { ok: true, out };
   }
 
   // Games where uid is a player and t > since, oldest change first, at most limit

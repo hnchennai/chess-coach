@@ -225,3 +225,23 @@ test('an invite whose game already ended as expired (FC2 tick) says "expired", n
   await fails(call(B, { op: 'peek', code: inv.code }), 'failed-precondition', 'expired');
   await fails(call(B, { op: 'accept', code: inv.code }), 'failed-precondition', 'expired');
 });
+
+test('round 2 fix 1: two accepts at once by a player with 9 open games end with at most 10 open games', async () => {
+  const s = setup();
+  for (let i = 0; i < 9; i++) await s.call(B, { op: 'invite', col: 'w' });
+  const i1 = await s.call(A, { op: 'invite', col: 'w' });
+  const i2 = await s.call(C, { op: 'invite', col: 'w' });
+  s.clock.t += 1000; // B's seen is fresh, so only a deliberate write makes the two accepts conflict
+  s.store.commitBarrier(2); // both transactions read everything before either commits
+  const out = await Promise.allSettled([
+    s.call(B, { op: 'accept', code: i1.code }),
+    s.call(B, { op: 'accept', code: i2.code }),
+  ]);
+  const ok = out.filter((o) => o.status === 'fulfilled');
+  const bad = out.filter((o) => o.status === 'rejected');
+  assert.equal(ok.length, 1, 'exactly one accept wins');
+  assert.equal(bad.length, 1);
+  assert.equal(bad[0].reason.message, 'full');
+  const open = Object.values(s.store.dump().games).filter((g) => g.uids.includes(B) && g.st !== 'over').length;
+  assert.equal(open, 10);
+});

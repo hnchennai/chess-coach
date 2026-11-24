@@ -1,8 +1,10 @@
 'use strict';
 // The friend callable's ops for FC1: hello, invite, peek, accept, move, sync, cancel (tech spec section 6).
 // Written against a small data layer (memstore.js for tests, fsstore.js for Firestore), with time, randomness
-// and push sending injected. Every op: needs auth, validates strictly, reads users/{uid} (one player's ops run
-// one at a time) and writes seen at most every 6 hours,
+// and push sending injected. Every op: needs auth, validates strictly, reads users/{uid} and writes seen at most
+// every 6 hours. A read alone does not make two transactions conflict; a write does. So every op that can raise a
+// player's open-game count (invite, accept) always writes that player's user doc: two at once conflict, one runs
+// again and sees the new count, and the 10 open games limit holds. The ops
 // changes games inside one transaction, sends push intents after the commit, and returns the caller's view
 // of each changed game. The app never sees a uid.
 const game = require('./game');
@@ -55,7 +57,9 @@ function makeOps({ store, now, rand, push, log = console.error, syncMax = SYNC_M
       const r = (await fn(t, ts, u)) || {};
       const base = u || { tok: null, seen: ts, inv: { d: null, n: 0 } };
       const patch = { ...(userPatch ? userPatch() : {}), ...(r.user || {}) };
-      if (!u || Object.keys(patch).length || !(ts - u.seen < SEEN_EVERY_MS)) t.setUser(uid, { ...base, ...patch, seen: ts });
+      if (!u || r.writeUser || Object.keys(patch).length || !(ts - u.seen < SEEN_EVERY_MS)) {
+        t.setUser(uid, { ...base, ...patch, seen: ts });
+      }
       return r;
     });
     for (const p of res.push || []) {
@@ -145,7 +149,8 @@ function makeOps({ store, now, rand, push, log = console.error, syncMax = SYNC_M
         // Kept (not deleted) so a second tap says "used"; it holds no uid and TTL removes it at its expiry.
         t.setInvite(req.code, { used: true, exp: inv.exp, expireAt: inv.expireAt });
         const push = byWhite ? [{ to: by, t: 'move', g: inv.g }] : [];
-        return { push, out: { now: ts, games: [view(inv.g, ng, uid)] } };
+        // writeUser: the acceptor's open-game count went up (see the note at the top)
+        return { writeUser: true, push, out: { now: ts, games: [view(inv.g, ng, uid)] } };
       });
     },
 
@@ -196,9 +201,10 @@ function makeOps({ store, now, rand, push, log = console.error, syncMax = SYNC_M
     },
 
     // Returns { now, next, more, games }. The app sends next as since on its next sync. t is taken before the
-    // transaction, so t order is not commit order: next stays SYNC_LAG_MS behind now and answers overlap
-    // (the app keeps the higher v per game). While paging, next is the last returned t (games sharing the next
-    // game's t are left for the next page), never ahead of now - lag unless that would stop the paging.
+    // transaction, so t order is not commit order. While paging (more), next is the last returned t, so paging
+    // always moves forward (games sharing the next game's t are left for the next page). The last page sets
+    // next = now - SYNC_LAG_MS, so the following sync reads the last 2 minutes again and catches late commits
+    // (safe while a paging chain takes under about 90 s). Answers overlap; the app keeps the higher v per game.
     async sync(uid, req) {
       const ts = await run(uid, async (t, n) => ({ out: n }));
       const lagged = Math.max(0, ts - SYNC_LAG_MS);
@@ -210,8 +216,7 @@ function makeOps({ store, now, rand, push, log = console.error, syncMax = SYNC_M
         const cut = rows[syncMax].doc.t;
         const kept = page.filter((x) => x.doc.t !== cut);
         if (kept.length) page = kept;
-        const last = page[page.length - 1].doc.t;
-        next = lagged > req.since ? Math.min(last, lagged) : last;
+        next = page[page.length - 1].doc.t;
       }
       return { now: ts, next, more, games: page.map((x) => view(x.id, x.doc, uid)) };
     },

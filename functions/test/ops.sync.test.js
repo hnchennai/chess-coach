@@ -194,3 +194,27 @@ test('paging ends even when more than one page of games changed in the last 2 mi
   assert.deepEqual([...got].sort(), want.sort());
   assert.equal(since, s.clock.t - LAG, 'the final cursor goes back to now - 2 minutes');
 });
+
+test('round 2 fix 2: 32 games changed within 2 minutes, clock moving between calls: paging ends in 2 calls with every game', async () => {
+  const s = setup();
+  const want = [];
+  for (let i = 0; i < 32; i++) {
+    const id = ('burst' + String(i).padStart(2, '0')).padEnd(20, 'D');
+    seedGame(s, id, A, s.clock.t - 90000 + i * 1000);
+    want.push(id);
+  }
+  const got = new Set();
+  let since = 0;
+  let calls = 0;
+  for (;;) {
+    calls++;
+    assert.ok(calls <= 2, 'must finish in ceil(32 / 25) = 2 calls');
+    const r = await s.call(A, { op: 'sync', since });
+    r.games.forEach((g) => got.add(g.id));
+    since = r.next;
+    s.clock.t += 3000;
+    if (!r.more) break;
+  }
+  assert.equal(calls, 2);
+  assert.deepEqual([...got].sort(), want.sort());
+});

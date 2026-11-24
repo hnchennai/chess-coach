@@ -53,3 +53,15 @@ test('newGame refuses to overwrite an existing game (like Firestore create), and
   assert.deepEqual(s.get('games', 'g').uids, ['a', null]);
   assert.equal(s.get('users', 'u'), undefined);
 });
+
+test('a transaction whose read document was changed by another commit runs again', async () => {
+  const s = new MemStore();
+  await s.tx(async (t) => { t.setUser('u', { n: 0 }); });
+  s.commitBarrier(2);
+  const bump = () => s.tx(async (t) => {
+    const u = await t.user('u');
+    t.setUser('u', { n: u.n + 1 });
+  });
+  await Promise.all([bump(), bump()]);
+  assert.equal(s.get('users', 'u').n, 2, 'no lost update');
+});

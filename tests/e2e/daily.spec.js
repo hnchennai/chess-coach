@@ -121,8 +121,8 @@ const cases = [
     const s = await page.evaluate(() => { const s = window.__coach.st.ses; return { count: s.count, id: s.items[0].id, title: s.title }; });
     assert.deepEqual(s, { count: 1, id, title: W.kicker }, 'a 1-puzzle set with today’s puzzle');
     const meta = await page.locator('#sessionCard .meta span').first().innerText();
-    assert.equal(meta, W.kicker, 'fix 5: the header says Daily puzzle, not 1 of 1');
-    if (PH(vp)) assert.equal(await page.locator('#actPlace').innerText(), W.kicker, 'and so does the Close bar');
+    assert.equal(meta, W.title, 'fix 5: the header says Today’s puzzle under the Daily puzzle eyebrow, not 1 of 1 and not the eyebrow twice');
+    if (PH(vp)) assert.equal(await page.locator('#actPlace').innerText(), W.title, 'and so does the Close bar');
     await solvePuzzle(page);
     assert.equal(await page.locator('#sessionCard [data-act="retry"]').count(), 0);
     const e = await toEnd(page);

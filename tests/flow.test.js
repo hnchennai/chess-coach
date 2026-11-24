@@ -636,3 +636,33 @@ test('G-D40: the facts are read strictly; a missing width never opens Close, and
   assert.equal(F.backStep(undefined), 'leave');
   assert.equal(F.backStep({ tab: 'coach', wide: false, scr: 'act' }), 'close');
 });
+
+// Daily puzzle (D1, DP-D5, DP-D6): a 1-puzzle set on Train that waits and comes back like any set, and is known as the
+// daily puzzle when it does (so its result still counts as today's daily puzzle after a Resume or a restart).
+test('D1: the daily puzzle is a 1-puzzle set on Train; its entry keeps the daily mark', () => {
+  const f = facts();
+  const DAILY = { kind: 'puzzles', title: 'Daily puzzle', count: 1, rated: false, i: 0, right: 0, wrong: 0, counted: false, items: ['m1'], daily: '2026-11-25' };
+  const e = F.entryOf({ set: DAILY });
+  assert.equal(e.daily, '2026-11-25');
+  assert.equal(F.entryOk('train', e, f), true);
+  assert.equal('daily' in F.entryOf({ set: setE() }), false, 'other sets carry no daily mark (their saved shape is unchanged)');
+  const back = F.readResume(JSON.parse(JSON.stringify(F.writeResume({ train: e }))), f);
+  assert.equal(back.train.daily, '2026-11-25', 'through local storage');
+  const bad = (x, why) => assert.equal(F.entryOk('train', Object.assign({}, e, x), f), false, why);
+  bad({ daily: 'yes' }, 'a mark that is not a day'); bad({ daily: 7 });
+  bad({ count: 2, items: ['m1', 'm2'] }, 'one puzzle only');
+  bad({ kind: 'safety', items: [['m1', 1]] }, 'puzzles only');
+  bad({ rated: true }, 'not a rated set'); bad({ theme: 'fork' }); bad({ review: true });
+  assert.equal(F.entryOk('learn', Object.assign({}, e, { unit: 'values', part: 'practice', pass: 1 }), f), false, 'never a lesson part');
+});
+test('D1 fix round 1: the daily mark is the day it was dealt; the place reads "Today’s puzzle"', () => {
+  const f = facts();
+  const e = F.entryOf({ set: { kind: 'puzzles', title: 'Daily puzzle', count: 1, rated: false, i: 0, right: 0, wrong: 0, counted: false, items: ['m1'], daily: '2026-11-25' } });
+  assert.equal(e.daily, '2026-11-25');
+  assert.equal(F.entryOk('train', e, f), true);
+  assert.equal(F.readResume(JSON.parse(JSON.stringify(F.writeResume({ train: e }))), f).train.daily, '2026-11-25');
+  assert.equal(F.entryOk('train', Object.assign({}, e, { daily: '25 Nov' }), f), false, 'not a day');
+  assert.equal(F.setLine(e), 'Today’s puzzle', 'Close bar and Resume card');
+  assert.equal(F.setLine({ kind: 'puzzles', count: 1, i: 0, opts: { daily: '2026-11-25' } }), 'Today’s puzzle', 'live state');
+  assert.equal(F.setLine({ kind: 'puzzles', count: 10, i: 2 }), 'Puzzle 3 of 10', 'other sets as before');
+});

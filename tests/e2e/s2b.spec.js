@@ -21,7 +21,7 @@ const OFFER_B = 'Ready for Improver? You finished every Foundations lesson. Next
 const BEFORE = require('./s2b-home-before.json'); // Improver and Club Home text from the build before S2b (AC11, AC12)
 // F1 (F-D8, F-D10): the Continue card now comes first and the stage card lost its "Next step" button and sub line.
 // F2 (F-D3): the tip slot is new at the bottom. Everything else on Improver and Club Home is still the text from before S2b:
-// compare without those parts.
+// compare without those parts. D1 (DP-D9): the Daily puzzle card is new under the Continue card; it is left out too.
 const beforeText = (key) => BEFORE[key].replace(/\nNext step: [^\n]* ›\n\n[^\n]*/, '');
 async function homeText(page) {
   assert.ok(/^Continue/.test((await page.locator('#contCard .bh-kick').textContent()).trim()), 'the Continue card has its kicker');
@@ -30,8 +30,8 @@ async function homeText(page) {
   const slot = page.locator('#homeSlot');
   if (await slot.isVisible()) { assert.ok(/^(Rani|Gaja)’s tip: .+/.test(await slot.getAttribute('aria-label'))); assert.equal(await slot.locator('button, a').count(), 0); }
   return page.evaluate(() => {
-    const c = document.getElementById('contCard'), s = document.getElementById('homeSlot'), sh = s.hidden; c.hidden = true; s.hidden = true;
-    const t = document.getElementById('panel-coach').innerText; c.hidden = false; s.hidden = sh; return t;
+    const c = document.getElementById('contCard'), s = document.getElementById('homeSlot'), dp = document.getElementById('dailyCard'), sh = s.hidden, dh = dp.hidden; c.hidden = true; s.hidden = true; dp.hidden = true;
+    const t = document.getElementById('panel-coach').innerText; c.hidden = false; s.hidden = sh; dp.hidden = dh; return t;
   });
 }
 const HOME_CARDS = ['#stageHero', '#today', '#stageCard', '#roadCard', '#lookCard', '#methodsCard'];

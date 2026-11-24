@@ -572,15 +572,15 @@ const cases = [
   ['S1-2 / S1-3 / D30: a Beginner stage ignores the rating goal; next step "Beat Rani’s practice partner" (S2b: on the Continue card)', async (vp) => {
     let page = await seeded(vp, prof({ start: 'board', levelT: NOW - DAY, levelOfferT: NOW - DAY, rating: 600, course: done('board', 'values', 'mate', 'opening', 'blunder') }));
     assert.equal(await vis(page, '#stageHero'), false, 'S2b: no stage hero on Beginner Home');
-    assert.equal((await page.locator('#bhome .bh-kick').textContent()).trim(), 'Next step');
-    assert.equal((await page.locator('#bhome .bh-title').textContent()).trim(), 'Beat Rani’s practice partner', 'lessons done, rating 600: the next step is the partner, not rated puzzles');
+    assert.equal((await page.locator('#bhome .bh-kick').first().textContent()).trim(), 'Next step');
+    assert.equal((await page.locator('#bhome .bh-title').first().textContent()).trim(), 'Beat Rani’s practice partner', 'lessons done, rating 600: the next step is the partner, not rated puzzles');
     assert.equal((await page.locator('#bhome .bh-go').textContent()).trim(), 'Play now');
     assert.ok(!/rating|rated|engine/i.test(await page.locator('#bhome').innerText()));
     assert.ok(!/Ten puzzles a day/.test(await page.locator('.app').innerText()));
     await page.context().close();
     // Lessons done and a win against the partner: stage 1 is done even with a low rating (S2b: Keep practising, D39).
     page = await seeded(vp, prof({ start: 'board', levelT: NOW - DAY, levelOfferT: NOW - DAY, rating: 600, course: done('board', 'values', 'mate', 'opening', 'blunder'), games: [{ id: 'g1', d: NOW - DAY, r: 'W', user: 'w', level: 1, sans: ['f3', 'e5', 'g4', 'Qh4#'], ann: {} }] }));
-    assert.equal((await page.locator('#bhome .bh-kick').textContent()).trim(), 'Practice', 'stage 1 done without the rating goal');
+    assert.equal((await page.locator('#bhome .bh-kick').first().textContent()).trim(), 'Practice', 'stage 1 done without the rating goal');
     return page;
   }],
   // S2b: D25's Today heading no longer shows on Beginner Home, because the Today card is gone (spec, S2b layout).
@@ -785,7 +785,7 @@ const cases = [
     const win1 = { id: 'g1', d: NOW - DAY, r: 'W', user: 'b', level: 1, sans: ['f3', 'e5', 'g4', 'Qh4#'], ann: {} };
     let page = await seeded(vp, prof({ start: 'board', levelT: NOW - 30 * DAY, levelOfferT: NOW - 3600000, course: done(...lv12), games: [win1] }));
     assert.equal(await page.locator('#raniNote').isHidden(), true);
-    assert.equal((await page.locator('#bhome .bh-kick').textContent()).trim(), 'Practice', 'the level 1 win counts');
+    assert.equal((await page.locator('#bhome .bh-kick').first().textContent()).trim(), 'Practice', 'the level 1 win counts');
     await page.locator('#bhome .bh-go').click();
     await page.waitForFunction(() => window.__coach.st.mode === 'puzzle');
     assert.notEqual(await st(page, 'level'), 3, 'never starts an Improver (OPP 3) game');
@@ -794,7 +794,7 @@ const cases = [
     assert.equal(await st(page, 'level'), 1, 'Just play a game: Rani’s practice partner');
     await page.context().close();
     page = await seeded(vp, prof({ start: 'board', levelT: NOW - 30 * DAY, levelOfferT: NOW - 3600000, course: done(...lv12) }));
-    assert.equal((await page.locator('#bhome .bh-title').textContent()).trim(), 'Beat Rani’s practice partner');
+    assert.equal((await page.locator('#bhome .bh-title').first().textContent()).trim(), 'Beat Rani’s practice partner');
     await page.locator('#bhome .bh-go').click();
     assert.equal(await st(page, 'level'), 1, 'Play now: Rani’s practice partner (OPP 1)');
     return page;

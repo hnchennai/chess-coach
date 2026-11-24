@@ -26,6 +26,10 @@ The whole app works offline: Stockfish, the 3D board, puzzles and lessons are in
 - Stockfish and Stockfish.js (GPLv3): sources linked above. Nets by Chris Bao (sscg13).
 - 3D marble set: "A Beautiful Game", original assets by Moeen Sayed and Mujtaba Sayed for SideFX, from the MaterialX Project (ASWF), glTF by Ed Mackey, CC BY 4.0. Simplified and resized for this app.
 - three.js (MIT), chess.js (BSD-2-Clause), Capacitor (MIT)
+- Fonts, bundled in `www/fonts/` so the app needs no network for them, each under the SIL Open Font License 1.1 (`OFL.txt` in each font's folder). The files are the latin and symbols subsets served by Google Fonts (fonts.google.com):
+  - Bodoni Moda, by Owen Earl (indestructible type*), https://github.com/indestructible-type/Bodoni
+  - IBM Plex Sans and IBM Plex Mono, by IBM Corp., Reserved Font Name "Plex", https://github.com/IBM/plex
+  - Noto Sans Symbols 2, by the Noto Project Authors, https://github.com/notofonts/symbols
 - Android app only, for the ad banner and the consent form (versions pinned in `package.json` and `scripts/android-ads.sh`):
   - `@capacitor-community/admob` 8.4.2 (MIT), the Capacitor plugin for ads.
   - `webview-native-ui` engine 1.0.11 (MIT), pulled in by that plugin (`io.github.webview-native-ui:engine` on Android, `@webview-native-ui/engine` on npm).

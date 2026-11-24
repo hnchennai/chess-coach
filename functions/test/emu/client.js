@@ -51,4 +51,13 @@ async function err(token, data, status, message) {
   return r.error;
 }
 
-module.exports = { PROJECT, FRIEND_URL, signUp, call, ok, err };
+// Admin SDK clients in a test process must only ever talk to the emulators (a developer machine may have real
+// Google Cloud credentials). emulators:exec sets these; without them, stop before any Admin call.
+function requireEmulators() {
+  for (const v of ['FIRESTORE_EMULATOR_HOST', 'FIREBASE_AUTH_EMULATOR_HOST']) {
+    if (!process.env[v]) throw new Error(v + ' is not set: run inside firebase emulators:exec');
+  }
+  if (!PROJECT.startsWith('demo-')) throw new Error('emulator tests need a demo- project id');
+}
+
+module.exports = { PROJECT, FRIEND_URL, signUp, call, ok, err, requireEmulators };

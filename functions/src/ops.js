@@ -1,12 +1,13 @@
 'use strict';
-// The friend callable's ops for FC1: hello, invite, peek, accept, move, sync, cancel (tech spec section 6).
+// The friend callable's ops: hello, invite, peek, accept, move, sync, cancel (FC1), resign, draw, deleteMe (FC2)
+// (tech spec section 6).
 // Written against a small data layer (memstore.js for tests, fsstore.js for Firestore), with time, randomness
 // and push sending injected. Every op: needs auth, validates strictly, reads users/{uid} and writes seen at most
 // every 6 hours. A read alone does not make two transactions conflict; a write does. So every op that can raise a
 // player's open-game count (invite, accept) always writes that player's user doc: two at once conflict, one runs
-// again and sees the new count, and the 10 open games limit holds. The ops
-// changes games inside one transaction, sends push intents after the commit, and returns the caller's view
-// of each changed game. The app never sees a uid.
+// again and sees the new count, and the 10 open games limit holds. Each op changes games inside one transaction
+// (deleteMe: one per page of games), sends push intents after the commit, and returns the caller's view of each
+// changed game. The app never sees a uid.
 const game = require('./game');
 const ids = require('./ids');
 const { OpError } = require('./errors');
@@ -19,16 +20,20 @@ const KEEP_OVER_MS = 30 * game.DAY_MS; // FC-D16: finished games are deleted 30 
 const SYNC_MAX = 25; // games per sync answer
 const SYNC_LAG_MS = 120000; // sync cursor lag: longer than the 30 s function timeout, so every write with t <= now - lag has committed
 const SEEN_EVERY_MS = 6 * 60 * 60 * 1000; // users/{uid}.seen is written at most this often (unless the op writes the user anyway)
+const DELETE_PAGE = 50; // deleteMe: games per transaction
+const DELETE_MAX_PAGES = 100; // deleteMe: a bound on the loop (20 invites a day for 30 days is about 12 pages)
+const GONE = 'x'; // stands for a player who deleted their data
 const START_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
 const ACCEPTOR_COL = { w: 'b', b: 'w', r: 'r' };
 
-// The caller's view of a game: no uids, no push tokens, no internal fields.
+// The caller's view of a game: no uids, no push tokens, no internal fields. When the friend deleted their data,
+// their uid is 'x' and opp comes from oppx, the key this player had for them, so the record per friend holds.
 function view(id, g, uid) {
   const oppUid = g.uids.find((u) => u !== uid) || null;
   return {
     id,
     me: g.w === uid ? 'w' : g.b === uid ? 'b' : g.col, // 'r' only while a random-colour invite waits
-    opp: oppUid ? ids.oppKey(oppUid, uid) : null,
+    opp: oppUid === GONE ? g.oppx || null : oppUid ? ids.oppKey(oppUid, uid) : null,
     st: g.st,
     moves: g.moves.slice(),
     dl: g.dl,
@@ -45,7 +50,43 @@ function colourOf(g, uid) {
   return g.w === uid ? 'w' : g.b === uid ? 'b' : null;
 }
 
-function makeOps({ store, now, rand, push, log = console.error, syncMax = SYNC_MAX }) {
+// A game ends: no deadline, reminder, offer or code any more; kept 30 days (TTL on expireAt)
+function over(g, res, ts) {
+  return { ...g, st: 'over', res, dl: null, rem: null, draw: null, code: null, v: g.v + 1, t: ts, expireAt: ts + KEEP_OVER_MS };
+}
+
+// deleteMe for one game: an invite ends expired, an active game ends abandoned (the friend wins, push "over" to the
+// friend), a finished game keeps its result. Then uid becomes 'x' everywhere in it, and oppx keeps the friend's
+// key for this player (see view). Returns { ng, to } with to the friend to push, or null.
+function leave(g, uid, ts) {
+  const me = colourOf(g, uid);
+  const friend = g.uids.find((u) => u && u !== uid && u !== GONE) || null;
+  let ng;
+  let to = null;
+  if (g.st === 'invited') {
+    ng = over(g, { r: null, why: 'expired' }, ts);
+  } else if (g.st === 'active' && me) {
+    ng = over(g, { r: game.other(me), why: 'abandoned' }, ts);
+    to = friend;
+  } else {
+    ng = { ...g, v: g.v + 1, t: ts };
+  }
+  const x = (u) => (u === uid ? GONE : u);
+  ng = { ...ng, uids: ng.uids.map(x), w: x(ng.w), b: x(ng.b), by: x(ng.by), oppx: friend ? ids.oppKey(uid, friend) : null };
+  return { ng, to };
+}
+
+function makeOps({ store, now, rand, push, log = console.error, deleteAuthUser, syncMax = SYNC_MAX, deletePage = DELETE_PAGE }) {
+  async function sendAll(list) {
+    for (const p of list || []) {
+      try {
+        await push(p);
+      } catch (e) {
+        log('push failed', p.t, p.g, e && e.code); // never the message: it could name a uid or token
+      }
+    }
+  }
+
   // Run fn inside a transaction that reads users/{uid} first and writes it last: when the op changes it
   // (new user, token, invite count) or seen is 6 hours old.
   // fn returns { out } on success or { fail: [status, code], games } for a failure; a failure still commits
@@ -62,13 +103,7 @@ function makeOps({ store, now, rand, push, log = console.error, syncMax = SYNC_M
       }
       return r;
     });
-    for (const p of res.push || []) {
-      try {
-        await push(p);
-      } catch (e) {
-        log('push failed', p.t, p.g, e && e.message);
-      }
-    }
+    await sendAll(res.push);
     if (res.fail) {
       const [status, code] = res.fail;
       throw new OpError(status, code, res.games ? { games: res.games } : undefined);
@@ -89,6 +124,23 @@ function makeOps({ store, now, rand, push, log = console.error, syncMax = SYNC_M
     if (!g || g.st !== 'invited') return { bad: fail('used') };
     if (inv.by === uid) return { bad: fail('own') };
     return { inv, g };
+  }
+
+  // resign and draw: my active game, in time. Returns { g, me, opp } or { bad }. A game whose side to move ran
+  // out of time ends on time here (the same as a late move) and the op fails "late".
+  async function myActiveGame(t, id, uid, ts) {
+    const g = await t.game(id);
+    if (!g || !g.uids.includes(uid)) return { bad: notFound() };
+    const me = colourOf(g, uid);
+    if (g.st === 'invited' || !me) return { bad: fail('turn', [view(id, g, uid)]) };
+    if (g.st === 'over') return { bad: fail('over', [view(id, g, uid)]) };
+    const opp = me === 'w' ? g.b : g.w;
+    if (game.isLate(g.dl, ts)) {
+      const ng = over(g, { r: game.other(game.turnOf(g.moves)), why: 'time' }, ts);
+      t.setGame(id, ng);
+      return { bad: { ...fail('late', [view(id, ng, uid)]), push: [{ to: opp, t: 'over', g: id }] } };
+    }
+    return { g, me, opp };
   }
 
   const ops = {
@@ -200,6 +252,81 @@ function makeOps({ store, now, rand, push, log = console.error, syncMax = SYNC_M
       });
     },
 
+    async resign(uid, req) {
+      return run(uid, async (t, ts) => {
+        const { bad, g, me, opp } = await myActiveGame(t, req.g, uid, ts);
+        if (bad) return bad;
+        const ng = over(g, { r: game.other(me), why: 'resign' }, ts);
+        t.setGame(req.g, ng);
+        return { push: [{ to: opp, t: 'over', g: req.g }], out: { now: ts, games: [view(req.g, ng, uid)] } };
+      });
+    },
+
+    // Offer: no open offer, and at most one offer per own move: drawPly[me] is the ply count at my last offer,
+    // and a new offer needs a move of mine played since. Accept or decline: an open offer from the friend.
+    // A move clears an offer made to the mover (see move). The clock does not change.
+    async draw(uid, req) {
+      return run(uid, async (t, ts) => {
+        const { bad, g, me, opp } = await myActiveGame(t, req.g, uid, ts);
+        if (bad) return bad;
+        const id = req.g;
+        const no = () => fail('draw', [view(id, g, uid)]);
+        let ng;
+        let pushes = [];
+        if (req.a === 'offer') {
+          const last = g.drawPly[me];
+          if (g.draw !== null || (last >= 0 && game.ownMoves(me, g.moves.length) <= game.ownMoves(me, last))) return no();
+          ng = { ...g, draw: me, drawPly: { ...g.drawPly, [me]: g.moves.length }, v: g.v + 1, t: ts };
+          pushes = [{ to: opp, t: 'draw', g: id }];
+        } else if (g.draw !== game.other(me)) {
+          return no();
+        } else if (req.a === 'accept') {
+          ng = over(g, { r: 'd', why: 'agreed' }, ts);
+          pushes = [{ to: opp, t: 'over', g: id }];
+        } else {
+          ng = { ...g, draw: null, v: g.v + 1, t: ts }; // no push for a decline (criterion 4)
+        }
+        t.setGame(id, ng);
+        return { push: pushes, out: { now: ts, games: [view(id, ng, uid)] } };
+      });
+    },
+
+    // Delete my friend game data (FC-D16, FC-D17, scenario 10). Games in pages, each page in its own transaction
+    // that re-reads every game (a move or an accept may land in between); pushes after each commit. Then my
+    // invites, my user doc (with the push token), and last the Auth user, so a failure before it leaves the
+    // player able to try again. Safe to run again.
+    async deleteMe(uid) {
+      const first = now();
+      for (let page = 0; ; page++) {
+        const list = await store.gamesOf(uid, deletePage);
+        if (!list.length) break;
+        if (page >= DELETE_MAX_PAGES) throw new OpError('internal', 'internal');
+        const pushes = await store.tx(async (t) => {
+          const ts = now();
+          const docs = [];
+          for (const id of list) docs.push([id, await t.game(id)]);
+          const out = [];
+          for (const [id, g] of docs) {
+            if (!g || !g.uids.includes(uid)) continue;
+            const { ng, to } = leave(g, uid, ts);
+            t.setGame(id, ng);
+            if (to) out.push({ to, t: 'over', g: id });
+          }
+          return out;
+        });
+        await sendAll(pushes);
+      }
+      for (let page = 0; ; page++) {
+        const codes = await store.invitesBy(uid, deletePage);
+        if (!codes.length) break;
+        if (page >= DELETE_MAX_PAGES) throw new OpError('internal', 'internal');
+        await store.tx(async (t) => { for (const c of codes) t.delInvite(c); });
+      }
+      await store.tx(async (t) => { t.delUser(uid); });
+      await deleteAuthUser(uid);
+      return { now: first };
+    },
+
     // Returns { now, next, more, games }. The app sends next as since on its next sync. t is taken before the
     // transaction, so t order is not commit order. While paging (more), next is the last returned t, so paging
     // always moves forward (games sharing the next game's t are left for the next page). The last page sets
@@ -222,10 +349,6 @@ function makeOps({ store, now, rand, push, log = console.error, syncMax = SYNC_M
     },
   };
 
-  function over(g, res, ts) {
-    return { ...g, st: 'over', res, dl: null, rem: null, draw: null, code: null, v: g.v + 1, t: ts, expireAt: ts + KEEP_OVER_MS };
-  }
-
   async function handle(auth, data) {
     if (!auth || typeof auth.uid !== 'string' || !auth.uid) throw new OpError('unauthenticated', 'auth');
     const req = validate(data);
@@ -235,4 +358,4 @@ function makeOps({ store, now, rand, push, log = console.error, syncMax = SYNC_M
   return { handle };
 }
 
-module.exports = { makeOps, view, MAX_OPEN, MAX_INVITES_A_DAY, INVITE_MS, KEEP_OVER_MS, SYNC_MAX, SYNC_LAG_MS, SEEN_EVERY_MS };
+module.exports = { makeOps, view, over, MAX_OPEN, MAX_INVITES_A_DAY, INVITE_MS, KEEP_OVER_MS, SYNC_MAX, SYNC_LAG_MS, SEEN_EVERY_MS };

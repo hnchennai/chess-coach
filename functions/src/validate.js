@@ -28,6 +28,9 @@ const SPEC = {
   },
   sync: { since: [int(0, Number.MAX_SAFE_INTEGER), true] },
   cancel: { g: [str(GAME_RE), true] },
+  resign: { g: [str(GAME_RE), true] },
+  draw: { g: [str(GAME_RE), true], a: [oneOf('offer', 'accept', 'decline'), true] },
+  deleteMe: {},
 };
 
 function bad(why) {

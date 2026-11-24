@@ -66,6 +66,11 @@ function isResend(sans, ply, mv) {
   return !!m && m.san === sans[ply];
 }
 
+// How many moves side c has made in a game of n plies (White plays plies 0, 2, 4 ...)
+function ownMoves(c, n) {
+  return c === 'w' ? Math.ceil(n / 2) : Math.floor(n / 2);
+}
+
 function deadlines(now) {
   const dl = now + MOVE_MS;
   return { dl, rem: dl - REMIND_MS };
@@ -77,5 +82,5 @@ function isLate(dl, now) {
 
 module.exports = {
   DAY_MS, MOVE_MS, REMIND_MS, MAX_PLY,
-  other, turnOf, replay, endOf, play, isResend, deadlines, isLate,
+  other, turnOf, ownMoves, replay, endOf, play, isResend, deadlines, isLate,
 };

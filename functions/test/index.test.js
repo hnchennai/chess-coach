@@ -6,7 +6,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 
 process.env.GCLOUD_PROJECT = process.env.GCLOUD_PROJECT || 'demo-chess-coach';
-const { friend } = require('../index');
+const { friend, tick, daily } = require('../index');
 const { HttpsError } = require('firebase-functions/v2/https');
 
 test('one callable "friend" in asia-south1 with the cost settings', () => {
@@ -39,4 +39,34 @@ test('bad input gives invalid-argument, with the reason as the message', async (
     assert.equal(e.message, 'field name');
     return true;
   });
+});
+
+test('tick: every 15 minutes in India time, asia-south1, the cost settings, one instance, no retries', () => {
+  const ep = tick.__endpoint;
+  assert.deepEqual(ep.scheduleTrigger.schedule, '*/15 * * * *');
+  assert.equal(ep.scheduleTrigger.timeZone, 'Asia/Kolkata');
+  assert.equal(ep.scheduleTrigger.retryConfig.retryCount, 0);
+  assert.deepEqual(ep.region, ['asia-south1']);
+  assert.equal(ep.availableMemoryMb, 256);
+  assert.equal(ep.cpu, 'gcf_gen1');
+  assert.equal(ep.concurrency, 1);
+  assert.equal(ep.maxInstances, 1);
+  assert.equal(ep.timeoutSeconds, 120);
+});
+
+test('daily: 03:30 India time, asia-south1, the cost settings, one instance, no retries', () => {
+  const ep = daily.__endpoint;
+  assert.deepEqual(ep.scheduleTrigger.schedule, '30 3 * * *');
+  assert.equal(ep.scheduleTrigger.timeZone, 'Asia/Kolkata');
+  assert.equal(ep.scheduleTrigger.retryConfig.retryCount, 0);
+  assert.deepEqual(ep.region, ['asia-south1']);
+  assert.equal(ep.availableMemoryMb, 256);
+  assert.equal(ep.cpu, 'gcf_gen1');
+  assert.equal(ep.concurrency, 1);
+  assert.equal(ep.maxInstances, 1);
+  assert.equal(ep.timeoutSeconds, 120);
+});
+
+test('only these three functions are exported', () => {
+  assert.deepEqual(Object.keys(require('../index')).sort(), ['daily', 'friend', 'tick']);
 });

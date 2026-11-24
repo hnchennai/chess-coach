@@ -35,8 +35,9 @@ function setup(opts = {}) {
     log: (...a) => logs.push(a),
     deleteAuthUser: opts.deleteAuthUser || (async (uid) => { authDeleted.push(uid); }),
   };
+  const authLastActive = opts.authLastActive || (async () => null); // no recent sign-in or token refresh
   const ops = makeOps({ ...deps, syncMax: opts.syncMax, deletePage: opts.deletePage });
-  const jobs = makeJobs({ ...deps, page: opts.page, max: opts.max });
+  const jobs = makeJobs({ ...deps, authLastActive, page: opts.page, max: opts.max });
   const call = (uid, data) => ops.handle(uid ? { uid } : null, data);
   return { ops, jobs, store, clock, pushes, logs, authDeleted, call };
 }

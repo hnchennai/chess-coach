@@ -23,9 +23,9 @@ const SEEN_EVERY_MS = 6 * 60 * 60 * 1000; // users/{uid}.seen is written at most
 const DELETE_PAGE = 50; // deleteMe: games per transaction
 const DELETE_MAX_PAGES = 100; // deleteMe: a bound on the loop (20 invites a day for 30 days is about 12 pages)
 const GONE = 'x'; // stands for a player who deleted their data
-// deleteMe leaves users/{uid} = { gone: true, expireAt } (no token, no seen): the ID token stays valid for up to an
-// hour after the Auth user is deleted, and every op refuses a tombstoned uid instead of bringing data back.
-// TTL removes it after this time.
+// deleteMe leaves a tombstone users/{uid} (no token, no seen): { gone: true, at } until the clean-up is done, then
+// { gone: true, expireAt } with expireAt this far ahead, for TTL. The ID token stays valid for up to an hour after
+// the Auth user is deleted, and every op refuses a tombstoned uid instead of bringing data back.
 const TOMBSTONE_MS = 2 * 60 * 60 * 1000;
 const START_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
 const ACCEPTOR_COL = { w: 'b', b: 'w', r: 'r' };
@@ -82,16 +82,62 @@ function leave(g, uid, ts) {
   return { ng, to };
 }
 
-function makeOps({ store, now, rand, push, log = console.error, deleteAuthUser, syncMax = SYNC_MAX, deletePage = DELETE_PAGE }) {
-  async function sendAll(list) {
+// Sends push intents after a commit; a failure is logged by code only (a message could name a uid or token)
+function makeSendAll(push, log) {
+  return async function sendAll(list) {
     for (const p of list || []) {
       try {
         await push(p);
       } catch (e) {
-        log('push failed', p.t, p.g, e && e.code); // never the message: it could name a uid or token
+        log('push failed', p.t, p.g, e && e.code);
       }
     }
-  }
+  };
+}
+
+// The clean-up after a tombstone is written, shared by deleteMe and daily (which finishes a deleteMe that failed
+// partway): games in pages, each page in its own transaction that re-reads every game, pushes after each commit;
+// then the invites; then the Auth user (already gone counts as done); last the tombstone gets expireAt, so TTL
+// removes it 2 hours later. Any failure leaves the tombstone without expireAt. Safe to run again.
+function makeFinisher({ store, now, push, log = console.error, deleteAuthUser, deletePage = DELETE_PAGE }) {
+  const sendAll = makeSendAll(push, log);
+  return async function finishDelete(uid) {
+    for (let page = 0; ; page++) {
+      const list = await store.gamesOf(uid, deletePage);
+      if (!list.length) break;
+      if (page >= DELETE_MAX_PAGES) throw new OpError('internal', 'internal');
+      const pushes = await store.tx(async (t) => {
+        const ts = now();
+        const docs = [];
+        for (const id of list) docs.push([id, await t.game(id)]);
+        const out = [];
+        for (const [id, g] of docs) {
+          if (!g || !g.uids.includes(uid)) continue;
+          const { ng, to } = leave(g, uid, ts);
+          t.setGame(id, ng);
+          if (to) out.push({ to, t: 'over', g: id });
+        }
+        return out;
+      });
+      await sendAll(pushes);
+    }
+    for (let page = 0; ; page++) {
+      const codes = await store.invitesBy(uid, deletePage);
+      if (!codes.length) break;
+      if (page >= DELETE_MAX_PAGES) throw new OpError('internal', 'internal');
+      await store.tx(async (t) => { for (const c of codes) t.delInvite(c); });
+    }
+    await deleteAuthUser(uid);
+    await store.tx(async (t) => {
+      const u = await t.user(uid);
+      if (u && u.gone) t.setUser(uid, { gone: true, expireAt: now() + TOMBSTONE_MS });
+    });
+  };
+}
+
+function makeOps({ store, now, rand, push, log = console.error, deleteAuthUser, syncMax = SYNC_MAX, deletePage = DELETE_PAGE }) {
+  const sendAll = makeSendAll(push, log);
+  const finishDelete = makeFinisher({ store, now, push, log, deleteAuthUser, deletePage });
 
   // Run fn inside a transaction that reads users/{uid} first and writes it last: when the op changes it
   // (new user, token, invite count) or seen is 6 hours old.
@@ -298,43 +344,18 @@ function makeOps({ store, now, rand, push, log = console.error, deleteAuthUser, 
       });
     },
 
-    // Delete my friend game data (FC-D16, FC-D17, scenario 10). First the user doc becomes a tombstone (that
-    // write conflicts with any op in flight, which all read the user doc, so they either commit before it and
-    // their games are found below, or run again and fail not-found). Then games in pages, each page in its own
-    // transaction that re-reads every game; pushes after each commit. Then my invites, and last the Auth user.
-    // Safe to run again: on a tombstone it finishes the clean-up and answers ok.
+    // Delete my friend game data (FC-D16, FC-D17, FC-D22, scenario 10). First the user doc becomes a tombstone
+    // { gone, at } (that write conflicts with any op in flight, which all read the user doc, so they either commit
+    // before it and their games are found, or run again and fail not-found). Then finishDelete. Safe to run again:
+    // on a tombstone it finishes the clean-up and answers ok. A run that fails partway is finished by daily.
     async deleteMe(uid) {
       const first = now();
       await store.tx(async (t) => {
-        await t.user(uid);
-        t.setUser(uid, { gone: true, expireAt: first + TOMBSTONE_MS });
+        const u = await t.user(uid);
+        // no expireAt yet: TTL must not remove the tombstone before the clean-up is done (daily finishes it)
+        t.setUser(uid, { gone: true, at: u && u.gone && typeof u.at === 'number' ? u.at : first });
       });
-      for (let page = 0; ; page++) {
-        const list = await store.gamesOf(uid, deletePage);
-        if (!list.length) break;
-        if (page >= DELETE_MAX_PAGES) throw new OpError('internal', 'internal');
-        const pushes = await store.tx(async (t) => {
-          const ts = now();
-          const docs = [];
-          for (const id of list) docs.push([id, await t.game(id)]);
-          const out = [];
-          for (const [id, g] of docs) {
-            if (!g || !g.uids.includes(uid)) continue;
-            const { ng, to } = leave(g, uid, ts);
-            t.setGame(id, ng);
-            if (to) out.push({ to, t: 'over', g: id });
-          }
-          return out;
-        });
-        await sendAll(pushes);
-      }
-      for (let page = 0; ; page++) {
-        const codes = await store.invitesBy(uid, deletePage);
-        if (!codes.length) break;
-        if (page >= DELETE_MAX_PAGES) throw new OpError('internal', 'internal');
-        await store.tx(async (t) => { for (const c of codes) t.delInvite(c); });
-      }
-      await deleteAuthUser(uid);
+      await finishDelete(uid);
       return { now: first };
     },
 
@@ -369,4 +390,4 @@ function makeOps({ store, now, rand, push, log = console.error, deleteAuthUser, 
   return { handle };
 }
 
-module.exports = { makeOps, view, over, TOMBSTONE_MS, MAX_OPEN, MAX_INVITES_A_DAY, INVITE_MS, KEEP_OVER_MS, SYNC_MAX, SYNC_LAG_MS, SEEN_EVERY_MS };
+module.exports = { makeOps, makeFinisher, view, over, TOMBSTONE_MS, MAX_OPEN, MAX_INVITES_A_DAY, INVITE_MS, KEEP_OVER_MS, SYNC_MAX, SYNC_LAG_MS, SEEN_EVERY_MS };

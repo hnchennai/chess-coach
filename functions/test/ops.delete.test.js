@@ -239,3 +239,28 @@ test('fix 5: deleteMe on a game past its deadline: the side to move loses on tim
     assert.deepEqual(s.pushes, [{ to: friend, t: 'over', g }]);
   }
 });
+
+// Fix round 2, fix 1: a deleteMe that fails partway is finished by daily
+test('round 2 fix 1: a deleteMe that throws after the tombstone leaves { gone, at } with no expireAt; a finished one has expireAt only', async () => {
+  const w = await world();
+  const { s } = w;
+  const orig = s.store.tx.bind(s.store);
+  let n = 0;
+  s.store.tx = async (fn) => {
+    if (++n === 2) throw new Error('unavailable');
+    return orig(fn);
+  };
+  await assert.rejects(s.call(A, { op: 'deleteMe' }));
+  s.store.tx = orig;
+  assert.deepEqual(s.store.get('users', A), { gone: true, at: s.clock.t }, 'no TTL until the clean-up is done');
+  s.clock.t += 1000;
+  await s.call(A, { op: 'deleteMe' });
+  assert.deepEqual(s.store.get('users', A), { gone: true, expireAt: s.clock.t + 2 * 3600 * 1000 });
+});
+
+test('round 2 fix 1: an Auth failure in deleteMe also leaves the tombstone unfinished', async () => {
+  const s = setup({ deleteAuthUser: async () => { const e = new Error('down'); e.code = 'auth/internal-error'; throw e; } });
+  await s.call(A, { op: 'hello' });
+  await assert.rejects(s.call(A, { op: 'deleteMe' }));
+  assert.deepEqual(Object.keys(s.store.get('users', A)).sort(), ['at', 'gone']);
+});

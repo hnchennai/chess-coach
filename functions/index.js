@@ -11,7 +11,7 @@ const { getFirestore } = require('firebase-admin/firestore');
 const { getMessaging } = require('firebase-admin/messaging');
 const { getAuth } = require('firebase-admin/auth');
 const { makeOps } = require('./src/ops');
-const { makeJobs, makeAuthDeleter } = require('./src/jobs');
+const { makeJobs, makeAuthDeleter, makeAuthLastActive } = require('./src/jobs');
 const { makePushSender } = require('./src/push');
 const { FsStore } = require('./src/fsstore');
 const { makeHandler } = require('./src/callable');
@@ -52,7 +52,7 @@ function getOps() {
 
 let jobs = null;
 function getJobs() {
-  if (!jobs) jobs = makeJobs(getDeps());
+  if (!jobs) jobs = makeJobs({ ...getDeps(), authLastActive: makeAuthLastActive(getAuth()) });
   return jobs;
 }
 

@@ -78,6 +78,14 @@ class FsStore {
     return s.docs.map((d) => ({ id: d.id, doc: fromSnap(d) }));
   }
 
+  // daily: unfinished deleteMe tombstones ({ gone, at }; a finished one has no at), single-field index on at
+  async tombstones(before, after, limit) {
+    let q = this.users.where('at', '<', before).orderBy('at').orderBy(FieldPath.documentId());
+    if (after) q = q.startAfter(after.v, after.id);
+    const s = await q.limit(limit).get();
+    return s.docs.map((d) => ({ id: d.id, doc: fromSnap(d) }));
+  }
+
   // daily: users with seen < before, ordered by (seen, document id), after a cursor (single-field index on seen)
   async idleUsers(before, after, limit) {
     let q = this.users.where('seen', '<', before).orderBy('seen').orderBy(FieldPath.documentId());

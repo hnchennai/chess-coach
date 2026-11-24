@@ -12,7 +12,7 @@ const { getFirestore, Timestamp } = require('firebase-admin/firestore');
 const { getAuth } = require('firebase-admin/auth');
 const { signUp, ok, PROJECT, requireEmulators } = require('./client');
 const { FsStore } = require('../../src/fsstore');
-const { makeJobs, makeAuthDeleter } = require('../../src/jobs');
+const { makeJobs, makeAuthDeleter, makeAuthLastActive } = require('../../src/jobs');
 const { makePushSender } = require('../../src/push');
 
 const DAY = 24 * 60 * 60 * 1000;
@@ -34,6 +34,7 @@ const jobs = makeJobs({
   push: makePushSender({ store, messaging: { send: async (m) => { sent.push(m); return 'fake'; } }, log: (...a) => logs.push(a) }),
   log: (...a) => logs.push(a),
   deleteAuthUser: makeAuthDeleter(getAuth()),
+  authLastActive: makeAuthLastActive(getAuth()),
 });
 
 // Messages sent for one game: [token, type]
@@ -130,6 +131,26 @@ test('daily, 61 days on: an idle ID with no open game is deleted with its Auth u
   await assert.rejects(getAuth().getUser(idle.uid), (e) => e.code === 'auth/user-not-found');
   assert.equal((await db.collection('users').doc(busy.uid).get()).exists, true);
   assert.ok((await getAuth().getUser(busy.uid)).uid);
+});
+
+test('daily finishes a deleteMe that stopped after the tombstone (round 2 fix 1)', async () => {
+  const p = await signUp();
+  const q = await signUp();
+  const inv = await ok(p.token, { op: 'invite', col: 'w' });
+  await ok(q.token, { op: 'accept', code: inv.code });
+  const waiting = await ok(p.token, { op: 'invite', col: 'r' });
+  // what a deleteMe that failed right after its first step leaves behind
+  await db.collection('users').doc(p.uid).set({ gone: true, at: Date.now() });
+  clock.t = Date.now() + 2 * 60 * 60 * 1000;
+  const r = await jobs.daily();
+  assert.ok(r.finished >= 1);
+  assert.equal((await db.collection('games').where('uids', 'array-contains', p.uid).get()).size, 0);
+  assert.deepEqual((await db.collection('games').doc(inv.games[0].id).get()).get('res'), { r: 'b', why: 'abandoned' });
+  assert.equal((await db.collection('invites').doc(waiting.code).get()).exists, false);
+  await assert.rejects(getAuth().getUser(p.uid), (e) => e.code === 'auth/user-not-found');
+  const tomb = (await db.collection('users').doc(p.uid).get()).data();
+  assert.deepEqual(Object.keys(tomb).sort(), ['expireAt', 'gone']);
+  assert.ok(tomb.expireAt instanceof Timestamp);
 });
 
 test('job logs carry no uid or token', () => {

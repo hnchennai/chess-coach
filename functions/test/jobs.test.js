@@ -340,3 +340,127 @@ test('fix 3: daily keeps to the same budget', async () => {
   assert.equal(r.deleted, 2);
   assert.equal(r.more, true);
 });
+
+// Fix round 2, fix 1: daily finishes a deleteMe that stopped partway (tombstone without expireAt, older than 1 hour)
+async function brokenDelete(s, failAt = 2) {
+  const orig = s.store.tx.bind(s.store);
+  let n = 0;
+  s.store.tx = async (fn) => {
+    if (++n === failAt) throw new Error('unavailable');
+    return orig(fn);
+  };
+  await assert.rejects(s.call(A, { op: 'deleteMe' }));
+  s.store.tx = orig;
+}
+
+test('round 2 fix 1: daily finishes an unfinished deleteMe after 1 hour: games, invites, Auth user, then expireAt', async () => {
+  const s = setup();
+  const g = await startGame(s, A, B);
+  const inv = await s.call(A, { op: 'invite', col: 'w' });
+  await brokenDelete(s);
+  assert.equal(s.store.get('games', g).st, 'active', 'the games step did not run');
+  const at = s.store.get('users', A).at;
+  s.clock.t = at + 60 * 60 * 1000; // exactly 1 hour: still left alone
+  let r = await s.jobs.daily();
+  assert.equal(r.finished, 0);
+  assert.deepEqual(s.authDeleted, []);
+  s.clock.t = at + 60 * 60 * 1000 + 1;
+  s.pushes.length = 0;
+  r = await s.jobs.daily();
+  assert.equal(r.finished, 1);
+  assert.ok(!strings(s.store.dump()).includes(A), 'the uid is gone from every game');
+  assert.deepEqual(s.store.get('games', g).res, { r: 'b', why: 'abandoned' });
+  assert.deepEqual(s.pushes, [{ to: B, t: 'over', g }]);
+  assert.equal(s.store.get('invites', inv.code), undefined);
+  assert.deepEqual(s.authDeleted, [A]);
+  assert.deepEqual(s.store.get('users', A), { gone: true, expireAt: s.clock.t + 2 * 3600 * 1000 });
+  // finished: left for TTL, never touched again
+  const snap = JSON.stringify(s.store.dump());
+  s.clock.t += DAY;
+  r = await s.jobs.daily();
+  assert.equal(r.finished, 0);
+  assert.equal(JSON.stringify(s.store.dump().users[A]), JSON.stringify(JSON.parse(snap).users[A]));
+  assert.deepEqual(s.authDeleted, [A]);
+});
+
+test('round 2 fix 1: a finished tombstone (from a full deleteMe) is left for TTL', async () => {
+  const s = setup();
+  await s.call(A, { op: 'hello' });
+  await s.call(A, { op: 'deleteMe' });
+  const before = s.store.get('users', A);
+  s.clock.t += 2 * DAY;
+  const r = await s.jobs.daily();
+  assert.equal(r.finished, 0);
+  assert.deepEqual(s.store.get('users', A), before);
+  assert.deepEqual(s.authDeleted, [A]);
+});
+
+test('round 2 fix 1: if the finish fails at the Auth step, the tombstone stays unfinished for the next run', async () => {
+  let down = true;
+  const s = setup({ deleteAuthUser: async (uid) => { if (down) { const e = new Error('down'); e.code = 'auth/internal-error'; throw e; } s.authDeleted.push(uid); } });
+  await s.call(A, { op: 'hello' });
+  await assert.rejects(s.call(A, { op: 'deleteMe' }));
+  s.clock.t += 2 * 60 * 60 * 1000;
+  assert.equal((await s.jobs.daily()).finished, 0);
+  assert.equal(s.store.get('users', A).expireAt, undefined);
+  down = false;
+  assert.equal((await s.jobs.daily()).finished, 1);
+  assert.deepEqual(s.authDeleted, [A]);
+  assert.ok(s.store.get('users', A).expireAt);
+});
+
+test('round 2 fix 1: finishing deletes keeps to the 90 s budget', async () => {
+  const s = setup({ deleteAuthUser: async () => { s.clock.t += 50 * 1000; } });
+  for (let i = 0; i < 4; i++) {
+    const u = 'uid-gone-' + String(i).padStart(13, '0');
+    await s.call(u, { op: 'hello' });
+    s.store.put('users', u, { gone: true, at: s.clock.t });
+  }
+  s.clock.t += 2 * 60 * 60 * 1000;
+  const r = await s.jobs.daily();
+  assert.equal(r.finished, 2);
+  assert.equal(r.more, true);
+});
+
+// Fix round 2, fix 2: a player whose Auth user was active in the last day is not deleted by daily
+test('round 2 fix 2: daily skips an idle doc whose Auth user signed in or refreshed within the last day', async () => {
+  const active = {};
+  const s = setup({ authLastActive: async (uid) => (uid in active ? active[uid] : null) });
+  await s.call(A, { op: 'hello' });
+  await s.call(B, { op: 'hello' });
+  await s.call(C, { op: 'hello' });
+  s.clock.t += 61 * DAY;
+  active[A] = s.clock.t - 1000; // refreshed a second ago
+  active[B] = s.clock.t - DAY - 1; // a day and a bit ago
+  const r = await s.jobs.daily();
+  assert.equal(r.deleted, 2);
+  assert.ok(s.store.get('users', A), 'kept');
+  assert.equal(s.store.get('users', B), undefined);
+  assert.equal(s.store.get('users', C), undefined);
+  assert.deepEqual(s.authDeleted.sort(), [B, C].sort());
+});
+
+test('round 2 fix 2: the Auth activity lookup reads lastRefreshTime or lastSignInTime; a missing user is null', async () => {
+  const { makeAuthLastActive } = require('../src/jobs');
+  const t1 = Date.UTC(2026, 10, 20, 10, 0, 0);
+  const t2 = Date.UTC(2026, 10, 22, 10, 0, 0);
+  const users = {
+    u1: { metadata: { lastSignInTime: new Date(t1).toUTCString(), lastRefreshTime: new Date(t2).toUTCString() } },
+    u2: { metadata: { lastSignInTime: new Date(t1).toUTCString(), lastRefreshTime: null } },
+    u3: { metadata: {} },
+  };
+  const look = makeAuthLastActive({
+    getUser: async (uid) => {
+      if (users[uid]) return users[uid];
+      const e = new Error('no user');
+      e.code = 'auth/user-not-found';
+      throw e;
+    },
+  });
+  assert.equal(await look('u1'), t2);
+  assert.equal(await look('u2'), t1);
+  assert.equal(await look('u3'), null);
+  assert.equal(await look('nobody'), null);
+  const down = makeAuthLastActive({ getUser: async () => { const e = new Error('x'); e.code = 'auth/internal-error'; throw e; } });
+  await assert.rejects(down('u1'));
+});

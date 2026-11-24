@@ -119,6 +119,11 @@ class MemStore {
     return sorted([...this.data.users.entries()].filter(([, u]) => typeof u.seen === 'number' && u.seen < before), 'seen', after, limit);
   }
 
+  // deleteMe tombstones not finished yet ({ gone, at } with no expireAt) with at < before, ordered by (at, id) (daily)
+  async tombstones(before, after, limit) {
+    return sorted([...this.data.users.entries()].filter(([, u]) => typeof u.at === 'number' && u.at < before), 'at', after, limit);
+  }
+
   // Test helpers
   get(col, id) { return copy(this.data[col].get(id)); }
   put(col, id, doc) { this.data[col].set(id, copy(doc)); }

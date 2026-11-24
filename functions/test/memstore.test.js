@@ -30,7 +30,7 @@ test('stored documents are copies: changing a returned object does not change th
   assert.deepEqual(s.get('games', 'g').moves, []);
 });
 
-test('openCount counts invited and active games of a uid; inviteOf finds the code of a game', async () => {
+test('openCount counts invited and active games of a uid', async () => {
   const s = new MemStore();
   await s.tx(async (t) => {
     t.setGame('g1', { uids: ['a', null], st: 'invited', t: 1 });
@@ -39,10 +39,8 @@ test('openCount counts invited and active games of a uid; inviteOf finds the cod
     t.setGame('g4', { uids: ['c', null], st: 'invited', t: 4 });
     t.setInvite('CODE000001', { g: 'g1', by: 'a', exp: 9, expireAt: 9 });
   });
-  const [n, code, none] = await s.tx(async (t) => [await t.openCount('a'), await t.inviteOf('g1'), await t.inviteOf('g2')]);
+  const n = await s.tx(async (t) => t.openCount('a'));
   assert.equal(n, 2);
-  assert.equal(code, 'CODE000001');
-  assert.equal(none, null);
 });
 
 test('newGame refuses to overwrite an existing game (like Firestore create), and nothing is written', async () => {

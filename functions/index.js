@@ -3,13 +3,13 @@
 // FC1 ops: hello, invite, peek, accept, move, sync, cancel. Pushes are only recorded in the log here;
 // FC2 replaces recordPush with Firebase Cloud Messaging.
 const crypto = require('node:crypto');
-const { onCall, HttpsError } = require('firebase-functions/v2/https');
+const { onCall } = require('firebase-functions/v2/https');
 const logger = require('firebase-functions/logger');
 const { initializeApp } = require('firebase-admin/app');
 const { getFirestore } = require('firebase-admin/firestore');
 const { makeOps } = require('./src/ops');
 const { FsStore } = require('./src/fsstore');
-const { OpError } = require('./src/errors');
+const { makeHandler } = require('./src/callable');
 
 initializeApp();
 
@@ -40,12 +40,4 @@ exports.friend = onCall({
   maxInstances: 20, // the hard cost ceiling
   timeoutSeconds: 30,
   enforceAppCheck: false, // true from FC6
-}, async (request) => {
-  try {
-    return await getOps().handle(request.auth, request.data);
-  } catch (e) {
-    if (e instanceof OpError) throw new HttpsError(e.status, e.message, e.details);
-    logger.error('friend op failed', e && e.stack);
-    throw new HttpsError('internal', 'internal');
-  }
-});
+}, makeHandler(getOps, (...a) => logger.error(...a)));

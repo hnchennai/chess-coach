@@ -6,12 +6,12 @@ const { CODE_RE, GAME_RE } = require('./ids');
 const { MAX_PLY } = require('./game');
 
 const SQUARE = /^[a-h][1-8]$/;
-const MAX_TOK_BYTES = 4096;
+const FCM_TOKEN = /^[A-Za-z0-9_:-]{1,4096}$/; // FCM registration token characters only
 
 const str = (re) => (v) => typeof v === 'string' && re.test(v);
 const oneOf = (...xs) => (v) => xs.includes(v);
 const int = (min, max) => (v) => Number.isSafeInteger(v) && v >= min && v <= max;
-const token = (v) => v === null || (typeof v === 'string' && v.length > 0 && Buffer.byteLength(v, 'utf8') <= MAX_TOK_BYTES);
+const token = (v) => v === null || (typeof v === 'string' && FCM_TOKEN.test(v));
 
 // field: [check, required]
 const SPEC = {

@@ -15,26 +15,31 @@ test('hello creates the user, stores the push token and returns the server time'
   assert.deepEqual(r, { now: clock.t });
   assert.equal(store.get('users', A).tok, 'tok-1');
   assert.equal(store.get('users', A).seen, clock.t);
+  const seen0 = clock.t;
   clock.t += 1000;
   await call(A, { op: 'hello' });
   assert.equal(store.get('users', A).tok, 'tok-1', 'hello without tok keeps the token');
-  assert.equal(store.get('users', A).seen, clock.t);
+  assert.equal(store.get('users', A).seen, seen0, 'seen is not rewritten within 6 hours (fix 3)');
   await call(A, { op: 'hello', tok: null });
   assert.equal(store.get('users', A).tok, null, 'tok null clears it');
 });
 
-test('every op touches users/{uid}.seen, even when it fails', async () => {
+test('every op creates the user doc on first use, even when it fails; seen then waits 6 hours', async () => {
   const { call, store, clock } = setup();
   const { code } = await call(A, { op: 'invite', col: 'w' });
+  const tA = clock.t;
   clock.t += 5;
   await call(B, { op: 'peek', code });
   assert.equal(store.get('users', B).seen, clock.t);
   clock.t += 5;
-  await fails(call(A, { op: 'peek', code }), 'failed-precondition', 'own');
-  assert.equal(store.get('users', A).seen, clock.t);
+  await fails(call(C, { op: 'peek', code: '0000000000' }), 'not-found');
+  assert.equal(store.get('users', C).seen, clock.t, 'a failing op still creates the user');
   clock.t += 5;
-  await call(C, { op: 'sync', since: 0 });
-  assert.equal(store.get('users', C).seen, clock.t);
+  await fails(call(A, { op: 'peek', code }), 'failed-precondition', 'own');
+  assert.equal(store.get('users', A).seen, tA, 'not rewritten 15 ms later');
+  clock.t = tA + 6 * 60 * 60 * 1000;
+  await fails(call(A, { op: 'peek', code }), 'failed-precondition', 'own');
+  assert.equal(store.get('users', A).seen, clock.t, 'rewritten after 6 hours, even by a failing op');
 });
 
 test('scenario 1: invite creates one invited game and a 10-character code that expires in 7 days', async () => {
@@ -46,7 +51,7 @@ test('scenario 1: invite creates one invited game and a 10-character code that e
   const v = r.games[0];
   assert.match(v.id, /^[A-Za-z0-9]{20}$/);
   assert.notEqual(v.id, r.code);
-  assert.deepEqual(v, { id: v.id, me: 'r', opp: null, st: 'invited', moves: [], dl: null, draw: null, res: null, v: 1, t: clock.t, exp: clock.t + 7 * DAY });
+  assert.deepEqual(v, { id: v.id, me: 'r', opp: null, st: 'invited', moves: [], dl: null, draw: null, res: null, v: 1, t: clock.t, exp: clock.t + 7 * DAY, code: r.code });
   const g = store.get('games', v.id);
   assert.equal(g.st, 'invited');
   assert.deepEqual(g.uids, [A, null]);

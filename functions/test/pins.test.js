@@ -13,3 +13,10 @@ test('ranges, tags and a wrong installed version are caught', () => {
   const got = problems(pkg, (n) => (n === 'c' ? '3.0.1' : '1.0.0'));
   assert.equal(got.length, 5, got.join('\n'));
 });
+
+test('fix 8: firebase-tools is not a dependency (CI and the README use npx firebase-tools@15.35.0)', () => {
+  const pkg = require('../package.json');
+  assert.ok(!('firebase-tools' in (pkg.dependencies || {})) && !('firebase-tools' in (pkg.devDependencies || {})));
+  assert.ok(problems({ engines: { node: '22' }, devDependencies: { 'firebase-tools': '15.35.0' } }, () => '15.35.0')
+    .some((p) => /firebase-tools/.test(p)));
+});

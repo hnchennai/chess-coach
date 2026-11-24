@@ -9,6 +9,7 @@ const copy = (v) => (v === undefined ? undefined : JSON.parse(JSON.stringify(v))
 class MemStore {
   constructor() {
     this.data = { users: new Map(), games: new Map(), invites: new Map() };
+    this.writeLog = []; // [collection, id] of every committed write, for tests
   }
 
   async tx(fn) {
@@ -22,10 +23,6 @@ class MemStore {
       user: read((uid) => get('users', uid)),
       game: read((id) => get('games', id)),
       invite: read((code) => get('invites', code)),
-      inviteOf: read((gid) => {
-        for (const [code, inv] of this.data.invites) if (inv.g === gid) return code;
-        return null;
-      }),
       openCount: read((uid) => {
         let n = 0;
         for (const g of this.data.games.values()) {
@@ -44,6 +41,7 @@ class MemStore {
       if (mode === 'create' && this.data[col].has(id)) throw new Error(`${col}/${id} already exists`);
     }
     for (const [col, id, doc] of writes) {
+      this.writeLog.push([col, id]);
       if (doc === undefined) this.data[col].delete(id);
       else this.data[col].set(id, doc);
     }

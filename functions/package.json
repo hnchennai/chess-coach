@@ -10,7 +10,7 @@
   },
   "scripts": {
     "test": "node --test \"test/*.test.js\"",
-    "test:emu": "node --test --test-concurrency=1 \"test/emu/*.test.js\"",
+    "test:emu": "node --test --test-concurrency=1 --test-force-exit \"test/emu/*.test.js\"",
     "check-pins": "node scripts/check-pins.js"
   },
   "dependencies": {
@@ -20,7 +20,6 @@
   },
   "devDependencies": {
     "@firebase/rules-unit-testing": "5.0.2",
-    "firebase": "12.19.0",
-    "firebase-tools": "15.35.0"
+    "firebase": "12.19.0"
   }
 }

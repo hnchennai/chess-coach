@@ -60,33 +60,35 @@ Function settings: `region: 'asia-south1'`, `memory: '256MiB'`, `cpu: 'gcf_gen1'
 - Bodies (generic, no nickname): `move` "Your move in a friend game"; `draw` "Your friend offers a draw"; `remind` "1 day left for your move in a friend game"; `over` "A friend game has ended". Nothing else is ever sent (criterion 4).
 
 ## 5. Data model (decision 4). No names, no free text.
-`users/{uid}`: `{ tok: string|null, seen: ms, inv: { d: 'YYYY-MM-DD', n } }`.
-`invites/{code}`: `{ g: gameId, by: uid, exp: ms, expireAt: Timestamp }`. Code: 10 characters, Crockford base32 from `crypto.randomBytes` (50 bits). Deleted on accept.
+`users/{uid}`: `{ tok: string|null, seen: ms, inv: { d: 'YYYY-MM-DD' (the day in India, IST) | null, n } }`.
+`invites/{code}`: `{ g: gameId, by: uid, exp: ms, expireAt: Timestamp }`. Code: 10 characters, Crockford base32 from `crypto.randomBytes` (50 bits). On accept it is not deleted but replaced by `{ used: true, exp, expireAt }` (no uid) and left to TTL, so a second tap says `used`. Deleted on cancel.
 `games/{gameId}` (gameId: 20 random characters, never the code):
 ```
-{ uids: [uid, uid|null], w: uid|null, b: uid|null, by: uid, col: 'w'|'b'|'r',
+{ uids: [uid, uid|null], w: uid|null, b: uid|null, by: uid, col: 'w'|'b'|'r', code: string|null (the invite code while invited),
   st: 'invited'|'active'|'over', moves: ['e4', 'e5', ...] (SAN), fen,
   dl: ms (deadline for the side to move), rem: ms|null (reminder due), draw: null|'w'|'b', drawPly: { w, b },
-  res: null | { r: 'w'|'b'|'d', why: 'mate'|'resign'|'time'|'stalemate'|'repetition'|'fifty'|'material'|'agreed'|'abandoned'|'expired' },
+  res: null | { r: 'w'|'b'|'d'|null, why: 'mate'|'resign'|'time'|'stalemate'|'repetition'|'fifty'|'material'|'cap'|'agreed'|'abandoned'|'expired' },
   v: n (bumps on every change), t0, t: ms (updatedAt), expireAt: Timestamp|null }
 ```
+- `why: 'cap'`: the game reached 600 plies (300 moves each) and ends as a draw, "move limit" (FC-D21).
+- A cancelled or expired invite ends `{ r: null, why: 'expired' }`: no game was played, so it is not a result. FC4's history and friend record must skip `r: null`.
 - `expireAt` is the TTL field: invite expiry while `invited`, end + 30 days when `over`, null while `active`. TTL deletes usually land within 24 hours of expiry and are billed as deletes ([ttl]).
 - Indexes: `games` (uids array-contains, t), (uids array-contains, st), (st, dl), (st, rem). TTL policies on `games.expireAt` and `invites.expireAt` (Suresh sets them once; command in FC2).
 - The app never sees uids. Each game view carries `opp`: the first 12 hex characters of `sha256(oppUid + ':' + myUid)`, a stable per-pair key for nicknames and the record, useless to anyone else.
 
 ## 6. Server ops (callable `friend`)
-Every op: needs `auth`; validates `data` strictly (unknown fields, wrong types or long strings fail); touches `users/{uid}.seen`; runs game changes in a Firestore transaction; sends pushes after commit; returns the caller's view of each changed game.
+Every op: needs `auth`; validates `data` strictly (unknown fields, wrong types or long strings fail); reads `users/{uid}` (so one player's ops run one at a time and the limits are race-safe) and writes `seen` only when it is 6 hours old or the op writes the user doc anyway; runs game changes in a Firestore transaction; sends pushes after commit; returns the caller's view of each changed game.
 | op | Input | Checks and effect |
 |---|---|---|
-| `hello` | `{ tok? }` | Upsert user, store push token (max 4 KB). Returns `{ now }` |
-| `invite` | `{ col }` | Open games (invited + active) < 10 (FC-D12, count query); invites today < 20. Creates game `invited` and invite; `expireAt` +7 days. Returns game and code |
-| `peek` | `{ code }` | Invite exists, not expired, not mine. Returns my colour (or "random") and expiry, for the Accept screen |
-| `accept` | `{ code }` | As peek, plus my open games < 10. Deletes invite, fills colours (random by `crypto`), `st: active`, `dl = now + 3 days`, `rem = dl - 1 day`. Push `move` to White if White is the challenger |
-| `move` | `{ g, ply, from, to, promo? }` | I am a player, `st` active, my turn, `now <= dl`. Replays `moves` with chess.js 0.10.3 (same rules as the app, needed for repetition), plays the move. `ply` makes it idempotent: if `moves.length === ply + 1` and the last move is the same, return ok without change (offline resend). Clears a draw offer to me. Ends on mate, stalemate, threefold, 50 moves, too few pieces. New `dl`, `rem`. Push `move` or `over` to the opponent |
+| `hello` | `{ tok? }` | Upsert user, store push token (FCM characters only, `/^[A-Za-z0-9_:-]{1,4096}$/`); `tok: null` clears it. Returns `{ now }` |
+| `invite` | `{ col }` | Open games (invited + active) < 10 (FC-D12, count query); invites today (IST calendar day) < 20. Creates game `invited` and invite; `expireAt` +7 days. Returns game and code. The owner's view of an `invited` game carries `code` (in every answer, sync included), so a lost answer is recovered; nobody else ever sees a code |
+| `peek` | `{ code }` | Invite exists, not used, not expired, not mine. Returns `{ now, col, exp }`: my colour (`'r'` for random) and expiry, for the Accept screen |
+| `accept` | `{ code }` | As peek, plus my open games < 10. Marks the invite used, fills colours (random by `crypto`), `st: active`, `dl = now + 3 days`, `rem = dl - 1 day`. Push `move` to White if White is the challenger |
+| `move` | `{ g, ply, from, to, promo? }` | I am a player, `st` active, my turn, `now <= dl`. Replays `moves` with chess.js 0.10.3 (same rules as the app, needed for repetition), plays the move. `ply` makes it idempotent: if `moves.length === ply + 1` and the last move is the same, return ok without change (offline resend). Clears a draw offer to me. Ends on mate, stalemate, threefold, 50 moves, too few pieces, or 600 plies (draw, `cap`, FC-D21). New `dl`, `rem`. Push `move` or `over` to the opponent |
 | `resign` | `{ g }` | Active, I am a player. Ends, push `over` |
 | `draw` | `{ g, a: 'offer'|'accept'|'decline' }` | Offer: active, no open offer, at most one offer per own move (`drawPly`). Push `draw`. Accept or decline: an open offer from the opponent |
-| `cancel` | `{ g }` | My own `invited` game: ends `expired`, deletes the invite (frees a slot; see Questions) |
-| `sync` | `{ since }` | Games where I am a player and `t > since`. Returns `{ now, games }`. Reads only changed games (at least 1 read per query) |
+| `cancel` | `{ g }` | My own `invited` game: ends `{ r: null, why: 'expired' }`, deletes the invite (frees a slot, FC-D18) |
+| `sync` | `{ since }` | Games where I am a player and `t > since`, oldest first, at most 25. Returns `{ now, next, more, games }`; the app sends `next` as `since` next time. `t` is taken before the transaction, so `t` order is not commit order: `next = more ? min(last returned t, now - LAG) : now - LAG`, with `LAG` = 2 minutes (longer than the 30 s timeout, so every write with `t <= now - LAG` has committed). If that would not move past `since`, `next` is the last returned `t`, so paging always ends. Answers overlap; the app keeps the higher `v` per game. Reads only changed games (at least 1 read per query) |
 | `deleteMe` | `{}` | For each of my games: `invited` ends `expired`; `active` ends `abandoned`, friend wins; push `over` to the friend. Then my uid in every game becomes `'x'`, my invites and user doc go, and `admin.auth().deleteUser(uid)` |
 
 Error statuses: `failed-precondition` with message codes `expired`, `used`, `own`, `full`, `limit`, `turn`, `illegal`, `late`, `over`; `not-found`; `invalid-argument`. A `late` move ends the game on time in the same transaction.

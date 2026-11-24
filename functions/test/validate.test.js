@@ -81,3 +81,14 @@ test('a failed validation writes nothing', async () => {
   await fails(call(A, { op: 'invite', col: 'x' }), 'invalid-argument');
   assert.equal(store.size(), 0);
 });
+
+test('fix 5: hello.tok takes only FCM token characters, or null', async () => {
+  const { call, store } = setup();
+  for (const tok of ['has space', 'Priya says hi', 'tok\n', 'a/b', 'é', 'x;y']) {
+    await fails(call(A, { op: 'hello', tok }), 'invalid-argument');
+  }
+  await call(A, { op: 'hello', tok: 'fGx1-ab_c:APA91bH-x_Y' });
+  assert.equal(store.get('users', A).tok, 'fGx1-ab_c:APA91bH-x_Y');
+  await call(A, { op: 'hello', tok: null });
+  assert.equal(store.get('users', A).tok, null);
+});

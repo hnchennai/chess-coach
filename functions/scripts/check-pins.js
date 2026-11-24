@@ -1,6 +1,7 @@
 'use strict';
 // CI guard: every dependency in functions/package.json is an exact version (no ^, ~, ranges or tags),
-// engines.node is "22", and the installed copy in node_modules is exactly that version.
+// engines.node is "22", the installed copy in node_modules is exactly that version, and firebase-tools is not a
+// dependency (CI and the README run it as npx firebase-tools@15.35.0).
 // Usage: node scripts/check-pins.js (run after npm ci in functions/)
 const path = require('node:path');
 
@@ -11,6 +12,7 @@ function problems(pkg, installedVersion) {
   if (!pkg.engines || pkg.engines.node !== '22') out.push(`engines.node must be "22" (found ${JSON.stringify(pkg.engines && pkg.engines.node)})`);
   for (const field of ['dependencies', 'devDependencies']) {
     for (const [name, want] of Object.entries(pkg[field] || {})) {
+      if (name === 'firebase-tools') out.push(`${field}.firebase-tools must not be listed: run it as npx firebase-tools@15.35.0`);
       if (!EXACT.test(want)) {
         out.push(`${field}.${name} must be an exact version (found "${want}")`);
         continue;

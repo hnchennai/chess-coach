@@ -30,21 +30,6 @@ test('sync returns only games of mine changed after "since", with the server tim
   assert.deepEqual(none.games, []);
 });
 
-test('sync pages: "more" is set and games sharing the last time are left for the next call', async () => {
-  const s = setup({ syncMax: 3 });
-  const ids = [];
-  for (let i = 0; i < 5; i++) {
-    if (i !== 3) s.clock.t += 10; // games 2 and 3 share a time
-    ids.push((await s.call(A, { op: 'invite', col: 'w' })).games[0].id);
-  }
-  const p1 = await s.call(A, { op: 'sync', since: 0 });
-  assert.equal(p1.more, true);
-  assert.deepEqual(p1.games.map((g) => g.id), ids.slice(0, 2));
-  const p2 = await s.call(A, { op: 'sync', since: p1.games[p1.games.length - 1].t });
-  assert.deepEqual(p2.games.map((g) => g.id), ids.slice(2));
-  assert.equal(p2.more, false);
-});
-
 test('answers never carry a uid, and the view has only the documented fields', async () => {
   const s = setup();
   const answers = [];
@@ -61,7 +46,7 @@ test('answers never carry a uid, and the view has only the documented fields', a
     }
   }
   const view = answers[4].games[0];
-  assert.deepEqual(Object.keys(view).sort(), ['dl', 'draw', 'exp', 'id', 'me', 'moves', 'opp', 'res', 'st', 't', 'v']);
+  assert.deepEqual(Object.keys(view).sort(), ['code', 'dl', 'draw', 'exp', 'id', 'me', 'moves', 'opp', 'res', 'st', 't', 'v']);
 });
 
 test('criterion 5: the server stores no names or free text, only ids, codes, tokens, moves and fixed values', async () => {
@@ -84,4 +69,128 @@ test('criterion 5: the server stores no names or free text, only ids, codes, tok
   for (const str of strings(s.store.dump())) {
     assert.ok(known.has(str) || fen.test(str) || day.test(str), 'unexpected stored string: ' + str);
   }
+});
+
+// Fix round 1, fix 1: the sync cursor. t comes from the clock before the transaction, so t order is not commit order.
+const LAG = 120000;
+
+function seedGame(s, id, uid, t, extra = {}) {
+  s.store.put('games', id, {
+    uids: [uid, 'uid-other-0000000000009'], w: uid, b: 'uid-other-0000000000009', by: uid, col: 'w', st: 'active',
+    moves: [], fen: 'x', dl: t + 1, rem: null, draw: null, drawPly: { w: -1, b: -1 }, res: null, v: 2, t0: t, t,
+    expireAt: null, code: null, ...extra,
+  });
+}
+
+test('sync returns next = now - 2 minutes; a game written with an older t that commits after a sync comes in the next sync', async () => {
+  const s = setup();
+  s.clock.t += 10 * 60 * 1000;
+  const r1 = await s.call(A, { op: 'sync', since: 0 });
+  assert.equal(r1.now, s.clock.t);
+  assert.equal(r1.next, s.clock.t - LAG);
+  assert.equal(r1.more, false);
+  // a slow transaction took its time 5 s before that sync and committed just after it
+  seedGame(s, 'lateCommitGameAAAAAA', A, r1.now - 5000);
+  s.clock.t += 1000;
+  const r2 = await s.call(A, { op: 'sync', since: r1.next });
+  assert.deepEqual(r2.games.map((g) => g.id), ['lateCommitGameAAAAAA']);
+});
+
+test('a game repeated in two answers is the same game (the client keeps the higher v)', async () => {
+  const s = setup();
+  const inv = await s.call(A, { op: 'invite', col: 'w' });
+  const r1 = await s.call(A, { op: 'sync', since: 0 });
+  const r2 = await s.call(A, { op: 'sync', since: r1.next });
+  assert.deepEqual(r2.games, r1.games);
+  assert.equal(r2.games[0].id, inv.games[0].id);
+});
+
+test('paging with "more" never loses a game, including games that share a time, and always ends', async () => {
+  const s = setup({ syncMax: 3 });
+  const want = [];
+  for (let i = 0; i < 11; i++) {
+    const id = ('pageGame' + String(i).padStart(2, '0')).padEnd(20, 'A');
+    seedGame(s, id, A, s.clock.t - 300000 + Math.floor(i / 2) * 40000); // pairs share a time, some inside the last 2 min
+    want.push(id);
+  }
+  const got = new Set();
+  let since = 0;
+  let calls = 0;
+  for (;;) {
+    const r = await s.call(A, { op: 'sync', since });
+    r.games.forEach((g) => got.add(g.id));
+    assert.ok(r.next >= 0);
+    since = r.next;
+    if (!r.more) break;
+    assert.ok(++calls < 20, 'paging must end');
+  }
+  assert.deepEqual([...got].sort(), want.sort());
+});
+
+test('fix 2: at most 25 games per sync answer', async () => {
+  const s = setup();
+  for (let i = 0; i < 30; i++) seedGame(s, ('many' + String(i).padStart(2, '0')).padEnd(20, 'B'), A, s.clock.t - 1000000 + i);
+  const r = await s.call(A, { op: 'sync', since: 0 });
+  assert.equal(r.games.length, 25);
+  assert.equal(r.more, true);
+});
+
+test('fix 3: seen is written at most every 6 hours unless the op writes the user anyway', async () => {
+  const s = setup();
+  const userWrites = () => s.store.writeLog.filter(([c, id]) => c === 'users' && id === A).length;
+  await s.call(A, { op: 'sync', since: 0 });
+  await s.call(A, { op: 'sync', since: 0 });
+  assert.equal(userWrites(), 1, 'two syncs in a row write the user doc once');
+  s.clock.t += 6 * 60 * 60 * 1000 - 1;
+  await s.call(A, { op: 'sync', since: 0 });
+  assert.equal(userWrites(), 1);
+  s.clock.t += 1;
+  await s.call(A, { op: 'sync', since: 0 });
+  assert.equal(userWrites(), 2, 'after 6 hours seen is written again');
+  assert.equal(s.store.get('users', A).seen, s.clock.t);
+  await s.call(A, { op: 'invite', col: 'w' });
+  assert.equal(userWrites(), 3, 'invite writes the user (invite count) anyway');
+  await s.call(A, { op: 'hello', tok: 'tok-new' });
+  assert.equal(userWrites(), 4, 'a new token is written at once');
+  assert.equal(s.store.get('users', A).tok, 'tok-new');
+});
+
+test('fix 6: only the owner sees the code of an invited game, so a lost invite answer can be recovered', async () => {
+  const s = setup();
+  const inv = await s.call(A, { op: 'invite', col: 'w' });
+  assert.equal(inv.games[0].code, inv.code);
+  const sa = await s.call(A, { op: 'sync', since: 0 }); // as if the invite answer was lost
+  assert.equal(sa.games[0].code, inv.code);
+  const acc = await s.call(B, { op: 'accept', code: inv.code });
+  assert.equal(acc.games[0].code, null);
+  const sa2 = await s.call(A, { op: 'sync', since: 0 });
+  assert.equal(sa2.games[0].code, null, 'no code once accepted');
+  assert.equal(s.store.get('games', inv.games[0].id).code, null);
+  const i2 = await s.call(A, { op: 'invite', col: 'b' });
+  const c = await s.call(A, { op: 'cancel', g: i2.games[0].id });
+  assert.equal(c.games[0].code, null);
+  assert.equal(s.store.get('invites', i2.code), undefined, 'cancel still deletes the invite');
+  const sc = await s.call(C, { op: 'sync', since: 0 });
+  assert.deepEqual(sc.games, [], 'nobody else ever sees an invited game or its code');
+});
+
+test('paging ends even when more than one page of games changed in the last 2 minutes', async () => {
+  const s = setup({ syncMax: 3 });
+  const want = [];
+  for (let i = 0; i < 8; i++) {
+    const id = ('recent' + i).padEnd(20, 'C');
+    seedGame(s, id, A, s.clock.t - 60000 + i * 1000);
+    want.push(id);
+  }
+  const got = new Set();
+  let since = 0;
+  for (let calls = 0; ; calls++) {
+    assert.ok(calls < 20, 'paging must end');
+    const r = await s.call(A, { op: 'sync', since });
+    r.games.forEach((g) => got.add(g.id));
+    since = r.next;
+    if (!r.more) break;
+  }
+  assert.deepEqual([...got].sort(), want.sort());
+  assert.equal(since, s.clock.t - LAG, 'the final cursor goes back to now - 2 minutes');
 });

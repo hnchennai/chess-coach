@@ -29,10 +29,6 @@ class FsStore {
         user: async (uid) => fromSnap(await tx.get(this.users.doc(uid))),
         game: async (id) => fromSnap(await tx.get(this.games.doc(id))),
         invite: async (code) => fromSnap(await tx.get(this.invites.doc(code))),
-        inviteOf: async (gid) => {
-          const q = await tx.get(this.invites.where('g', '==', gid).limit(1));
-          return q.empty ? null : q.docs[0].id;
-        },
         // Open games (invited + active): two count queries on the (uids, st) index, inside the transaction
         openCount: async (uid) => {
           const mine = this.games.where('uids', 'array-contains', uid);

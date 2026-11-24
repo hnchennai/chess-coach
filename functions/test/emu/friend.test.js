@@ -4,7 +4,22 @@
 // with an injected clock (test/ops.*.test.js); here the clock is real.
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const { initializeApp, getApps } = require('firebase-admin/app');
+const { getFirestore, Timestamp } = require('firebase-admin/firestore');
 const { signUp, call, ok, err, PROJECT } = require('./client');
+
+// Admin client for reading what the function stored; closed at the end so node --test can exit
+let db = null;
+function adminDb() {
+  if (!db) {
+    if (!getApps().length) initializeApp({ projectId: PROJECT });
+    db = getFirestore();
+  }
+  return db;
+}
+test.after(async () => {
+  if (db) await db.terminate();
+});
 
 function strings(v, out = []) {
   if (typeof v === 'string') out.push(v);
@@ -47,6 +62,7 @@ test('full game flow: invite, peek, accept, moves both ways, illegal and out-of-
   const g = inv.games[0].id;
   assert.equal(inv.games[0].st, 'invited');
   assert.equal(inv.games[0].me, 'w');
+  assert.equal(inv.games[0].code, inv.code, 'the owner sees the code of the waiting invite');
 
   // Own invite cannot be peeked or accepted
   await err(a.token, { op: 'peek', code: inv.code }, 'FAILED_PRECONDITION', 'own');
@@ -63,6 +79,7 @@ test('full game flow: invite, peek, accept, moves both ways, illegal and out-of-
   assert.equal(acc.games[0].st, 'active');
   assert.equal(acc.games[0].me, 'b');
   assert.match(acc.games[0].opp, /^[0-9a-f]{12}$/);
+  assert.equal(acc.games[0].code, null);
 
   // Criterion 1: used once
   await err(c.token, { op: 'peek', code: inv.code }, 'FAILED_PRECONDITION', 'used');
@@ -92,6 +109,9 @@ test('full game flow: invite, peek, accept, moves both ways, illegal and out-of-
   const sb = await ok(b.token, { op: 'sync', since: 0 });
   answers.push(sa, sb);
   assert.deepEqual(sa.games.map((x) => x.id), [g]);
+  assert.equal(sa.more, false);
+  assert.equal(sa.next, sa.now - 120000, 'the cursor stays 2 minutes behind');
+  assert.deepEqual((await ok(a.token, { op: 'sync', since: sa.next })).games.map((x) => x.id), [g], 'overlap is fine');
   assert.deepEqual(sa.games[0].moves, sb.games[0].moves);
   assert.equal(sa.games[0].v, sb.games[0].v);
   assert.equal(sa.games[0].me, 'w');
@@ -116,10 +136,7 @@ test('10 open games at most (count query in a transaction); cancel frees a slot'
 });
 
 test('stored data: expireAt is a Firestore Timestamp (for TTL), no names, uids only in the server copy', async () => {
-  const { initializeApp, getApps } = require('firebase-admin/app');
-  const { getFirestore, Timestamp } = require('firebase-admin/firestore');
-  if (!getApps().length) initializeApp({ projectId: PROJECT });
-  const db = getFirestore();
+  const db = adminDb();
   const a = await signUp();
   const inv = await ok(a.token, { op: 'invite', col: 'b' });
   const gs = await db.collection('games').doc(inv.games[0].id).get();

@@ -43,6 +43,7 @@
   ],
   "fieldOverrides": [
     { "collectionGroup": "games", "fieldPath": "expireAt", "ttl": true, "indexes": [] },
-    { "collectionGroup": "invites", "fieldPath": "expireAt", "ttl": true, "indexes": [] }
+    { "collectionGroup": "invites", "fieldPath": "expireAt", "ttl": true, "indexes": [] },
+    { "collectionGroup": "users", "fieldPath": "expireAt", "ttl": true, "indexes": [] }
   ]
 }

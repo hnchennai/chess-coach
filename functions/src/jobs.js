@@ -4,7 +4,9 @@
 // both); games whose reminder is due get one "remind" push to the side to move (rem = null); invites past their
 // 7 days end expired, so they stop counting toward the 10 open games.
 // daily (03:30 India time): user docs not seen for 60 days with no open game are deleted with their Auth user.
-// Each run is bounded: candidates come in pages with a cursor, at most `max` per kind. Each change runs in its own
+// deleteMe tombstones are left alone (they hold nothing and TTL removes them).
+// Each run is bounded: candidates come in pages with a cursor, at most `max` per kind, and no new candidate is
+// taken after `budget` ms of the run (90 s of the 120 s timeout), so a commit is never cut off from its push. Each change runs in its own
 // transaction that re-reads the document and re-checks the condition, because a move, an accept or any op by the
 // player may land between the query and the change. Logs carry counts and error codes only, never a uid or token.
 const game = require('./game');
@@ -13,8 +15,10 @@ const { over } = require('./ops');
 const PAGE = 100; // candidates per query
 const MAX = 200; // candidates per kind per run (a transaction each); the rest waits for the next run
 const IDLE_MS = 60 * game.DAY_MS; // daily: IDs not seen for 60 days
+const BUDGET_MS = 90 * 1000; // no new candidate after this much of a run (the jobs time out at 120 s)
 
-function makeJobs({ store, now, push, log = console.error, deleteAuthUser, page = PAGE, max = MAX }) {
+function makeJobs({ store, now, push, log = console.error, deleteAuthUser, page = PAGE, max = MAX, budget = BUDGET_MS }) {
+  let stopAt = Infinity; // set at the start of each run
   async function sendAll(list) {
     for (const p of list) {
       try {
@@ -36,6 +40,7 @@ function makeJobs({ store, now, push, log = console.error, deleteAuthUser, page 
       if (limit <= 0) return { done, more: true };
       const rows = await query(after, limit);
       for (const row of rows) {
+        if (now() - stopAt > 0) return { done, more: true };
         looked++;
         try {
           if (await handle(row)) done++;
@@ -68,6 +73,7 @@ function makeJobs({ store, now, push, log = console.error, deleteAuthUser, page 
 
   async function tick() {
     const upto = now();
+    stopAt = upto + budget;
     const time = await games('active', 'dl', upto, (g, ts, id) => {
       if (g.st !== 'active' || !game.isLate(g.dl, ts)) return null; // on the deadline is still in time
       return {
@@ -87,18 +93,27 @@ function makeJobs({ store, now, push, log = console.error, deleteAuthUser, page 
     return { time: time.done, remind: remind.done, expired: expired.done, more: time.more || remind.more || expired.more };
   }
 
+  // Still idle: a user doc (not a tombstone) not seen for 60 days, with no open game. Reads only.
+  async function idle(t, uid) {
+    const u = await t.user(uid);
+    if (!u || u.gone || !(u.seen < now() - IDLE_MS)) return false;
+    return (await t.openCount(uid)) === 0;
+  }
+
+  // Check, delete the Auth user (already gone counts as done), then delete the doc in a second transaction that
+  // checks again. An Auth failure leaves the doc, so the next run tries again; no Auth user is ever left without a doc.
   async function daily() {
-    const before = now() - IDLE_MS;
+    const start = now();
+    stopAt = start + budget;
+    const before = start - IDLE_MS;
     const r = await walk((after, limit) => store.idleUsers(before, after, limit), 'seen', async (row) => {
-      const gone = await store.tx(async (t) => {
-        const u = await t.user(row.id);
-        if (!u || !(u.seen < now() - IDLE_MS)) return false;
-        if ((await t.openCount(row.id)) > 0) return false;
+      if (!(await store.tx((t) => idle(t, row.id)))) return false;
+      await deleteAuthUser(row.id);
+      return store.tx(async (t) => {
+        if (!(await idle(t, row.id))) return false;
         t.delUser(row.id);
         return true;
       });
-      if (gone) await deleteAuthUser(row.id);
-      return gone;
     });
     return { deleted: r.done, more: r.more };
   }
@@ -117,4 +132,4 @@ function makeAuthDeleter(auth) {
   };
 }
 
-module.exports = { makeJobs, makeAuthDeleter, PAGE, MAX, IDLE_MS };
+module.exports = { makeJobs, makeAuthDeleter, PAGE, MAX, IDLE_MS, BUDGET_MS };

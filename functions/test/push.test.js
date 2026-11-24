@@ -75,14 +75,21 @@ test('no user, no token, or a deleted player ("x"): nothing is sent', async () =
   assert.deepEqual(k.sent, []);
 });
 
-test('a token FCM no longer knows is deleted from the user doc (not registered, invalid token, invalid argument)', async () => {
-  for (const code of ['messaging/registration-token-not-registered', 'messaging/invalid-registration-token', 'messaging/invalid-argument']) {
+test('a token FCM no longer knows is deleted from the user doc (not registered, invalid token)', async () => {
+  for (const code of ['messaging/registration-token-not-registered', 'messaging/invalid-registration-token']) {
     const k = kit(() => { throw fcmError(code); });
     await k.push({ to: U, t: 'move', g: G });
     const u = k.store.get('users', U);
     assert.equal(u.tok, null, code);
     assert.equal(u.seen, 1, 'the rest of the user doc stays');
   }
+});
+
+test('fix 4: invalid-argument is only logged; the token stays', async () => {
+  const k = kit(() => { throw fcmError('messaging/invalid-argument'); });
+  assert.equal(await k.push({ to: U, t: 'move', g: G }), false);
+  assert.equal(k.store.get('users', U).tok, TOK);
+  assert.equal(k.logs.length, 1);
 });
 
 test('other errors keep the token; sending never throws', async () => {
@@ -122,4 +129,12 @@ test('logs never carry a uid or a token', async () => {
   assert.ok(!text.includes(U), text);
   assert.ok(!text.includes(TOK), text);
   assert.ok(!text.includes('APA91'), text);
+});
+
+test('fix 1: a tombstone (deleted player) gets nothing and is never written', async () => {
+  const k = kit(() => { throw fcmError('messaging/registration-token-not-registered'); });
+  k.store.put('users', U, { gone: true, expireAt: 5 });
+  await k.push({ to: U, t: 'over', g: G });
+  assert.deepEqual(k.sent, []);
+  assert.deepEqual(k.store.get('users', U), { gone: true, expireAt: 5 });
 });

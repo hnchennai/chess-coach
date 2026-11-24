@@ -8,9 +8,9 @@ const path = require('node:path');
 
 const cfg = require(path.join(__dirname, '..', '..', 'firestore.indexes.json'));
 
-test('TTL on expireAt for games and invites, deployed with the indexes; expireAt itself is not single-field indexed', () => {
+test('TTL on expireAt for games, invites and users (deleteMe tombstones), deployed with the indexes; expireAt itself is not single-field indexed', () => {
   const ttl = cfg.fieldOverrides.filter((f) => f.ttl === true);
-  assert.deepEqual(ttl.map((f) => f.collectionGroup).sort(), ['games', 'invites']);
+  assert.deepEqual(ttl.map((f) => f.collectionGroup).sort(), ['games', 'invites', 'users']);
   for (const f of ttl) {
     assert.equal(f.fieldPath, 'expireAt');
     assert.deepEqual(f.indexes, []);

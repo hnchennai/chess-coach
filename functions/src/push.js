@@ -12,12 +12,10 @@ const BODIES = Object.freeze({
   over: 'A friend game has ended',
 });
 
-// FCM errors that mean the stored token is no good. invalid-argument is included because the rest of the message
-// is fixed, so a bad token is its only likely cause.
+// FCM errors that mean the stored token is no good. invalid-argument can have other causes, so it is only logged.
 const DEAD_TOKEN = new Set([
   'messaging/registration-token-not-registered',
   'messaging/invalid-registration-token',
-  'messaging/invalid-argument',
 ]);
 
 const known = (t) => typeof t === 'string' && Object.prototype.hasOwnProperty.call(BODIES, t);

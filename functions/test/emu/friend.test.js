@@ -223,8 +223,11 @@ test('scenario 10 and criterion 9: deleteMe ends open games for friends (friend 
   assert.equal(after.opp, before.opp);
   noUid(after, a.uid, b.uid);
 
-  // The data is gone
-  assert.equal((await db.collection('users').doc(a.uid).get()).exists, false);
+  // The data is gone: the user doc is a tombstone that holds nothing and expires in 2 hours
+  const tomb = await db.collection('users').doc(a.uid).get();
+  assert.deepEqual(Object.keys(tomb.data()).sort(), ['expireAt', 'gone']);
+  assert.equal(tomb.get('gone'), true);
+  assert.ok(tomb.get('expireAt') instanceof Timestamp);
   assert.equal((await db.collection('games').where('uids', 'array-contains', a.uid).get()).size, 0);
   assert.equal((await db.collection('invites').where('by', '==', a.uid).get()).size, 0);
   assert.equal((await db.collection('invites').doc(waiting.code).get()).exists, false);
@@ -236,4 +239,15 @@ test('scenario 10 and criterion 9: deleteMe ends open games for friends (friend 
   // The Auth user is gone
   await assert.rejects(getAuth().getUser(a.uid), (e) => e.code === 'auth/user-not-found');
   assert.ok((await getAuth().getUser(b.uid)).uid, 'the friend is untouched');
+
+  // Fix round 1, fix 1: the old ID token may still be accepted for a while; any further call brings nothing back
+  for (const data of [{ op: 'hello', tok: 'emulator-push-token-a2' }, { op: 'sync', since: 0 }, { op: 'invite', col: 'w' }]) {
+    const e = await call(a.token, data);
+    assert.ok(e.error && ['NOT_FOUND', 'UNAUTHENTICATED'].includes(e.error.status), JSON.stringify(e));
+  }
+  assert.deepEqual(Object.keys((await db.collection('users').doc(a.uid).get()).data()).sort(), ['expireAt', 'gone']);
+  assert.equal((await db.collection('games').where('uids', 'array-contains', a.uid).get()).size, 0);
+  // A client retry of deleteMe is harmless
+  const again = await call(a.token, { op: 'deleteMe' });
+  assert.ok(again.result || ['UNAUTHENTICATED'].includes(again.error && again.error.status), JSON.stringify(again));
 });

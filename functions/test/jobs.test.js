@@ -272,3 +272,71 @@ test('the Auth deleter treats "user not found" as done and passes other errors o
   await makeAuthDeleter({ deleteUser: async (u) => { seen.push(u); } })('u2');
   assert.deepEqual(seen, ['u2']);
 });
+
+// Fix round 1, fix 2: the Auth user goes before the doc, so a failure never strands an Auth user without a doc
+test('fix 2: daily deletes the Auth user before the doc; an Auth failure leaves the doc so the next run retries', async () => {
+  let down = true;
+  const authDeleted = [];
+  const s = setup({ deleteAuthUser: async (uid) => { if (down) { const e = new Error('down'); e.code = 'auth/internal-error'; throw e; } authDeleted.push(uid); } });
+  await s.call(A, { op: 'hello' });
+  s.clock.t += 61 * DAY;
+  const r1 = await s.jobs.daily();
+  assert.equal(r1.deleted, 0);
+  assert.ok(s.store.get('users', A), 'the doc stays');
+  down = false;
+  const r2 = await s.jobs.daily();
+  assert.equal(r2.deleted, 1);
+  assert.equal(s.store.get('users', A), undefined);
+  assert.deepEqual(authDeleted, [A]);
+});
+
+test('fix 2: a player who comes back between the Auth delete and the doc delete keeps the doc', async () => {
+  const s = setup({
+    deleteAuthUser: async (uid) => {
+      const u = s.store.get('users', uid);
+      if (u) s.store.put('users', uid, { ...u, seen: s.clock.t }); // an op lands now (only if the doc is still there)
+    },
+  });
+  await s.call(A, { op: 'hello' });
+  s.clock.t += 61 * DAY;
+  await s.jobs.daily();
+  assert.ok(s.store.get('users', A));
+});
+
+test('fix 1: daily leaves deleteMe tombstones alone (they hold nothing and expire on their own)', async () => {
+  const s = setup();
+  await s.call(A, { op: 'hello' });
+  await s.call(A, { op: 'deleteMe' });
+  s.store.put('users', B, { gone: true, expireAt: 1, seen: 1 }); // even one with an old seen
+  s.clock.t += 61 * DAY;
+  const r = await s.jobs.daily();
+  assert.equal(r.deleted, 0);
+  assert.equal(s.store.get('users', A).gone, true);
+  assert.equal(s.store.get('users', B).gone, true);
+  assert.deepEqual(s.authDeleted, [A], 'only deleteMe deleted an Auth user');
+});
+
+// Fix round 1, fix 3: a run stops taking new candidates after about 90 s, so the 120 s timeout never cuts a
+// committed change off from its push
+test('fix 3: tick stops taking new candidates after the 90 s budget; the rest waits for the next run', async () => {
+  const s = setup({ push: async () => { s.clock.t += 30 * 1000; } }); // each push takes 30 s
+  const ids = [];
+  for (let i = 0; i < 4; i++) ids.push(await startGame(s, 'uid-white-' + String(i).padStart(12, '0'), 'uid-black-' + String(i).padStart(12, '0')));
+  s.clock.t += 4 * DAY;
+  const r1 = await s.jobs.tick(); // game 1 at 0 s (60 s of pushes), game 2 at 60 s, then 120 s > 90 s: stop
+  assert.equal(r1.time, 2);
+  assert.equal(r1.more, true);
+  assert.equal(ids.filter((id) => s.store.get('games', id).st === 'over').length, 2);
+  const r2 = await s.jobs.tick();
+  assert.equal(r2.time, 2);
+  assert.ok(ids.every((id) => s.store.get('games', id).st === 'over'));
+});
+
+test('fix 3: daily keeps to the same budget', async () => {
+  const s = setup({ deleteAuthUser: async () => { s.clock.t += 50 * 1000; } });
+  for (let i = 0; i < 4; i++) await s.call('uid-idle-' + String(i).padStart(13, '0'), { op: 'hello' });
+  s.clock.t += 61 * DAY;
+  const r = await s.jobs.daily();
+  assert.equal(r.deleted, 2);
+  assert.equal(r.more, true);
+});

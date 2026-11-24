@@ -23,6 +23,10 @@ const SEEN_EVERY_MS = 6 * 60 * 60 * 1000; // users/{uid}.seen is written at most
 const DELETE_PAGE = 50; // deleteMe: games per transaction
 const DELETE_MAX_PAGES = 100; // deleteMe: a bound on the loop (20 invites a day for 30 days is about 12 pages)
 const GONE = 'x'; // stands for a player who deleted their data
+// deleteMe leaves users/{uid} = { gone: true, expireAt } (no token, no seen): the ID token stays valid for up to an
+// hour after the Auth user is deleted, and every op refuses a tombstoned uid instead of bringing data back.
+// TTL removes it after this time.
+const TOMBSTONE_MS = 2 * 60 * 60 * 1000;
 const START_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
 const ACCEPTOR_COL = { w: 'b', b: 'w', r: 'r' };
 
@@ -56,7 +60,8 @@ function over(g, res, ts) {
 }
 
 // deleteMe for one game: an invite ends expired, an active game ends abandoned (the friend wins, push "over" to the
-// friend), a finished game keeps its result. Then uid becomes 'x' everywhere in it, and oppx keeps the friend's
+// friend) unless it is already past its deadline (then the side to move loses on time, as tick would end it), a
+// finished game keeps its result. Then uid becomes 'x' everywhere in it, and oppx keeps the friend's
 // key for this player (see view). Returns { ng, to } with to the friend to push, or null.
 function leave(g, uid, ts) {
   const me = colourOf(g, uid);
@@ -66,7 +71,8 @@ function leave(g, uid, ts) {
   if (g.st === 'invited') {
     ng = over(g, { r: null, why: 'expired' }, ts);
   } else if (g.st === 'active' && me) {
-    ng = over(g, { r: game.other(me), why: 'abandoned' }, ts);
+    const res = game.isLate(g.dl, ts) ? { r: game.other(game.turnOf(g.moves)), why: 'time' } : { r: game.other(me), why: 'abandoned' };
+    ng = over(g, res, ts);
     to = friend;
   } else {
     ng = { ...g, v: g.v + 1, t: ts };
@@ -95,6 +101,7 @@ function makeOps({ store, now, rand, push, log = console.error, deleteAuthUser, 
     const ts = now();
     const res = await store.tx(async (t) => {
       const u = await t.user(uid);
+      if (u && u.gone) return { fail: ['not-found', 'not-found'] }; // deleted (fix round 1): no writes at all
       const r = (await fn(t, ts, u)) || {};
       const base = u || { tok: null, seen: ts, inv: { d: null, n: 0 } };
       const patch = { ...(userPatch ? userPatch() : {}), ...(r.user || {}) };
@@ -291,12 +298,17 @@ function makeOps({ store, now, rand, push, log = console.error, deleteAuthUser, 
       });
     },
 
-    // Delete my friend game data (FC-D16, FC-D17, scenario 10). Games in pages, each page in its own transaction
-    // that re-reads every game (a move or an accept may land in between); pushes after each commit. Then my
-    // invites, my user doc (with the push token), and last the Auth user, so a failure before it leaves the
-    // player able to try again. Safe to run again.
+    // Delete my friend game data (FC-D16, FC-D17, scenario 10). First the user doc becomes a tombstone (that
+    // write conflicts with any op in flight, which all read the user doc, so they either commit before it and
+    // their games are found below, or run again and fail not-found). Then games in pages, each page in its own
+    // transaction that re-reads every game; pushes after each commit. Then my invites, and last the Auth user.
+    // Safe to run again: on a tombstone it finishes the clean-up and answers ok.
     async deleteMe(uid) {
       const first = now();
+      await store.tx(async (t) => {
+        await t.user(uid);
+        t.setUser(uid, { gone: true, expireAt: first + TOMBSTONE_MS });
+      });
       for (let page = 0; ; page++) {
         const list = await store.gamesOf(uid, deletePage);
         if (!list.length) break;
@@ -322,7 +334,6 @@ function makeOps({ store, now, rand, push, log = console.error, deleteAuthUser, 
         if (page >= DELETE_MAX_PAGES) throw new OpError('internal', 'internal');
         await store.tx(async (t) => { for (const c of codes) t.delInvite(c); });
       }
-      await store.tx(async (t) => { t.delUser(uid); });
       await deleteAuthUser(uid);
       return { now: first };
     },
@@ -358,4 +369,4 @@ function makeOps({ store, now, rand, push, log = console.error, deleteAuthUser, 
   return { handle };
 }
 
-module.exports = { makeOps, view, over, MAX_OPEN, MAX_INVITES_A_DAY, INVITE_MS, KEEP_OVER_MS, SYNC_MAX, SYNC_LAG_MS, SEEN_EVERY_MS };
+module.exports = { makeOps, view, over, TOMBSTONE_MS, MAX_OPEN, MAX_INVITES_A_DAY, INVITE_MS, KEEP_OVER_MS, SYNC_MAX, SYNC_LAG_MS, SEEN_EVERY_MS };

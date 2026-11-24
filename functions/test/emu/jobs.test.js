@@ -2,7 +2,8 @@
 // The scheduled jobs' core (src/jobs.js) against the Firestore and Auth emulators, with an injected clock: games
 // are made over HTTP like the app makes them, then tick and daily run as the deployed functions run them (FsStore,
 // the real push sender with a recording fake in place of FCM, the real Auth deleter). This checks the Firestore
-// queries, cursors and the indexes the jobs use. It moves the clock days ahead, so it ends or deletes other test
+// queries and cursors the jobs use. The emulator does not enforce composite indexes, so it does not check them:
+// that is a step after the first deploy (functions/README.md). It moves the clock days ahead, so it ends or deletes other test
 // files' leftovers too; every check below looks only at this file's own games and players.
 const test = require('node:test');
 const assert = require('node:assert/strict');

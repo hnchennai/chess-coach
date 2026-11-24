@@ -9,8 +9,7 @@ Everything Suresh needs for the Play listing, ready to paste or upload. The deci
 | Feature graphic, 1024 x 500 | `feature-graphic.png` | Main store listing, Graphics |
 | Phone screenshots, 1080 x 1920 | `screenshots/01.png` to `08.png`, in order | Main store listing, Phone screenshots |
 | Policy and data safety answers | `docs/specs/play-listing.product.md`, "Policy and app content answers" and "Data safety answers" | Policy, App content |
-| Tester invite and tracking | `tester-invite.md` | Testing, Closed testing |
-| Production access answers | `production-questions.md` | Shown when you apply for production |
+| Tester invite and tracking | `tester-invite.md` | Testing, Internal testing |
 
 ## Making the images again
 After a visible change to the app, rebuild and retake them:

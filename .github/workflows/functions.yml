@@ -1,0 +1,56 @@
+name: Friend server (functions)
+
+# FC1: the friend challenges backend in functions/, tested on every change to it, its Firestore rules and indexes,
+# firebase.json or this workflow. Unit tests need nothing; the emulator tests run Auth, Firestore and Functions
+# locally under the demo project id, so no real Firebase project and no credentials are used.
+on:
+  push:
+    paths:
+      - 'functions/**'
+      - 'firestore.*'
+      - 'firebase.json'
+      - '.github/workflows/functions.yml'
+  pull_request:
+    paths:
+      - 'functions/**'
+      - 'firestore.*'
+      - 'firebase.json'
+      - '.github/workflows/functions.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: functions
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      # the Firestore emulator is a Java program
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Install (exactly the lock file)
+        run: npm ci
+
+      - name: Exact versions only (no ^ or ~), Node 22, installed as pinned
+        run: node scripts/check-pins.js
+
+      - name: Unit tests (game rules, ops on the in-memory store)
+        run: npm test
+
+      - name: Emulator tests (the callable over HTTP, deny-all rules)
+        env:
+          FIREBASE_CLI_DISABLE_UPDATE_CHECK: 'true'
+        run: npx firebase-tools@15.35.0 emulators:exec --only auth,firestore,functions --project demo-chess-coach "npm run test:emu"

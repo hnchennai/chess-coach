@@ -1,0 +1,26 @@
+{
+  "name": "chess-coach-functions",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Chess Coach friend challenges server (Cloud Functions for Firebase)",
+  "license": "GPL-3.0-only",
+  "main": "index.js",
+  "engines": {
+    "node": "22"
+  },
+  "scripts": {
+    "test": "node --test \"test/*.test.js\"",
+    "test:emu": "node --test --test-concurrency=1 \"test/emu/*.test.js\"",
+    "check-pins": "node scripts/check-pins.js"
+  },
+  "dependencies": {
+    "chess.js": "0.10.3",
+    "firebase-admin": "14.5.1",
+    "firebase-functions": "7.4.0"
+  },
+  "devDependencies": {
+    "@firebase/rules-unit-testing": "5.0.2",
+    "firebase": "12.19.0",
+    "firebase-tools": "15.35.0"
+  }
+}

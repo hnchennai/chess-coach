@@ -4,3 +4,6 @@ android/
 # signing keys never go in git
 *.jks
 *.keystore
+
+# Firebase emulator logs
+*-debug.log

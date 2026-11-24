@@ -42,3 +42,9 @@
   - From Suresh's screenshots, not confirmed as faults: the Learn tab stays highlighted while a Play game is on the board; the captured-pieces count is cut off at "+1:".
   - Public repository: require approval before outside contributors' workflow runs (Suresh's setting).
   - Escape check for F3a due 2026-11-24.
+
+## F4 Play listing prep, 2026-11-23 to 2026-11-24, spec docs/specs/play-listing.product.md
+- Shipped: PR #17 (listing text, store images in `store/`, policy and data safety answers, bundled fonts), v1.0.54.
+- 2026-11-24: Suresh is opening an organization account for his sole proprietorship (D-U-N-S applied for). No 12 testers / 14 days rule; a short internal test (3 to 5 people, about a week) instead (P-D3, P-D12). AdMob stays on Suresh's own account.
+- Waiting on Suresh: D-U-N-S number, then the Play Console account. Open: the business name exactly as D&B has it.
+

@@ -56,3 +56,7 @@ Spec: `docs/specs/beginner-flow.product.md` and `.tech.md` (approved by Suresh; 
 - The app draws edge to edge on Android 16: any rule that sets the page's top padding must add `env(safe-area-inset-top)` (tests/insets.test.js guards `.wrap`).
 - A PR test build installs over the phone's app only if its number is higher than the installed release. Version = CI run number, so push the branch again to get a fresh number.
 - Next: F3b ads SDK and consent. Waiting on Suresh: AdMob app ID and banner unit ID, Play Console account (closed test, 12 testers, 14 days), a website for the privacy policy and app-ads.txt. Adding the ads SDK is a checkpoint.
+
+## F4 Play listing (2026-11-24)
+- Listing kit merged (PR #17). Account: organization (sole proprietorship), waiting on D-U-N-S. Test plan: internal test, 3 to 5 people, about a week; no closed test needed. Organization accounts show a verified developer phone number on Play.
+

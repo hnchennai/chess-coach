@@ -29,6 +29,9 @@ Ad income and Play ranking both depend on players coming back. The app has a str
 | DP-D10 | Two new Android plugins, both free (MIT), no network of their own: `@capacitor/local-notifications` 8.3.1 (official) and `@capacitor-community/in-app-review` 8.0.0 (uses Google's Play review library). Pinned to exact versions | Claude, approved by Suresh 2026-11-24 |
 | DP-D11 | The daily puzzle's end card: title "Today's puzzle" and the card's result line, main button "10 more puzzles" (a rated set at the player's level), small button "Home" | Suresh, 2026-11-24 |
 | DP-D12 | A daily puzzle finished after midnight counts as the daily of the day it was dealt; its end card ends with "Today's new puzzle is on Home." instead of "A new one tomorrow." | Claude, from the review, 2026-11-24 |
+| DP-D13 | Reminder time choices: every hour on the hour from 6 am to 10 pm (17 choices), default 7 pm | Suresh, 2026-11-24 |
+| DP-D14 | `LICENSE-EXCEPTION` and the matching constitution line also name "the Google Play In-App Review Library and the Google Play Core Common library it uses" (`com.google.android.play:review` 2.0.2, which pulls `core-common` 2.0.4 and Play services basement and tasks) | Suresh, 2026-11-24 |
+| DP-D15 | Reminders use inexact alarms only. The build removes the plugin's `SCHEDULE_EXACT_ALARM` permission from the app manifest, and CI pins the review library to 2.0.2 and fails if anything else resolves | Claude (technical), 2026-11-24 |
 
 ## Wording (draft, needs Suresh's yes)
 - Card: kicker "Daily puzzle", title "Today's puzzle", line "One puzzle at your level. About a minute.", button "Solve it".
@@ -70,7 +73,9 @@ Ad income and Play ranking both depend on players coming back. The app has a str
 - Confirmed by Suresh: DP-D1 to DP-D4 (2026-11-24).
 - Proposed by Claude, approved by Suresh on 2026-11-24: DP-D5 to DP-D10 and all wording.
 - Verified by tool: the bank has 353 puzzles rated 741 to 1905 (median about 994); the streak counts any day with a puzzle, game or lesson (`streakDays` in src/js/app.js); both plugin versions exist on npm with Capacitor 8 support.
-- Not verified yet: that Google's review library adds nothing to the data safety form (to check in readiness).
+- Confirmed by Suresh: DP-D13 and DP-D14 (2026-11-24).
+- Verified by tool (2026-11-24): `@capacitor/local-notifications` 8.3.1 and `@capacitor-community/in-app-review` 8.0.0 are MIT and need `@capacitor/core` >= 8. The notifications plugin's manifest asks for POST_NOTIFICATIONS, RECEIVE_BOOT_COMPLETED, WAKE_LOCK and SCHEDULE_EXACT_ALARM, and falls back to inexact alarms when exact ones are not allowed. The review plugin defaults to `com.google.android.play:review` 2.0.2, the newest on Google's Maven.
+- Not verified: whether Google's review library needs anything on the data safety form. Google's page lists Play services basement and tasks as collecting no user data, but does not list the review library; the rating itself goes to Google in Google's own sheet. To confirm in Play Console when filling in the form.
 
 ## Open questions
 - None.

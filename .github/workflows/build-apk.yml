@@ -50,6 +50,13 @@ jobs:
           V=$(node -p "require('./node_modules/@capacitor/app/package.json').version" 2>/dev/null || true)
           echo "@capacitor/app $V"
           [ "$V" = "8.1.2" ] || { echo "::error::@capacitor/app must be exactly 8.1.2 (found '$V')"; exit 1; }
+          # D2 (DP-D10): the reminder and rating plugins are pinned too. Fail on anything but exactly these versions.
+          for P in '@capacitor/local-notifications 8.3.1' '@capacitor-community/in-app-review 8.0.0'; do
+            N=${P% *}; W=${P#* }
+            V=$(node -p "require('./node_modules/$N/package.json').version" 2>/dev/null || true)
+            echo "$N $V"
+            [ "$V" = "$W" ] || { echo "::error::$N must be exactly $W (found '$V')"; exit 1; }
+          done
 
       - name: Create the Android project
         run: |
@@ -63,6 +70,9 @@ jobs:
           # Ads (F3b): app ID and delayed measurement into the manifest, exact Google library versions into variables.gradle.
           # The script fails the step if anything did not apply.
           sh scripts/android-ads.sh android
+          # D2 (DP-D15): the Play review library pinned to 2.0.2, SCHEDULE_EXACT_ALARM removed from the app's manifest and the
+          # reminder's small notification icon in res/drawable. The script fails the step if anything did not apply.
+          sh scripts/android-d2.sh android
           cat android/app/src/main/AndroidManifest.xml android/variables.gradle
 
       # Gradle distributions live on GitHub releases. Unsigned downloads can fail (GitHub incident, 2026-11-08),
@@ -95,6 +105,12 @@ jobs:
           # G2c: without the App plugin in the Android project the back button would leave the app again. Fail if it is missing.
           grep -qF '@capacitor/app@8.1.2' "$RUNNER_TEMP/sync.txt" || { echo "::error::cap sync did not list @capacitor/app@8.1.2"; exit 1; }
           grep -qF "include ':capacitor-app'" android/capacitor.settings.gradle || { echo "::error::android/capacitor.settings.gradle does not include @capacitor/app"; exit 1; }
+          # D2: the reminder and rating plugins must be in the Android project, at the pinned versions
+          for P in '@capacitor/local-notifications@8.3.1' '@capacitor-community/in-app-review@8.0.0'; do
+            grep -qF "$P" "$RUNNER_TEMP/sync.txt" || { echo "::error::cap sync did not list $P"; exit 1; }
+          done
+          grep -qF "include ':capacitor-local-notifications'" android/capacitor.settings.gradle || { echo "::error::android/capacitor.settings.gradle does not include @capacitor/local-notifications"; exit 1; }
+          grep -qF "include ':capacitor-community-in-app-review'" android/capacitor.settings.gradle || { echo "::error::android/capacitor.settings.gradle does not include @capacitor-community/in-app-review"; exit 1; }
 
       - name: Build the APK (and Play Store bundle when signed)
         env:
@@ -105,11 +121,13 @@ jobs:
           echo "apply from: '../../android-signing.gradle'" >> app/build.gradle
           # Ads (F3b): the build must link exactly the pinned libraries (scripts/android-ads.sh). Fail if Gradle resolved anything else.
           ./gradlew -q :app:dependencies --configuration releaseRuntimeClasspath --no-daemon > "$RUNNER_TEMP/deps.txt"
-          grep -E 'play-services-ads:|user-messaging-platform:|webview-native-ui:engine:' "$RUNNER_TEMP/deps.txt" | sort -u
-          for D in 'com.google.android.gms:play-services-ads:25.4.0' 'com.google.android.ump:user-messaging-platform:4.0.0' 'io.github.webview-native-ui:engine:1.0.11'; do
+          # D2 (DP-D14, DP-D15): and the Play review library, exactly 2.0.2 (scripts/android-d2.sh).
+          grep -E 'play-services-ads:|user-messaging-platform:|webview-native-ui:engine:|com\.google\.android\.play:' "$RUNNER_TEMP/deps.txt" | sort -u
+          for D in 'com.google.android.gms:play-services-ads:25.4.0' 'com.google.android.ump:user-messaging-platform:4.0.0' 'io.github.webview-native-ui:engine:1.0.11' 'com.google.android.play:review:2.0.2'; do
             grep -qE -- "--- $D( \(\*\)| \(c\))?\$" "$RUNNER_TEMP/deps.txt" || { echo "::error::Gradle did not resolve exactly $D"; exit 1; }
           done
           if grep -E -- '--- (com\.google\.android\.gms:play-services-ads|com\.google\.android\.ump:user-messaging-platform|io\.github\.webview-native-ui:engine):.* -> ' "$RUNNER_TEMP/deps.txt"; then echo "::error::An ads library version was changed during resolution"; exit 1; fi
+          if grep -E -- '--- com\.google\.android\.play:review:.* -> ' "$RUNNER_TEMP/deps.txt"; then echo "::error::The Play review library version was changed during resolution"; exit 1; fi
           if [ -n "$KS_PASS" ]; then
             echo "$KS_B64" | base64 -d > "$KS_PATH"
             ./gradlew assembleRelease bundleRelease --no-daemon
@@ -120,6 +138,10 @@ jobs:
             ./gradlew assembleDebug --no-daemon
             cp app/build/outputs/apk/debug/app-debug.apk ../chess-coach-$VNAME.apk
           fi
+
+      # D2 (DP-D15): the manifest Gradle merged from the app and all libraries: no SCHEDULE_EXACT_ALARM, POST_NOTIFICATIONS there.
+      - name: Check the merged manifest (no exact alarms)
+        run: sh scripts/android-d2.sh --check-merged android
 
       - uses: actions/upload-artifact@v4
         with:

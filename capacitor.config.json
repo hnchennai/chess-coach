@@ -2,5 +2,8 @@
   "appId": "com.suresh.chesscoach",
   "appName": "Chess Coach",
   "webDir": "www",
-  "android": { "backgroundColor": "#f4f1ea" }
+  "android": { "backgroundColor": "#f4f1ea" },
+  "plugins": {
+    "LocalNotifications": { "smallIcon": "ic_stat_daily", "iconColor": "#1E6B58" }
+  }
 }

@@ -1238,6 +1238,7 @@
     if (live) { live.textContent = ''; var say = parts.join(' '); setTimeout(function () { live.textContent = say; }, 60); }
     var a = document.activeElement, h = el.querySelector('.ec-title');
     if (h && !drag && (!a || a === document.body || !a.isConnected || a.offsetParent === null)) try { h.focus({ preventScroll: true }); } catch (e) {}
+    if (el.id !== 'reviewEnd') rateSoon(el); /* D2 (DP-D4): right after a happy moment's end card shows */
   }
   /* The last move of a finished game's review, reached by stepping there (a review opens on the last move). */
   function reviewDone() { var rv = st.rv; return !!(st.mode === 'review' && rv && rv.stepped && rv.sans.length && rv.ply === rv.sans.length && (rv.past || G.game_over())); }
@@ -1533,6 +1534,7 @@
     var s = summarize(st.ann, st.tags, st.user, G.history());
     prof.games.unshift({ id: 'g' + Date.now(), d: Date.now(), r: r.r, user: st.user, level: st.level, acc: s.acc, counts: s.counts, tags: s.tags, sans: G.history(), ann: st.ann });
     prof.games = prof.games.slice(0, 30); dayRec().games++;
+    if (r.r === 'W' && booted) rateHappy = true; /* D2 (DP-D4): a won game is a happy moment, asked after its end card */
     st.think = null; saveProfile();
     /* F-D19: the saved game must say it is recorded, or the next app start records it again (the player's own last move
        was saved before this ran; an app start never saved it). The game's time stamp stays, so a merge still sees its real age. */
@@ -1614,7 +1616,7 @@
     if (s.finished && isDaily(s)) {
       /* D1: the daily puzzle's end card says how it went, in the card's own signed words. DP-D11: "10 more puzzles", small Home */
       var dok = s.right > 0, late = typeof s.opts.daily === 'string' && s.opts.daily !== dayKey(); /* DP-D12: finished after midnight */
-      body = '<div class="sesav">' + Avatar.coach(dok ? 'proud' : 'worried', 52) + '</div><h3 class="ec-title" tabindex="-1">' + esc(Daily.lines('todo').title) + '</h3><p class="ec-text">' + esc(Daily.endLine(dok, late)) + '</p>' +
+      body = '<div class="sesav">' + Avatar.coach(dok ? 'proud' : 'worried', 52) + '</div><h3 class="ec-title" tabindex="-1">' + esc(Daily.lines('todo').title) + '</h3><p class="ec-text">' + esc(Daily.endLine(dok, late)) + '</p>' + remindOfferHtml() +
         stepEnd(null, 'session', true, s) + slotHost('step', s);
     } else if (s.finished) {
       var passed = s.pass == null || s.right >= s.pass;
@@ -1633,7 +1635,7 @@
   }
   function startSession(kind, opts) {
     stow(opts.unit ? 'learn' : 'train'); /* G2b: the newest wins on its own tab; another tab's waits (phones) */
-    clearSession(); st.rv = null; st.af = false;
+    clearSession(); st.rv = null; st.af = false; rateHappy = false; /* D2 */
     st.ses = { kind: kind, title: opts.title, count: opts.count || 10, pass: opts.pass, unit: opts.unit || null, part: opts.part || null, rated: !!opts.rated, i: 0, right: 0, wrong: 0, items: opts.items || [], opts: opts, msg: null };
     openAct(); switchTab(opts.unit ? 'path' : 'train');
     nextItem(true);
@@ -1671,7 +1673,7 @@
   function markUnit(id, part) {
     var wasOpen = unlockedByLessons(), wasComplete = Profile.levelComplete(prof, UNITS, unitDone);
     var c = prof.course[id] || (prof.course[id] = {});
-    if (!c[part]) { c[part] = Date.now(); dayRec().course++; }
+    if (!c[part]) { c[part] = Date.now(); dayRec().course++; if (booted) rateHappy = true; } /* D2 (DP-D4): a lesson part newly finished */
     saveProfile();
     /* S2a: the unlock note shows on the real false-to-true flip only (Show everything never counts), once, for Beginners. */
     if (prof.level === 'beginner' && !wasOpen && unlockedByLessons()) showNote('New: Train and Progress. Practise with puzzles and see how you’re doing.', 'unlock');
@@ -2011,7 +2013,7 @@
   /* ---------- lesson player ---------- */
   function startLesson(id) {
     stow('learn'); /* G2b: replaces what waits on Learn; a set on Train waits on (phones) */
-    clearSession(); st.rv = null; st.af = false;
+    clearSession(); st.rv = null; st.af = false; rateHappy = false; /* D2: a happy moment not yet asked about ends when a new activity starts */
     st.mode = 'lesson'; st.ls = { unit: UNIT[id], i: 0, g: null, side: 'w' };
     openAct(); switchTab('path'); showLessonStep();
   }
@@ -2347,7 +2349,7 @@
   var setOpener = null;
   function openSettings() {
     var sh = $('settingsSheet'); if (!sh || !sh.hidden) return;
-    setOpener = document.activeElement; renderLevelCard(); renderLook(); adDebug();
+    setOpener = document.activeElement; renderLevelCard(); renderLook(); adDebug(); renderRemind(); remindPerm();
     sh.hidden = false; document.documentElement.classList.add('sheet-open'); adSync(); /* A-D12 */
     var pn = sh.querySelector('.sheet-panel'); if (pn) pn.focus({ preventScroll: true });
   }
@@ -2639,10 +2641,14 @@
   }
   /* The first result for the puzzle is its day's result (DP-D12: the day it was dealt, s.opts.daily), saved with the rated
      result that follows (recordPuzzle). */
-  function dailyResult(s, id, ok) { var d = s.opts.daily; prof.daily = Daily.record(prof.daily, typeof d === 'string' ? d : prof.daily.d, id, ok); }
+  function dailyResult(s, id, ok) {
+    var d = s.opts.daily; prof.daily = Daily.record(prof.daily, typeof d === 'string' ? d : prof.daily.d, id, ok);
+    if (ok) rateHappy = true; /* D2 (DP-D4): a solved daily puzzle is a happy moment */
+    remindSync(); /* D2 (AC6): today is done, so today's reminder goes */
+  }
   /* Fix 3c: Home turns over at local midnight, and when the app comes back to the front (a phone that slept through it). */
   var dayTimer = null;
-  function armDay() { clearTimeout(dayTimer); dayTimer = setTimeout(dayTurn, Daily.untilMidnight(new Date()) + 1000); }
+  function armDay() { clearTimeout(dayTimer); dayTimer = setTimeout(function () { dayTurn(); remindSync(); }, Daily.untilMidnight(new Date()) + 1000); } /* D2: and the reminders, for the new 7 days */
   /* Only when the day has turned since Home last drew its card, and keeping focus and scroll (as a cloud pull's re-render). */
   function dayTurn() { armDay(); if (st.tab === 'coach' && prof.level && prof.daily && prof.daily.d && prof.daily.d !== dayKey()) keepFocus(renderCoach); }
   function renderCoach() {
@@ -2981,6 +2987,8 @@
     if (d.act === 'epart') { goPart(d.u, d.k); return; }
     if (d.act === 'more') { trainStart('rated'); return; }
     if (d.act === 'daily') { dailyStart(); return; }
+    if (d.act === 'rmyes' || d.act === 'rmno') { answerRemind(d.act === 'rmyes'); return; } /* D2: Rani's reminder offer */
+    if (d.act === 'remind') { toggleRemind(); return; } /* D2: the Settings switch */
     if (d.act === 'rvnew') { st.mode = 'play'; st.rv = null; resetHints(); newGame(false); render(); return; }
     if (d.act === 'recgame') { newGame(false, { level: plain() ? Profile.LEVELS.beginner.opp : recLevel() }); return; }
     if (d.act === 'review') { enterReview(null); return; }
@@ -3059,6 +3067,7 @@
     if (look.v3d) set3d(true, true);
     if (Profile.needsCheck(prof)) openPlacement(false);
     booted = true;
+    remindBoot(); /* D2: the reminder's tap and resume listeners, and the next 7 days of reminders (Android app only) */
     adBoot(); /* F3b: the one moment the ads start-up may begin (from day two, no activity open); on day one and on the web, nothing */
     initCloud();
   }
@@ -3092,6 +3101,168 @@
       if (r && typeof r.catch === 'function') r.catch(none);
     } catch (e) {}
   })();
+  /* ---------- D2: the daily puzzle reminder and the Play rating ask (docs/specs/daily-puzzle.product.md; rules in remind.js) ----------
+     Android app only: the plugins are reached only when Capacitor says it is the native Android app. On the web (and in an
+     app without the plugin) nothing here does anything: no offer, no Settings row, no plugin call.
+     The settings live on the device only (Remind.KEY), never in prof: notification permission belongs to one phone.
+     Every plugin call is a promise whose failure is caught; nothing here ever throws into the UI. */
+  var LN = null, IAR = null, rmNone = function () {};
+  (function () {
+    try {
+      var C = window.Capacitor;
+      if (!C || typeof C.isNativePlatform !== 'function' || !C.isNativePlatform() || typeof C.getPlatform !== 'function' || C.getPlatform() !== 'android' || !C.Plugins) return;
+      LN = C.Plugins.LocalNotifications || null; IAR = C.Plugins.InAppReview || null;
+    } catch (e) { LN = null; IAR = null; }
+  })();
+  /* a plugin call as a promise, whatever it does (returns a value, throws, or rejects) */
+  function pcall(fn) { try { var r = fn(); return r && typeof r.then === 'function' ? r : Promise.resolve(r); } catch (e) { return Promise.reject(e); } }
+  var rmMem = null, rmPermState = null, rmRefused = false, rmChan = null, rmBusy = null, rmAgain = false;
+  function rmGet() {
+    if (!rmMem) { var raw = null; try { raw = localStorage.getItem(Remind.KEY); } catch (e) {} rmMem = Remind.read(raw); }
+    return { on: rmMem.on, hour: rmMem.hour, offered: rmMem.offered, rateT: rmMem.rateT };
+  }
+  function rmSet(o) { rmMem = Remind.read(JSON.stringify(o)); try { localStorage.setItem(Remind.KEY, JSON.stringify(rmMem)); } catch (e) {} }
+  /* Notification permission: resolves true when granted. ask: request it when it is not (Android shows its own question). */
+  function rmPermit(ask) {
+    if (!LN) return Promise.resolve(false);
+    return pcall(function () { return LN.checkPermissions(); }).then(function (p) {
+      rmPermState = (p && p.display) || null;
+      if (rmPermState === 'granted' || !ask) return rmPermState === 'granted';
+      return pcall(function () { return LN.requestPermissions(); }).then(function (q) { rmPermState = (q && q.display) || rmPermState; return rmPermState === 'granted'; });
+    }).catch(function () { return false; });
+  }
+  /* AC6, DP-D7: one run at a time; a call during a run runs once more after it, with the newest settings and day */
+  function remindSync() {
+    if (!LN) return Promise.resolve();
+    if (rmBusy) { rmAgain = true; return rmBusy; }
+    rmBusy = rmRun().catch(rmNone).then(function () { rmBusy = null; if (rmAgain) { rmAgain = false; return remindSync(); } });
+    return rmBusy;
+  }
+  function rmRun() {
+    return rmPermit(false).then(function (ok) {
+      renderRemind();
+      return rmCancelAll().then(function () {
+        var s = rmGet(); if (!s.on || !ok) return; /* AC7: off cancels all, and nothing is set */
+        return rmChannel().then(function () {
+          var list = Remind.plan(new Date(), s.hour, Daily.state(prof.daily, dayKey()) !== 'todo'); /* today skipped once it is done */
+          if (!list.length) return;
+          return pcall(function () { return LN.schedule({ notifications: Remind.notifications(list) }); });
+        });
+      });
+    });
+  }
+  /* every reminder still pending is this app's own: all go before the new week is set */
+  function rmCancelAll() {
+    return pcall(function () { return LN.getPending(); }).then(function (r) {
+      var ids = ((r && r.notifications) || []).map(function (n) { return { id: n.id }; });
+      if (ids.length) return pcall(function () { return LN.cancel({ notifications: ids }); });
+    }).catch(rmNone);
+  }
+  function rmChannel() {
+    if (!rmChan) rmChan = pcall(function () { return LN.createChannel(Remind.CHANNEL); }).catch(function () { rmChan = null; });
+    return rmChan;
+  }
+  /* AC5, DP-D3: Rani's offer on the daily puzzle's end card, from the first finished one, once per phone */
+  function remindOfferHtml() {
+    if (!LN || !Remind.offerShows(true, rmGet().offered, prof.daily && prof.daily.n)) return '';
+    return '<div class="rm-offer" role="group" aria-labelledby="rmOfferQ"><p id="rmOfferQ">' + esc(Remind.OFFER.line) + '</p><div class="rm-btns">' +
+      '<button class="btn" type="button" data-act="rmyes">' + esc(Remind.OFFER.yes) + '</button><button class="btn" type="button" data-act="rmno">' + esc(Remind.OFFER.no) + '</button></div></div>';
+  }
+  /* Either answer ends the offer for good on this phone. Yes asks Android for permission; denied leaves the reminder off. */
+  function answerRemind(yes) {
+    if (!LN) return;
+    var s = rmGet(); s.offered = true; rmSet(s);
+    render();
+    var m = document.querySelector('#sessionCard .ec-main'); if (m && m.offsetParent !== null) try { m.focus({ preventScroll: true }); } catch (e) {}
+    if (yes) remindOn();
+  }
+  function remindOn() {
+    return rmPermit(true).then(function (ok) {
+      var s = rmGet();
+      if (ok) { s.on = true; rmSet(s); rmRefused = false; } else rmRefused = true; /* AC7: denied leaves the switch off, with the line */
+      renderRemind();
+      return remindSync();
+    }).catch(rmNone);
+  }
+  /* AC7: the Settings switch. On asks for permission when needed; off cancels every reminder. */
+  function toggleRemind() {
+    if (!LN) return;
+    var s = rmGet();
+    if (!s.on) { remindOn(); return; }
+    s.on = false; rmSet(s); rmRefused = false; renderRemind(); remindSync();
+  }
+  function remindHour(v) {
+    var h = +v; if (!LN || Remind.HOURS.indexOf(h) < 0) return;
+    var s = rmGet(); if (s.hour === h) return;
+    s.hour = h; rmSet(s); renderRemind(); remindSync();
+  }
+  /* Settings refreshes what Android says about permission each time it opens (the player may have changed it there) */
+  function remindPerm() { if (LN) rmPermit(false).then(renderRemind); }
+  /* The Settings row: the switch, the time (DP-D13: 17 hours, "7 pm") and, when Android blocks notifications, the line */
+  function renderRemind() {
+    var box = $('remindSet'); if (!box) return;
+    if (!LN) { box.hidden = true; return; }
+    if (!box._built) {
+      box._built = true;
+      box.innerHTML = '<button class="switchrow" type="button" role="switch" aria-checked="false" data-act="remind" id="remindSw"><span><b id="remindTitle">' + esc(Remind.SETTING) + '</b></span><i class="sw" aria-hidden="true"></i></button>' +
+        '<select id="remindHour" aria-labelledby="remindTitle">' + Remind.HOURS.map(function (h) { return '<option value="' + h + '">' + esc(Remind.label(h)) + '</option>'; }).join('') + '</select>' +
+        '<p class="rm-off" id="remindOff" role="status" hidden>' + esc(Remind.DENIED) + '</p>';
+      $('remindHour').addEventListener('change', function (e) { remindHour(e.target.value); });
+    }
+    var s = rmGet(), sel = $('remindHour'), off = $('remindOff');
+    $('remindSw').setAttribute('aria-checked', String(s.on));
+    if (sel.value !== String(s.hour)) sel.value = String(s.hour);
+    off.hidden = !(rmRefused || rmPermState === 'denied' || (s.on && rmPermState && rmPermState !== 'granted'));
+    box.hidden = false;
+  }
+  /* AC8, DP-D8: a tapped reminder opens today's daily puzzle while the card offers "Solve it"; otherwise Home */
+  function dailyOffered() { return !!prof.level && tabOpen('train') && (!plain() || Daily.shows(true, homeState().kind)); }
+  function remindTap() {
+    try {
+      closeSettings(true);
+      if (Placement.isOpen()) return;
+      var r = prof.level ? dailyRec() : null;
+      if (r && r.id && dailyOffered() && Remind.tapTo(Daily.state(r, dayKey())) === 'daily') { dailyStart(); return; }
+      if (phone() && actOpen()) closeAct();
+      switchTab('coach'); render(); focusTab();
+    } catch (e) {}
+  }
+  /* Start-up: the tap listener first (a tap that launched the app is handed over when it is added), then App's resume, then
+     the next 7 days. */
+  function remindBoot() {
+    renderRemind();
+    if (!LN) return;
+    try { var r = LN.addListener('localNotificationActionPerformed', function () { remindTap(); }); if (r && typeof r.catch === 'function') r.catch(rmNone); } catch (e) {}
+    try {
+      var C = window.Capacitor, App = C && C.Plugins && C.Plugins.App;
+      if (App) { var q = App.addListener('resume', function () { remindSync(); }); if (q && typeof q.catch === 'function') q.catch(rmNone); }
+    } catch (e) {}
+    remindSync();
+  }
+  /* AC9, DP-D4: Google's rating sheet, right after a happy moment's end card (a won game, a newly finished lesson part, a
+     solved daily puzzle), from the 3rd active day, at most once every 60 days. Never with an activity in progress, never
+     under a sheet, a question from Rani or the reminder offer. Never a question of our own first: Google decides whether
+     its sheet shows. rateT is written before the call, so a failure never asks again the same day. */
+  var rateHappy = false, rateTimer = null;
+  function rateSoon(el) {
+    if (!rateHappy) return;
+    rateHappy = false;
+    if (!IAR) return;
+    clearTimeout(rateTimer);
+    rateTimer = setTimeout(function () { rateNow(el); }, 600); /* once the card has settled on screen */
+  }
+  /* A lesson, a review or a set in progress, or a game on the board that is not over. A game that waits while a set's end card
+     shows (G2b) is not in play. */
+  function rateBusy() { return st.mode === 'lesson' || st.mode === 'review' || !!(st.ses && !st.ses.finished && !st.ses.end) || (st.mode === 'play' && !st.ses && gameOn()); }
+  function rateNow(el) {
+    if (!IAR || !el || !el.isConnected || el.hidden || !el.getClientRects().length) return;
+    var sh = $('settingsSheet');
+    if (rateBusy() || Placement.isOpen() || (sh && !sh.hidden) || (noteCur && noteCur.kind !== 'info') || document.querySelector('#sessionCard .rm-offer')) return;
+    var s = rmGet(), now = Date.now();
+    if (!Remind.shouldAsk(Remind.activeDays(prof.days), s.rateT, now)) return;
+    s.rateT = now; rmSet(s);
+    pcall(function () { return IAR.requestReview(); }).catch(rmNone);
+  }
   if (window.claude && window.claude.hot && window.claude.hot.snapshot) { try { window.claude.hot.snapshot(snapshot); } catch (e) {} }
   window.claude && window.claude.hot && window.claude.hot.ready ? window.claude.hot.ready(start) : start((window.claude && window.claude.hot && window.claude.hot.data) || {});
   window.__coach = { st: st, getProf: function () { return prof; }, PZ: PZ, startPart: startPart, trainStart: trainStart, openPlacement: openPlacement, nextUnit: nextUnit, hist: function () { return G.history(); }, openSettings: openSettings,

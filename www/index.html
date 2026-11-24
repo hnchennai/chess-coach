@@ -734,6 +734,15 @@ header h1 { margin-right: auto; } /* the gear stays right when the engine pill i
 .settitle { margin: 0 0 10px; font-size: 17px; font-weight: 600; }
 /* ---------- F3b: Settings rows "Privacy policy" and "Privacy choices" (44px targets), and the page padding under the ad banner ---------- */
 .privset { margin-top: 12px; padding-block: 4px; }
+/* D2: the daily puzzle reminder in Settings (Android only), and Rani's offer on the daily puzzle's end card */
+.remindset { margin-top: 12px; }
+.remindset .switchrow { border-top: 0; margin: 0; padding: 0; min-height: 44px; }
+.remindset select { margin-top: 8px; min-height: 44px; }
+.rm-off { margin: 8px 0 0; font-size: 13.5px; line-height: 1.4; color: var(--muted); }
+.rm-offer { margin-top: 12px; padding: 10px 12px; border-radius: 10px; background: var(--accent-soft); }
+.rm-offer p { margin: 0 0 8px; font-size: 15px; line-height: 1.4; }
+.rm-btns { display: flex; flex-wrap: wrap; gap: 8px; }
+.rm-btns .btn { flex: 1 1 120px; min-height: 44px; }
 .adsdebug { margin: 4px 12px 8px; font-size: 12px; line-height: 1.4; opacity: .7; overflow-wrap: anywhere; }
 .rowlink { display: flex; align-items: center; width: 100%; box-sizing: border-box; text-align: left; text-decoration: none; }
 .rowlink[hidden] { display: none; }
@@ -1009,6 +1018,8 @@ header h1 { margin-right: auto; } /* the gear stays right when the engine pill i
     <div class="card levelcard" id="levelCard"></div>
     <!-- S2b, D41: Coach and pieces for every level (the same markup as Home's card, rendered by renderLook) -->
     <section class="card lookset" aria-labelledby="lookSetTitle"><h3 class="settitle" id="lookSetTitle">Coach and pieces</h3><div id="lookSet"></div></section>
+    <!-- D2 (DP-D3, AC7): the daily puzzle reminder, Android app only. Empty and hidden on the web (app.js renderRemind fills it) -->
+    <section class="card remindset" id="remindSet" hidden></section>
     <!-- F3b (A-D17): "Privacy policy" for everyone; "Privacy choices" only where Google reports a choice applies (app.js adChoice) -->
     <div class="card privset"><a class="linkbtn rowlink" data-act="privacy" href="https://hnchennai.github.io/privacy.html" target="_blank" rel="noopener">Privacy policy</a><button class="linkbtn rowlink" type="button" data-act="privchoices" id="privChoices" hidden>Privacy choices</button><p class="adsdebug" id="adDebug" hidden></p></div> <!-- adDebug: test builds only (launch switch off), the ads state for phone tests; empty and hidden on the web and once real ads are on -->
   </div>
@@ -1031,6 +1042,7 @@ header h1 { margin-right: auto; } /* the gear stays right when the engine pill i
 <script src="js/words.js"></script>
 <script src="js/home.js"></script>
 <script src="js/daily.js"></script>
+<script src="js/remind.js"></script>
 <script src="js/flow.js"></script>
 <script src="js/tips.js"></script>
 <script>if(window.Capacitor)document.write('<script src="js/ads.js"><\/script>')</script>

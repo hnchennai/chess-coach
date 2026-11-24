@@ -737,7 +737,10 @@ header h1 { margin-right: auto; } /* the gear stays right when the engine pill i
 /* D2: the daily puzzle reminder in Settings (Android only), and Rani's offer on the daily puzzle's end card */
 .remindset { margin-top: 12px; }
 .remindset .switchrow { border-top: 0; margin: 0; padding: 0; min-height: 44px; }
-.remindset select { margin-top: 8px; min-height: 44px; }
+.rm-time { display: flex; align-items: center; gap: 12px; margin-top: 8px; }
+.rm-time label { font-size: 15px; font-weight: 600; }
+.rm-time select { flex: 1; min-width: 0; min-height: 44px; }
+.rm-time select:disabled { opacity: .55; }
 .rm-off { margin: 8px 0 0; font-size: 13.5px; line-height: 1.4; color: var(--muted); }
 .rm-offer { margin-top: 12px; padding: 10px 12px; border-radius: 10px; background: var(--accent-soft); }
 .rm-offer p { margin: 0 0 8px; font-size: 15px; line-height: 1.4; }
@@ -998,7 +1001,7 @@ header h1 { margin-right: auto; } /* the gear stays right when the engine pill i
         <!-- F2 (F-D3): the tip slot at the bottom of Progress, above the license credits -->
         <div class="tipslot" id="progSlot" hidden></div>
         <!-- License credits stay for every level, Beginners too (constitution; D37 is the one exception to D23). -->
-        <p class="credit">Chess Coach is free software under the <a href="https://www.gnu.org/licenses/gpl-3.0.html" target="_blank" rel="noopener">GNU GPL version 3</a>. Source code: <a href="https://github.com/hnchennai/chess-coach" target="_blank" rel="noopener">github.com/hnchennai/chess-coach</a>. The app’s own code carries an added permission (LICENSE-EXCEPTION in the source) to be combined with Google Mobile Ads, Google User Messaging Platform and Google Play Billing. Stockfish is separate and unchanged.</p>
+        <p class="credit">Chess Coach is free software under the <a href="https://www.gnu.org/licenses/gpl-3.0.html" target="_blank" rel="noopener">GNU GPL version 3</a>. Source code: <a href="https://github.com/hnchennai/chess-coach" target="_blank" rel="noopener">github.com/hnchennai/chess-coach</a>. The app’s own code carries an added permission (LICENSE-EXCEPTION in the source) to be combined with Google Mobile Ads, Google User Messaging Platform, Google Play Billing, Google Play In-App Review and Google Play Core Common, and the Google Play services libraries they use. Stockfish is separate and unchanged.</p>
         <p class="credit">Analysis by Stockfish 19 (GPLv3, stockfishchess.org) via stockfish.js. Puzzles mined from engine games and verified by Stockfish.</p>
         <p class="credit">3D marble set and board: “A Beautiful Game” by the MaterialX Project (ASWF), glTF conversion by Ed Mackey, licensed <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener">CC BY 4.0</a>. Simplified and resized for this app. Three.js (MIT) draws the 3D view.</p>
       </div>

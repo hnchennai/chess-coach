@@ -189,7 +189,7 @@ test('the pure module makes no plugin, DOM or network reference', () => {
 });
 
 // Criterion 14 and the constitution: the licence exception, word for word, and where it is named.
-const EXC = 'Additional permission under GNU GPL version 3 section 7: if you modify this program, or any covered work, by linking or combining it with the Google Mobile Ads SDK, the Google User Messaging Platform SDK, the Google Play Billing Library, or the Google Play In-App Review Library and the Google Play Core Common library it uses (or modified versions of those libraries), the copyright holder of Chess Coach grants you permission to convey the resulting work. This permission covers the Chess Coach code only. Stockfish is a separate program under plain GPL version 3.';
+const EXC = 'Additional permission under GNU GPL version 3 section 7: if you modify this program, or any covered work, by linking or combining it with the Google Mobile Ads SDK, the Google User Messaging Platform SDK, the Google Play Billing Library, the Google Play In-App Review Library and the Google Play Core Common library it uses, or the Google Play services libraries they use (or modified versions of those libraries), the copyright holder of Chess Coach grants you permission to convey the resulting work. This permission covers the Chess Coach code only. Stockfish is a separate program under plain GPL version 3.';
 const LIBS = ['Google Mobile Ads SDK', 'Google User Messaging Platform SDK', 'Google Play Billing Library'];
 const read = (f) => fs.readFileSync(path.join(__dirname, '..', f), 'utf8');
 const flat = (s) => s.replace(/\s+/g, ' ').trim();
@@ -207,12 +207,20 @@ test('criterion 14: the README names the exception and the three Google librarie
 
 // D2 (DP-D14, Suresh 2026-11-24): the exception also names the Play review library and the core library it uses.
 test('DP-D14: LICENSE-EXCEPTION, the README and the constitution name the Play In-App Review and Core Common libraries', () => {
-  const names = ['Google Play In-App Review Library', 'Google Play Core Common library'];
+  const names = ['Google Play In-App Review Library', 'Google Play Core Common library', 'Google Play services libraries they use']; /* DP-D20 */
   names.forEach((l) => assert.ok(flat(read('LICENSE-EXCEPTION')).includes(l), 'LICENSE-EXCEPTION: ' + l));
   const r = read('README.md'), sec = r.slice(r.indexOf('## Licence and source'), r.indexOf('## Credits'));
   names.forEach((l) => assert.ok(flat(sec).includes(l), 'README: ' + l));
   const c = read('CONSTITUTION.md').split('\n').filter((x) => x.includes('LICENSE-EXCEPTION'));
   assert.equal(c.length, 1); names.forEach((l) => assert.ok(c[0].includes(l), 'CONSTITUTION: ' + l));
+  assert.ok(c[0].includes('2026-11-24'), 'DP-D20: the constitution line carries the new date');
+});
+
+// DP-D16, DP-D20: the in-app credit names the same libraries as the licence file.
+test('DP-D16, DP-D20: the in-app credit also names Play In-App Review, Play Core Common and the Play services libraries they use', () => {
+  const credits = (read('src/body.html').match(/<p class="credit">[\s\S]*?<\/p>/g) || []).join('\n');
+  ['Google Play In-App Review', 'Google Play Core Common', 'Google Play services libraries they use'].forEach((l) => assert.ok(credits.includes(l), l));
+  assert.ok(!/[–—]/.test(credits), 'no dashes');
 });
 
 test('criterion 14: the in-app credit names the exception and the libraries, and keeps the Stockfish credit', () => {

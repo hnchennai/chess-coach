@@ -731,7 +731,10 @@ header h1 { margin-right: auto; } /* the gear stays right when the engine pill i
 /* D2: the daily puzzle reminder in Settings (Android only), and Rani's offer on the daily puzzle's end card */
 .remindset { margin-top: 12px; }
 .remindset .switchrow { border-top: 0; margin: 0; padding: 0; min-height: 44px; }
-.remindset select { margin-top: 8px; min-height: 44px; }
+.rm-time { display: flex; align-items: center; gap: 12px; margin-top: 8px; }
+.rm-time label { font-size: 15px; font-weight: 600; }
+.rm-time select { flex: 1; min-width: 0; min-height: 44px; }
+.rm-time select:disabled { opacity: .55; }
 .rm-off { margin: 8px 0 0; font-size: 13.5px; line-height: 1.4; color: var(--muted); }
 .rm-offer { margin-top: 12px; padding: 10px 12px; border-radius: 10px; background: var(--accent-soft); }
 .rm-offer p { margin: 0 0 8px; font-size: 15px; line-height: 1.4; }

@@ -137,16 +137,61 @@ test('wording, as signed, with no em dash', () => {
   [R.TITLE, R.BODY, R.OFFER.line, R.OFFER.yes, R.OFFER.no, R.SETTING, R.DENIED].forEach((s) => assert.ok(!/—/.test(s)));
 });
 
-test('notifications: the channel and each reminder ask for nothing exact (DP-D15)', () => {
+test('notifications: inexact, but they wake an idle phone (DP-D15, fix round 1); the channel keeps the normal sound (DP-D21)', () => {
   const p = R.plan(at(2026, 10, 25, 8, 0), 19, false), n = R.notifications(p);
   assert.equal(n.length, 7);
   n.forEach((x, i) => {
     assert.equal(x.id, p[i].id); assert.equal(x.title, R.TITLE); assert.equal(x.body, R.BODY); assert.equal(x.channelId, 'daily');
     assert.equal(x.schedule.at.getTime(), p[i].at.getTime());
-    assert.ok(!('allowWhileIdle' in x.schedule) && !('allowWhileIdle' in x), 'never allowWhileIdle');
+    assert.equal(x.schedule.allowWhileIdle, true, 'setAndAllowWhileIdle: on time on an idle phone, no exact-alarm permission needed');
+    assert.ok(!('allowWhileIdle' in x), 'allowWhileIdle belongs to the schedule');
     assert.equal(x.isExactNotification, false, 'inexact outright: the plugin otherwise opens Android’s "Alarms and reminders" screen');
     assert.ok(!('isExactMandatory' in x));
-    assert.ok(!('repeats' in x.schedule) && !('every' in x.schedule), 'one-off reminders');
+    assert.deepEqual(Object.keys(x.schedule).sort(), ['allowWhileIdle', 'at'], 'one-off reminders: nothing that repeats');
   });
   assert.deepEqual(R.CHANNEL, { id: 'daily', name: 'Daily puzzle reminder', importance: 3 });
+});
+
+test('keyId: a day key (as prof.daily.d) to its reminder id; 0 for anything else', () => {
+  assert.equal(R.keyId('2026-11-25'), 20261125);
+  assert.equal(R.keyId('2027-1-5'), 20270105);
+  assert.equal(R.keyId('2026-11-25'), R.id(new Date(2026, 10, 25, 19)), 'the same id the plan gives that day');
+  for (const bad of [null, undefined, '', 'x', '2026-13', 42]) assert.equal(R.keyId(bad), 0, String(bad));
+});
+
+// scripts/android-d2.sh on a small fake android/ tree (the shape `npx cap add android` makes)
+const fs = require('fs'), os = require('os'), path = require('path'), cp = require('child_process');
+const SCRIPT = path.join(__dirname, '../scripts/android-d2.sh');
+const MAN = '<?xml version="1.0" encoding="utf-8"?>\n<manifest xmlns:android="http://schemas.android.com/apk/res/android">\n    <application android:label="x">\n    </application>\n    <uses-permission android:name="android.permission.INTERNET" />\n</manifest>\n';
+const VARS = "ext {\n    minSdkVersion = 24\n    targetSdkVersion = 36\n}";
+function tree(man, vars) {
+  const d = fs.mkdtempSync(path.join(os.tmpdir(), 'd2-'));
+  fs.mkdirSync(path.join(d, 'app/src/main'), { recursive: true });
+  if (man != null) fs.writeFileSync(path.join(d, 'app/src/main/AndroidManifest.xml'), man);
+  if (vars != null) fs.writeFileSync(path.join(d, 'variables.gradle'), vars);
+  return d;
+}
+const run = (...a) => { try { return { code: 0, out: cp.execFileSync('sh', [SCRIPT, ...a], { encoding: 'utf8', stdio: 'pipe' }) }; } catch (e) { return { code: e.status, out: String(e.stdout) + String(e.stderr) }; } };
+const merged = (d, perms) => { const m = path.join(d, 'app/build/intermediates/merged_manifest/release/processReleaseMainManifest'); fs.mkdirSync(m, { recursive: true }); fs.writeFileSync(path.join(m, 'AndroidManifest.xml'), '<manifest>\n' + perms.map((p) => '<uses-permission android:name="android.permission.' + p + '"/>').join('\n') + '\n</manifest>\n'); };
+
+test('android-d2.sh: pins review 2.0.2, removes SCHEDULE_EXACT_ALARM, copies the icon; safe to run twice', () => {
+  const d = tree(MAN, VARS);
+  for (let i = 0; i < 2; i++) {
+    const r = run(d); assert.equal(r.code, 0, r.out);
+    const m = fs.readFileSync(path.join(d, 'app/src/main/AndroidManifest.xml'), 'utf8'), v = fs.readFileSync(path.join(d, 'variables.gradle'), 'utf8');
+    assert.equal(m.split('<uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" tools:node="remove" />').length - 1, 1);
+    assert.equal(m.split('xmlns:tools="http://schemas.android.com/tools"').length - 1, 1);
+    assert.equal(v.split("googleAndroidPlayReviewVersion = '2.0.2'").length - 1, 1);
+    assert.equal(fs.readFileSync(path.join(d, 'app/src/main/res/drawable/ic_stat_daily.xml'), 'utf8'), fs.readFileSync(path.join(__dirname, '../assets/notification/ic_stat_daily.xml'), 'utf8'));
+  }
+  assert.notEqual(run(tree(null, VARS)).code, 0, 'no manifest');
+  assert.notEqual(run(tree(MAN, VARS.replace('}', "    googleAndroidPlayReviewVersion = '2.0.1'\n}"))).code, 0, 'another version already set');
+});
+
+test('android-d2.sh --check-merged: fails on SCHEDULE_EXACT_ALARM or USE_EXACT_ALARM, and without POST_NOTIFICATIONS (fix 8)', () => {
+  let d = tree(MAN, VARS); assert.notEqual(run('--check-merged', d).code, 0, 'nothing built yet');
+  merged(d, ['POST_NOTIFICATIONS', 'WAKE_LOCK', 'RECEIVE_BOOT_COMPLETED']); assert.equal(run('--check-merged', d).code, 0);
+  d = tree(MAN, VARS); merged(d, ['POST_NOTIFICATIONS', 'SCHEDULE_EXACT_ALARM']); assert.notEqual(run('--check-merged', d).code, 0, 'SCHEDULE_EXACT_ALARM');
+  d = tree(MAN, VARS); merged(d, ['POST_NOTIFICATIONS', 'USE_EXACT_ALARM']); assert.notEqual(run('--check-merged', d).code, 0, 'USE_EXACT_ALARM');
+  d = tree(MAN, VARS); merged(d, ['WAKE_LOCK']); assert.notEqual(run('--check-merged', d).code, 0, 'no POST_NOTIFICATIONS');
 });

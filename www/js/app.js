@@ -945,6 +945,7 @@
      opening line starts that item again with the score kept (and its result, if it was already counted, not counted again);
      an endgame drill keeps its position. Nothing is thawed: timers and engine replies of the old one found a new board. */
   function restoreEntry(z, e) {
+    rateReset(); /* D2 (fix 3) */
     clearSession(); st.rv = null; st.af = false; st.sel = null; resetHints();
     if (e.k === 'lesson') { st.mode = 'lesson'; st.ls = { unit: UNIT[e.unit], i: e.i, g: null, side: 'w' }; openAct(); switchTab('path'); showLessonStep(); return; }
     if (e.kind === 'drill') { openDrill(e.unit, UNIT[e.unit].apply, z === 'train' ? 'train' : null, e.drill); return; }
@@ -1238,7 +1239,7 @@
     if (live) { live.textContent = ''; var say = parts.join(' '); setTimeout(function () { live.textContent = say; }, 60); }
     var a = document.activeElement, h = el.querySelector('.ec-title');
     if (h && !drag && (!a || a === document.body || !a.isConnected || a.offsetParent === null)) try { h.focus({ preventScroll: true }); } catch (e) {}
-    if (el.id !== 'reviewEnd') rateSoon(el); /* D2 (DP-D4): right after a happy moment's end card shows */
+    rateSoon(el); /* D2 (DP-D4): right after a happy moment's end card shows */
   }
   /* The last move of a finished game's review, reached by stepping there (a review opens on the last move). */
   function reviewDone() { var rv = st.rv; return !!(st.mode === 'review' && rv && rv.stepped && rv.sans.length && rv.ply === rv.sans.length && (rv.past || G.game_over())); }
@@ -1457,6 +1458,7 @@
     /* Fix round 1: on a phone the question comes whatever is on the board (a closed lesson or set may be waiting over the game) */
     if (!force && (st.mode === 'play' || phone()) && G.history().length > 2 && !G.game_over() && !st.confirmNew) { st.confirmNew = true; $('newConfirm').hidden = false; st.scr = 'tabs'; switchTab('play'); return; } /* G2a: the question is on Play's start page */
     $('newConfirm').hidden = true; st.confirmNew = false; st.nm = null; /* G1: a new game clears the name line */
+    rateReset(); /* D2 (fix 3) */
     stow('play'); /* G2b, G-D35: a lesson or set that is open waits on its own tab, at every width */
     clearSession(); st.mode = 'play'; st.rv = null;
     st.gid = (st.gid || 0) + 1; st.gb = false; /* the old game's engine or grading reply is dropped: the new game is playable at once */
@@ -1560,6 +1562,7 @@
 
   /* ---------- review ---------- */
   function enterReview(src) {
+    rateReset(); /* D2 (fix 3): a review that finishes a lesson part sets it again for its own end card */
     stow('play'); /* G2b: as a game, a review never ends what waits on Learn or Train (G-D35: wide too) */
     if (!src) seenEnd(); /* G-D36: the review of the finished game opens its result card */
     clearSession();
@@ -1635,7 +1638,7 @@
   }
   function startSession(kind, opts) {
     stow(opts.unit ? 'learn' : 'train'); /* G2b: the newest wins on its own tab; another tab's waits (phones) */
-    clearSession(); st.rv = null; st.af = false; rateHappy = false; /* D2 */
+    clearSession(); st.rv = null; st.af = false; rateReset(); /* D2 (fix 3): a happy moment belongs to its own end card */
     st.ses = { kind: kind, title: opts.title, count: opts.count || 10, pass: opts.pass, unit: opts.unit || null, part: opts.part || null, rated: !!opts.rated, i: 0, right: 0, wrong: 0, items: opts.items || [], opts: opts, msg: null };
     openAct(); switchTab(opts.unit ? 'path' : 'train');
     nextItem(true);
@@ -1680,6 +1683,7 @@
     /* D21: the lesson part that completes the level brings the offer at once, whatever levelOfferT says. */
     if (!wasComplete && Profile.levelComplete(prof, UNITS, unitDone)) lessonOffer();
     applyTabs(); renderPath(); if (st.tab === 'coach') renderCoach();
+    if (booted) remindSync(); /* D2 (DP-D19): finishing Foundations offers the card, and with it the reminder */
   }
 
   /* puzzles */
@@ -1919,7 +1923,7 @@
        one started as a lesson's task (zoneOf). */
     var dz = Flow.drillZone(from);
     stow(dz || 'learn'); /* G2b */
-    clearSession(); st.rv = null; st.af = false;
+    clearSession(); st.rv = null; st.af = false; rateReset(); /* D2 (fix 3) */
     openDrill(unitId, d, dz, null);
   }
   /* at (G2b): a saved drill's place { fen, moves }: the same position; the engine is asked again when it is its move. */
@@ -2013,7 +2017,7 @@
   /* ---------- lesson player ---------- */
   function startLesson(id) {
     stow('learn'); /* G2b: replaces what waits on Learn; a set on Train waits on (phones) */
-    clearSession(); st.rv = null; st.af = false; rateHappy = false; /* D2: a happy moment not yet asked about ends when a new activity starts */
+    clearSession(); st.rv = null; st.af = false; rateReset(); /* D2 (fix 3): a happy moment not yet asked about ends when a new activity starts */
     st.mode = 'lesson'; st.ls = { unit: UNIT[id], i: 0, g: null, side: 'w' };
     openAct(); switchTab('path'); showLessonStep();
   }
@@ -2255,6 +2259,7 @@
     $('coachStrip').dataset.k = ''; decorateChips(true); /* chips and the strip cache follow the level (D32) */
     render();
     var sh = $('settingsSheet'); if (sh && !sh.hidden) { renderLevelCard(); renderLook(); } /* an open sheet shows the merged level and switch (R2-6) */
+    renderRemind(); remindSync(); /* D2 (DP-D19): the reminder follows whether the Daily puzzle card is offered */
     if (st.tab === 'coach') renderCoach(); else if (st.tab === 'path') renderPath(); else if (st.tab === 'train') renderTrain(); else if (st.tab === 'progress') renderProgress();
   }
   /* A re-render after a cloud pull keeps the player's place: focus goes back to the same control, and the scroll stays. */
@@ -2645,6 +2650,7 @@
     var d = s.opts.daily; prof.daily = Daily.record(prof.daily, typeof d === 'string' ? d : prof.daily.d, id, ok);
     if (ok) rateHappy = true; /* D2 (DP-D4): a solved daily puzzle is a happy moment */
     remindSync(); /* D2 (AC6): today is done, so today's reminder goes */
+    remindDelivered([dayKey(), typeof d === 'string' ? d : '']); /* fix 2: and one already on the phone's screen */
   }
   /* Fix 3c: Home turns over at local midnight, and when the app comes back to the front (a phone that slept through it). */
   var dayTimer = null;
@@ -3142,7 +3148,7 @@
     return rmPermit(false).then(function (ok) {
       renderRemind();
       return rmCancelAll().then(function () {
-        var s = rmGet(); if (!s.on || !ok) return; /* AC7: off cancels all, and nothing is set */
+        var s = rmGet(); if (!s.on || !ok || !dailyOffered()) return; /* AC7: off cancels all, and nothing is set; DP-D19: nor before the card is offered */
         return rmChannel().then(function () {
           var list = Remind.plan(new Date(), s.hour, Daily.state(prof.daily, dayKey()) !== 'todo'); /* today skipped once it is done */
           if (!list.length) return;
@@ -3158,20 +3164,33 @@
       if (ids.length) return pcall(function () { return LN.cancel({ notifications: ids }); });
     }).catch(rmNone);
   }
+  /* Fix 2: reminders already on the phone's screen for these days (day keys) go too */
+  function remindDelivered(keys) {
+    if (!LN) return;
+    var ids = []; keys.forEach(function (k) { var i = Remind.keyId(k); if (i && ids.indexOf(i) < 0) ids.push(i); });
+    if (!ids.length) return;
+    pcall(function () { return LN.removeDeliveredNotifications({ notifications: ids.map(function (i) { return { id: i, title: Remind.TITLE, body: Remind.BODY }; }) }); }).catch(rmNone);
+  }
   function rmChannel() {
     if (!rmChan) rmChan = pcall(function () { return LN.createChannel(Remind.CHANNEL); }).catch(function () { rmChan = null; });
     return rmChan;
   }
   /* AC5, DP-D3: Rani's offer on the daily puzzle's end card, from the first finished one, once per phone */
+  var rmOfferOn = null; /* fix 4: the end card (its set) the offer is on; it stays there until answered or the card goes */
   function remindOfferHtml() {
-    if (!LN || !Remind.offerShows(true, rmGet().offered, prof.daily && prof.daily.n)) return '';
+    var s = st.ses;
+    if (!LN || !s) return '';
+    if (rmOfferOn !== s) {
+      if (!Remind.offerShows(true, rmGet().offered, prof.daily && prof.daily.n) || !dailyOffered()) return '';
+      rmOfferOn = s; var o = rmGet(); o.offered = true; rmSet(o); /* AC5: shown once counts, answered or not */
+    }
     return '<div class="rm-offer" role="group" aria-labelledby="rmOfferQ"><p id="rmOfferQ">' + esc(Remind.OFFER.line) + '</p><div class="rm-btns">' +
       '<button class="btn" type="button" data-act="rmyes">' + esc(Remind.OFFER.yes) + '</button><button class="btn" type="button" data-act="rmno">' + esc(Remind.OFFER.no) + '</button></div></div>';
   }
   /* Either answer ends the offer for good on this phone. Yes asks Android for permission; denied leaves the reminder off. */
   function answerRemind(yes) {
     if (!LN) return;
-    var s = rmGet(); s.offered = true; rmSet(s);
+    var s = rmGet(); s.offered = true; rmSet(s); rmOfferOn = null;
     render();
     var m = document.querySelector('#sessionCard .ec-main'); if (m && m.offsetParent !== null) try { m.focus({ preventScroll: true }); } catch (e) {}
     if (yes) remindOn();
@@ -3201,17 +3220,19 @@
   /* The Settings row: the switch, the time (DP-D13: 17 hours, "7 pm") and, when Android blocks notifications, the line */
   function renderRemind() {
     var box = $('remindSet'); if (!box) return;
-    if (!LN) { box.hidden = true; return; }
+    if (!LN || !dailyOffered()) { box.hidden = true; return; } /* DP-D19: no row before the Daily puzzle card is offered */
     if (!box._built) {
       box._built = true;
+      box.setAttribute('aria-labelledby', 'remindTitle'); /* fix 7: named like the other Settings sections */
       box.innerHTML = '<button class="switchrow" type="button" role="switch" aria-checked="false" data-act="remind" id="remindSw"><span><b id="remindTitle">' + esc(Remind.SETTING) + '</b></span><i class="sw" aria-hidden="true"></i></button>' +
-        '<select id="remindHour" aria-labelledby="remindTitle">' + Remind.HOURS.map(function (h) { return '<option value="' + h + '">' + esc(Remind.label(h)) + '</option>'; }).join('') + '</select>' +
+        '<div class="rm-time"><label for="remindHour">Time</label><select id="remindHour">' + Remind.HOURS.map(function (h) { return '<option value="' + h + '">' + esc(Remind.label(h)) + '</option>'; }).join('') + '</select></div>' +
         '<p class="rm-off" id="remindOff" role="status" hidden>' + esc(Remind.DENIED) + '</p>';
       $('remindHour').addEventListener('change', function (e) { remindHour(e.target.value); });
     }
     var s = rmGet(), sel = $('remindHour'), off = $('remindOff');
     $('remindSw').setAttribute('aria-checked', String(s.on));
     if (sel.value !== String(s.hour)) sel.value = String(s.hour);
+    sel.disabled = !s.on; /* fix 7: the time only matters while the reminder is on */
     off.hidden = !(rmRefused || rmPermState === 'denied' || (s.on && rmPermState && rmPermState !== 'granted'));
     box.hidden = false;
   }
@@ -3244,16 +3265,28 @@
      under a sheet, a question from Rani or the reminder offer. Never a question of our own first: Google decides whether
      its sheet shows. rateT is written before the call, so a failure never asks again the same day. */
   var rateHappy = false, rateTimer = null;
+  function rateReset() { rateHappy = false; clearTimeout(rateTimer); rateTimer = null; }
+  /* Fix 3: the end card itself must be a happy one: never a lost game, a failed set or drill, or a missed daily puzzle */
+  function cardHappy(el) {
+    if (el.id === 'gameEnd') { var r = result(G, st.user); return !!r && r.r !== 'L'; }
+    if (el.id === 'sessionCard') {
+      var s = st.ses; if (!s) return false;
+      if (s.end) return !!s.end.passed;
+      if (!s.finished) return false;
+      return isDaily(s) ? s.right > 0 : s.pass == null || s.right >= s.pass;
+    }
+    return el.id === 'learnEnd' || el.id === 'reviewEnd'; /* a review end card counts only when it finished a lesson part (the flag) */
+  }
   function rateSoon(el) {
     if (!rateHappy) return;
-    rateHappy = false;
-    if (!IAR) return;
-    clearTimeout(rateTimer);
-    rateTimer = setTimeout(function () { rateNow(el); }, 600); /* once the card has settled on screen */
+    var happy = cardHappy(el);
+    rateReset();
+    if (!IAR || !happy) return;
+    rateTimer = setTimeout(function () { rateTimer = null; rateNow(el); }, 600); /* once the card has settled on screen; any new activity clears it */
   }
-  /* A lesson, a review or a set in progress, or a game on the board that is not over. A game that waits while a set's end card
+  /* A lesson, a review not yet at its end card or a set in progress, or a game on the board that is not over. A game that waits while a set's end card
      shows (G2b) is not in play. */
-  function rateBusy() { return st.mode === 'lesson' || st.mode === 'review' || !!(st.ses && !st.ses.finished && !st.ses.end) || (st.mode === 'play' && !st.ses && gameOn()); }
+  function rateBusy() { return st.mode === 'lesson' || (st.mode === 'review' && !reviewDone()) || !!(st.ses && !st.ses.finished && !st.ses.end) || (st.mode === 'play' && !st.ses && gameOn()); }
   function rateNow(el) {
     if (!IAR || !el || !el.isConnected || el.hidden || !el.getClientRects().length) return;
     var sh = $('settingsSheet');

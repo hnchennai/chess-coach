@@ -8,15 +8,17 @@
 # 1. variables.gradle: googleAndroidPlayReviewVersion = '2.0.2', the name @capacitor-community/in-app-review 8.0.0 reads
 #    in its android/build.gradle (its default is also 2.0.2; pinned here so a plugin update cannot change it unseen).
 # 2. AndroidManifest.xml: SCHEDULE_EXACT_ALARM (asked for by @capacitor/local-notifications) is removed from the app
-#    (tools:node="remove"). Reminders are inexact only (DP-D15); the app passes isExactNotification: false.
+#    (tools:node="remove"). Reminders are inexact (DP-D15): the app passes isExactNotification: false and allowWhileIdle: true
+#    (setAndAllowWhileIdle, which wakes an idle phone and needs no exact-alarm permission).
 # 3. The small notification icon: assets/notification/ic_stat_daily.xml (white on transparent) into res/drawable, the name
 #    capacitor.config.json gives as plugins.LocalNotifications.smallIcon. Without it Android shows a white square.
-# --check-merged: the manifest Gradle merged from the app and every library has no SCHEDULE_EXACT_ALARM and does have
+# --check-merged: the manifest Gradle merged from the app and every library has no SCHEDULE_EXACT_ALARM or USE_EXACT_ALARM and does have
 #    POST_NOTIFICATIONS.
 set -e
 fail() { echo "::error::$1"; echo "ANDROID D2 SET-UP FAILED: $1" >&2; exit 1; }
 REVIEW_VERSION='2.0.2'
 EXACT='android.permission.SCHEDULE_EXACT_ALARM'
+USE_EXACT='android.permission.USE_EXACT_ALARM'
 POST='android.permission.POST_NOTIFICATIONS'
 
 if [ "$1" = "--check-merged" ]; then
@@ -27,9 +29,10 @@ if [ "$1" = "--check-merged" ]; then
   for F in $L; do
     echo "Merged manifest: $F"
     if grep -q "$EXACT" "$F"; then fail "$F still asks for SCHEDULE_EXACT_ALARM."; fi
+    if grep -q "$USE_EXACT" "$F"; then fail "$F asks for USE_EXACT_ALARM."; fi
     grep -q "android:name=\"$POST\"" "$F" || fail "$F does not ask for POST_NOTIFICATIONS."
   done
-  echo "Merged manifest check passed: no SCHEDULE_EXACT_ALARM, POST_NOTIFICATIONS present."
+  echo "Merged manifest check passed: no SCHEDULE_EXACT_ALARM or USE_EXACT_ALARM, POST_NOTIFICATIONS present."
   exit 0
 fi
 

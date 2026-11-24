@@ -14,7 +14,7 @@ Non-negotiables for every change. Short on purpose. Amend only with Suresh's exp
 - Original designs only: no copyrighted characters, logos or artwork (no Harry Potter, Marvel, Game of Thrones and similar).
 - No em dashes in any user-facing copy. Short sentences, no chess jargon for beginners without a visual explanation.
 - The app's own source is published under GPLv3 (Suresh's decision, 2026-11-13), because it ships Stockfish. Every release must match the public source. Nothing private (keys, tokens, personal data) ever goes in the repo.
-- The app's own code carries an exception (`LICENSE-EXCEPTION`, Suresh's decision, 2026-11-19) that allows combining it with Google's Mobile Ads, User Messaging and Play Billing libraries, and the Google Play In-App Review Library and the Google Play Core Common library it uses. Stockfish is never modified and never linked with them.
+- The app's own code carries an exception (`LICENSE-EXCEPTION`, Suresh's decisions, 2026-11-19 and 2026-11-24) that allows combining it with Google's Mobile Ads, User Messaging and Play Billing libraries, the Google Play In-App Review Library and the Google Play Core Common library it uses, and the Google Play services libraries they use. Stockfish is never modified and never linked with them.
 - Third-party assets keep their licenses and credits: Stockfish (GPLv3, source link in README), Three.js (MIT), chess.js (BSD-2), "A Beautiful Game" marble set (CC BY 4.0).
 
 ## Security and privacy

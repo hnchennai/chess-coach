@@ -24,6 +24,8 @@
   function dkey(d) { return d.getFullYear() + '-' + (d.getMonth() + 1) + '-' + d.getDate(); }
   /* A reminder's id: its local date as yyyymmdd. Stable for a day whatever the hour, unique, fits a Java int. */
   function id(d) { return d.getFullYear() * 10000 + (d.getMonth() + 1) * 100 + d.getDate(); }
+  /* The same id from a day key ('2026-11-25', as prof.daily.d); 0 for anything else */
+  function keyId(k) { var m = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(typeof k === 'string' ? k : ''); return m && +m[2] >= 1 && +m[2] <= 12 ? +m[1] * 10000 + +m[2] * 100 + +m[3] : 0; }
 
   /* DP-D7: the reminders for the next 7 local days (today..today+6) at hour:00. Today is skipped when its daily puzzle is
      done or the time has passed. Dates are built from the calendar (new Date(y, m, d + i, hour)), never by adding hours,
@@ -38,11 +40,12 @@
     }
     return out;
   }
-  /* What LocalNotifications.schedule takes. DP-D15: inexact only, so no allowWhileIdle and nothing that repeats.
-     isExactNotification false: the plugin's default (true) would open Android's "Alarms and reminders" screen when the app
-     may not set exact alarms, which is always (the build removes SCHEDULE_EXACT_ALARM). */
+  /* What LocalNotifications.schedule takes. DP-D15: inexact, but allowed to wake an idle phone, and nothing that repeats.
+     isExactNotification false with allowWhileIdle true is Android's setAndAllowWhileIdle(RTC_WAKEUP): on time on a phone in
+     Doze, with no exact-alarm permission. The plugin's default (isExactNotification true) would open Android's "Alarms and
+     reminders" screen, as the app may never set exact alarms (the build removes SCHEDULE_EXACT_ALARM). */
   function notifications(list) {
-    return (list || []).map(function (x) { return { id: x.id, title: TITLE, body: BODY, channelId: CHANNEL.id, isExactNotification: false, schedule: { at: x.at } }; });
+    return (list || []).map(function (x) { return { id: x.id, title: TITLE, body: BODY, channelId: CHANNEL.id, isExactNotification: false, schedule: { at: x.at, allowWhileIdle: true } }; });
   }
 
   /* DP-D4: days with any activity (a puzzle, a game or a lesson part, as the streak counts them) */
@@ -73,5 +76,5 @@
   function tapTo(state) { return state === 'todo' ? 'daily' : 'home'; }
 
   return { TITLE: TITLE, BODY: BODY, OFFER: OFFER, SETTING: SETTING, DENIED: DENIED, CHANNEL: CHANNEL, KEY: KEY, HOURS: HOURS, DEFAULT_HOUR: DEFAULT_HOUR, RATE_GAP: RATE_GAP,
-    label: label, id: id, plan: plan, notifications: notifications, activeDays: activeDays, shouldAsk: shouldAsk, read: read, offerShows: offerShows, tapTo: tapTo };
+    label: label, id: id, keyId: keyId, plan: plan, notifications: notifications, activeDays: activeDays, shouldAsk: shouldAsk, read: read, offerShows: offerShows, tapTo: tapTo };
 });

@@ -139,7 +139,7 @@ jobs:
             cp app/build/outputs/apk/debug/app-debug.apk ../chess-coach-$VNAME.apk
           fi
 
-      # D2 (DP-D15): the manifest Gradle merged from the app and all libraries: no SCHEDULE_EXACT_ALARM, POST_NOTIFICATIONS there.
+      # D2 (DP-D15): the manifest Gradle merged from the app and all libraries: no SCHEDULE_EXACT_ALARM or USE_EXACT_ALARM, POST_NOTIFICATIONS there.
       - name: Check the merged manifest (no exact alarms)
         run: sh scripts/android-d2.sh --check-merged android
 

@@ -7,7 +7,7 @@
 // Not checked here (no phone): real notifications, Android's permission question, Google's rating sheet, the Android build.
 const assert = require('assert/strict');
 const G = require('./g2.spec.js');
-const { newPage, st, goTab, solvePuzzle, improver, PH, PKEY, MATE1 } = G;
+const { newPage, st, goTab, solvePuzzle, finishLesson, improver, prof, done, game, PH, PKEY, MATE1 } = G;
 
 const VIEWPORTS = [{ width: 360, height: 800 }, { width: 412, height: 915 }, { width: 1280, height: 900 }].filter((v) => !process.env.DP_VP || String(v.width) === process.env.DP_VP);
 const ONLY = process.env.DP_ONLY ? new RegExp(process.env.DP_ONLY) : null;
@@ -25,20 +25,22 @@ const active = (...ds) => Object.fromEntries(ds.map((d) => [K(d), { puz: 1, game
 const T10 = at(25, 10, 0); // 25 Nov, 10 am: today's 7 pm is still ahead
 
 // The fake native plugins. cfg: perm (what checkPermissions says: 'granted' | 'denied' | 'prompt'), reqTo (what Android's
-// question ends in), coldTap (a tapped reminder launched the app: handed over when the listener is added), reviewFails.
+// question ends in), coldTap (a tapped reminder launched the app: handed over when the listener is added), reviewFails,
+// pending (ids of reminders already set by an earlier run of the app).
 function fakeNative(cfg) {
   const C = cfg || {};
-  const N = window.__rm = { calls: [], pending: [], ls: {}, perm: C.perm || 'prompt', reqTo: C.reqTo || 'granted' };
+  const N = window.__rm = { calls: [], pending: (C.pending || []).map((id) => ({ id, title: 'old' })), ls: {}, perm: C.perm || 'prompt', reqTo: C.reqTo || 'granted' };
   const now = () => { const c = window.__coach, s = c && c.st; return s ? { mode: s.mode, ses: s.ses ? { finished: !!s.ses.finished, end: !!s.ses.end, daily: !!(s.ses.opts && s.ses.opts.daily) } : null, tab: s.tab } : null; };
   const rec = (m, a) => { N.calls.push({ m, a: a === undefined ? null : a, t: Date.now(), at: now() }); };
   const note = (n) => { const d = n.schedule && n.schedule.at; return { id: n.id, title: n.title, body: n.body, channelId: n.channelId, isExactNotification: n.isExactNotification, keys: Object.keys(n).sort(), skeys: Object.keys(n.schedule || {}).sort(),
-    date: d instanceof Date, h: d.getHours(), mi: d.getMinutes(), s: d.getSeconds(), day: d.getFullYear() + '-' + (d.getMonth() + 1) + '-' + d.getDate() }; };
+    allowWhileIdle: n.schedule.allowWhileIdle, date: d instanceof Date, h: d.getHours(), mi: d.getMinutes(), s: d.getSeconds(), day: d.getFullYear() + '-' + (d.getMonth() + 1) + '-' + d.getDate() }; };
   const fire = (name, d) => (N.ls[name] || []).slice().forEach((f) => f(d));
   const LocalNotifications = {
     checkPermissions() { rec('checkPermissions'); return Promise.resolve({ display: N.perm }); },
     requestPermissions() { rec('requestPermissions'); N.perm = N.reqTo; return Promise.resolve({ display: N.perm }); },
     createChannel(o) { rec('createChannel', JSON.parse(JSON.stringify(o))); return Promise.resolve(); },
     getPending() { rec('getPending'); return Promise.resolve({ notifications: N.pending.map((n) => ({ id: n.id, title: n.title })) }); },
+    removeDeliveredNotifications(o) { rec('removeDeliveredNotifications', (o.notifications || []).map((n) => n.id)); return Promise.resolve(); },
     cancel(o) { const ids = (o.notifications || []).map((n) => n.id); rec('cancel', ids); N.pending = N.pending.filter((n) => !ids.includes(n.id)); return Promise.resolve(); },
     schedule(o) {
       const list = o.notifications.map(note); rec('schedule', list);
@@ -84,8 +86,8 @@ function checkList(list, first, n, hour, msg) {
   list.forEach((x) => {
     assert.equal(x.title, W.title, msg); assert.equal(x.body, W.body, msg); assert.equal(x.channelId, 'daily', msg);
     assert.equal(x.isExactNotification, false, msg + ': inexact (DP-D15)');
-    assert.ok(!x.keys.includes('allowWhileIdle') && !x.skeys.includes('allowWhileIdle'), msg + ': no allowWhileIdle');
-    assert.deepEqual(x.skeys, ['at'], msg + ': a one-off time, nothing that repeats');
+    assert.equal(x.allowWhileIdle, true, msg + ': wakes an idle phone (fix 1)'); assert.ok(!x.keys.includes('allowWhileIdle'), msg);
+    assert.deepEqual(x.skeys, ['allowWhileIdle', 'at'], msg + ': a one-off time, nothing that repeats');
     assert.equal(x.date, true); assert.deepEqual([x.h, x.mi, x.s], [hour, 0, 0], msg + ': on the hour');
     const [y, m, d] = x.day.split('-').map(Number);
     assert.equal(x.id, y * 10000 + m * 100 + d, msg + ': the id is its own day');
@@ -128,7 +130,8 @@ async function settings(page) {
     const sw = box.querySelector('[role="switch"]'), sel = box.querySelector('select'), off = box.querySelector('.rm-off'), r = box.getBoundingClientRect();
     return { shown: true, title: sw.querySelector('b').textContent, checked: sw.getAttribute('aria-checked'), swH: sw.getBoundingClientRect().height, selH: sel.getBoundingClientRect().height,
       value: sel.value, label: sel.options[sel.selectedIndex].textContent, options: [...sel.options].map((x) => x.textContent), values: [...sel.options].map((x) => +x.value),
-      selName: sel.getAttribute('aria-labelledby') ? document.getElementById(sel.getAttribute('aria-labelledby')).textContent : null,
+      selLabel: sel.labels && sel.labels.length ? sel.labels[0].textContent : null, selOn: on(sel.labels && sel.labels[0]), disabled: sel.disabled,
+      name: box.getAttribute('aria-labelledby') ? box.getAttribute('aria-labelledby').split(' ').map((i) => document.getElementById(i).textContent).join(' ') : box.getAttribute('aria-label'),
       off: on(off) ? off.textContent : null, right: r.right, vw: window.innerWidth, text: box.innerText };
   });
 }
@@ -227,7 +230,9 @@ const cases = [
     assert.equal((await calls(page, 'schedule')).length, 0, 'off: nothing set at start');
     let s = await settings(page);
     assert.equal(s.shown, true);
-    assert.equal(s.title, W.setting); assert.equal(s.selName, W.setting, 'the time choice is named by the row');
+    assert.equal(s.title, W.setting); assert.equal(s.name, W.setting, 'fix 7: the section has a name, like the other Settings sections');
+    assert.deepEqual([s.selLabel, s.selOn], ['Time', true], 'fix 7: the time choice has a visible label');
+    assert.equal(s.disabled, true, 'fix 7: no time choice while the reminder is off');
     assert.deepEqual(s.options, HOURS, '17 choices, 6 am to 10 pm'); assert.deepEqual(s.values, [6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22]);
     assert.deepEqual([s.checked, s.value, s.label, s.off], ['false', '19', '7 pm', null]);
     assert.ok(s.swH >= 43.5 && s.selH >= 43.5, 'thumb-sized (' + s.swH + ', ' + s.selH + ')'); assert.ok(s.right <= s.vw, 'inside the screen');
@@ -235,7 +240,7 @@ const cases = [
     assert.equal((await calls(page, 'requestPermissions')).length, 0, 'already allowed: no question');
     checkList(await lastSchedule(page), 25, 7, 19, 'not done yet and before 7 pm: today and 6 more days');
     assert.deepEqual(await pending(page), ids(25, 7));
-    assert.equal((await settings(page)).checked, 'true');
+    assert.deepEqual([(await settings(page)).checked, (await settings(page)).disabled], ['true', false], 'on: the time can be chosen');
     let n = (await calls(page, 'schedule')).length;
     await page.locator('#remindHour').selectOption('20'); await settle(page);
     assert.equal((await calls(page, 'schedule')).length, n + 1);
@@ -251,7 +256,7 @@ const cases = [
     assert.deepEqual(await pending(page), [], 'AC7: off cancels every reminder');
     assert.deepEqual(await stored(page), { on: false, hour: 6, offered: true, rateT: 0 });
     s = await settings(page);
-    assert.deepEqual([s.checked, s.label], ['false', '6 am'], 'the time is kept');
+    assert.deepEqual([s.checked, s.label, s.disabled], ['false', '6 am', true], 'the time is kept');
     return page;
   }],
   ['AC7: turning the switch on when Android says no leaves it off with the line; on in storage but blocked shows the line too', async (vp) => {
@@ -277,6 +282,7 @@ const cases = [
     await solveDaily(page); await settle(page);
     checkList(await lastSchedule(page), 26, 6, 19, 'today is done');
     assert.deepEqual(await pending(page), ids(26, 6), 'today’s reminder is gone');
+    assert.deepEqual((await calls(page, 'removeDeliveredNotifications')).map((c) => c.a), [[20261125]], 'fix 2: one already on the screen is taken away too');
     await toEnd(page);
     assert.equal(await offer(page), null, 'already answered: no offer');
     const n = (await calls(page, 'schedule')).length;
@@ -367,6 +373,71 @@ const cases = [
     await solveDaily(page); await toEnd(page);
     await page.waitForFunction(() => window.__rm.calls.some((c) => c.m === 'requestReview'), null, { timeout: 5000 });
     assert.equal((await calls(page, 'requestReview')).length, 1, '60 days: yes');
+    return page;
+  }],
+
+  // ---------- fix round 1 ----------
+  ['Fix 4, AC5: the offer counts as shown once it is on an end card, even when the player leaves without answering', async (vp) => {
+    const page = await open(vp, improver({ rating: 1100, days: active(24) }), { native: { perm: 'prompt' } });
+    await solveDaily(page); await toEnd(page);
+    assert.ok(await offer(page));
+    assert.equal((await stored(page)).offered, true, 'counted as offered as soon as it shows');
+    await page.locator('#sessionCard [data-act="home"]').click();
+    await page.clock.setSystemTime(at(26, 10, 0));
+    await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+    await page.waitForFunction(() => window.__coach.getProf().daily.d === '2026-11-26');
+    await solveDaily(page); await toEnd(page);
+    assert.equal(await offer(page), null, 'never again');
+    assert.equal((await calls(page, 'requestPermissions')).length, 0);
+    return page;
+  }],
+  ['DP-D17: on the first solved daily puzzle only Rani’s offer shows, even on the 3rd active day; the rating ask waits', async (vp) => {
+    const page = await open(vp, improver({ rating: 1100, days: Object.assign(active(20), active(22)) }), { native: { perm: 'prompt' } });
+    await solveDaily(page); await toEnd(page);
+    assert.ok(await offer(page));
+    await noReview(page, 1500, 'no sheet with the offer up');
+    await page.locator('#sessionCard [data-act="rmno"]').click();
+    await noReview(page, 1200, 'nor right after it is answered');
+    return page;
+  }],
+  ['DP-D19, fix 5: a Beginner before Foundations has no reminder row and no reminders; any set earlier are cancelled', async (vp) => {
+    const page = await open(vp, prof({ course: done('rules', 'special'), days: active(24) }), { native: { perm: 'granted', pending: [20261126, 20261127] }, remind: { on: true, offered: true } });
+    assert.equal((await calls(page, 'schedule')).length, 0, 'nothing set');
+    assert.deepEqual(await pending(page), [], 'the earlier ones are cancelled');
+    const s = await settings(page);
+    assert.equal(s.shown, false, 'no Settings row');
+    return page;
+  }],
+  ['AC9, fix 3: a newly finished lesson part is a happy moment: the Learn end card asks', async (vp) => {
+    const page = await open(vp, improver({ rating: 1100, days: Object.assign(active(20), active(22)) }), { native: {}, remind: { offered: true } });
+    await page.evaluate(() => window.__coach.startPart('fork', 'learn'));
+    await finishLesson(page);
+    await page.waitForFunction(() => { const e = document.getElementById('learnEnd'); return e && !e.hidden; });
+    await page.waitForFunction(() => window.__rm.calls.some((c) => c.m === 'requestReview'), null, { timeout: 5000 });
+    assert.equal((await calls(page, 'requestReview')).length, 1);
+    return page;
+  }],
+  ['AC9, fix 3: a lesson part finished mid-game, then the game is lost: the lost game’s end card never asks', async (vp) => {
+    // Rani's develop task: four minor pieces out; castling now finishes it. Then Black mates at once (Qxh2#; level 3 always finds a mate in one).
+    const sans = ['e4', 'e5', 'Nc3', 'Nh6', 'Bc4', 'Qh4', 'Nge2', 'Ng4', 'd3', 'a6', 'Be3', 'a5'];
+    const g = game(sans, { level: 3, goal: { type: 'develop', unit: 'opening', status: 'active', progress: '' } });
+    const page = await open(vp, prof({ level: 'beginner', course: done('rules', 'special', 'board', 'values', 'mate'), days: Object.assign(active(20), active(22)), unlockAll: true }), { native: {}, remind: { offered: true }, game: g, tab: 'play' });
+    if ((await st(page, 'tab')) !== 'play') await goTab(page, 'play');
+    const b = page.locator('#resumePlay .rs-go'); if (await b.isVisible()) await b.click();
+    await page.waitForFunction(() => !window.__coach.st.busy);
+    await page.locator('#board .sq[data-sq="e1"]').click(); await page.locator('#board .sq[data-sq="g1"]').click();
+    await page.waitForFunction(() => { const p = window.__coach.getProf(); return p.course.opening && p.course.opening.apply; }, null, { timeout: 30000 });
+    await page.waitForFunction(() => window.__coach.hist().slice(-1)[0] === 'Qxh2#', null, { timeout: 30000 });
+    await page.waitForFunction(() => { const e = document.getElementById('gameEnd'); return e && !e.hidden && e.getClientRects().length > 0; }, null, { timeout: 30000 });
+    await noReview(page, 1500, 'a lost game is never a happy moment');
+    return page;
+  }],
+  ['AC9, fix 3: an activity started within the moment after the end card stops the ask', async (vp) => {
+    const page = await open(vp, improver({ rating: 1100, days: Object.assign(active(20), active(22)) }), { native: {}, remind: { offered: true } });
+    await solveDaily(page); await toEnd(page);
+    await page.locator('#sessionCard .ec-main').click(); // "10 more puzzles", at once
+    await page.waitForFunction(() => { const s = window.__coach.st.ses; return s && s.rated && !s.finished; });
+    await noReview(page, 1500, 'the next set started first: no sheet over it');
     return page;
   }],
   // ---------- scenario 9: the web ----------

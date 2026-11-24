@@ -913,7 +913,7 @@
     var s = st.ses; if (!s) return null;
     var o = s.opts || {}, k = s.kind;
     var items = k === 'puzzles' ? s.items.filter(Boolean).map(function (p) { return p.id; }) : k === 'safety' ? s.items.map(function (it) { return [it.p.id, it.blunder ? 1 : 0]; }) : k === 'book' ? s.items.map(function (b) { return b.id; }) : [];
-    return Flow.entryOf({ over: sesEnded(), set: { kind: k, title: s.title, unit: s.unit, part: s.part, count: s.count, pass: s.pass, rated: s.rated, theme: o.theme, review: o.review, i: s.i, right: s.right, wrong: s.wrong, counted: s.cnt, ok: s.ok, items: items,
+    return Flow.entryOf({ over: sesEnded(), set: { kind: k, title: s.title, unit: s.unit, part: s.part, count: s.count, pass: s.pass, rated: s.rated, theme: o.theme, review: o.review, i: s.i, right: s.right, wrong: s.wrong, counted: s.cnt, ok: s.ok, items: items, daily: !!o.daily,
       drill: st.dr ? { fen: st.dr.g.fen(), moves: st.dr.moves } : null } });
   }
   function waitOn(z) { return liveZone() === z ? liveEntry() : st.park[z]; }
@@ -955,6 +955,7 @@
     if (e.rated) opts.pick = ratedPick(); else if (items.length) opts.items = items;
     if (e.theme) opts.theme = e.theme;
     if (e.review) opts.review = true;
+    if (e.daily) opts.daily = true; /* D1: it is still today's daily puzzle after a Resume or a restart */
     st.ses = { kind: e.kind, title: e.title, count: e.count, pass: opts.pass, unit: e.unit || null, part: e.part || null, rated: !!e.rated, i: e.i, right: e.right, wrong: e.wrong, items: items, opts: opts, msg: null, ok: e.counted ? e.ok : null };
     openAct(); switchTab(ZTAB[z]);
     nextItem(true, e.counted);
@@ -1344,7 +1345,7 @@
     var af = U && passed && !np && !nx ? beginnerAfter() : null;
     /* F-D26: "10 more puzzles" is for a mixed set at the player's level only; a themed set ends with Go again */
     var c = Flow.afterStep({ unit: !!U, from: from, passed: passed, nextPart: n.kind,
-      next: nx, after: af, set: o.review ? 'review' : s && s.kind === 'puzzles' && !o.theme ? 'puzzles' : 'other' });
+      next: nx, after: af, set: o.review || o.daily ? 'review' : s && s.kind === 'puzzles' && !o.theme ? 'puzzles' : 'other' });
     return ecButtons(c, { home: 'data-act="home"', again: from === 'learn' ? 'data-part="learn" data-u="' + u + '"' : 'data-again="1"', part: U && np ? partAttr(u, np) : '',
       nextlesson: nx ? partAttr(nx.unit.id, nx.part) : '', after: af ? af.attr : '', more: 'data-act="more"' });
   }
@@ -1608,9 +1609,14 @@
     c.hidden = false;
     var home = $('panel-' + ZTAB[zoneOf()]); if (home && c.parentNode !== home) home.insertBefore(c, home.firstChild);
     var shown = s.finished ? s.count : Math.min(s.i + 1, s.count), pct = Math.round(100 * (s.finished ? 1 : s.i / Math.max(1, s.count)));
-    var head = '<p class="eyebrow">' + esc(s.title) + '</p><div class="meta"><span>' + (s.kind === 'drill' ? 'Endgame drill' : shown + ' of ' + s.count) + '</span><span>✓ ' + s.right + ' · ✗ ' + s.wrong + (s.rated && !plain() ? ' · rating ' + Math.round(prof.rating) : '') + '</span></div><div class="bar2"><i style="width:' + pct + '%"></i></div>';
+    var head = '<p class="eyebrow">' + esc(s.title) + '</p><div class="meta"><span>' + (s.kind === 'drill' ? 'Endgame drill' : shown + ' of ' + s.count) + '</span><span>✓ ' + s.right + ' · ✗ ' + s.wrong + ((s.rated || isDaily(s)) && !plain() ? ' · rating ' + Math.round(prof.rating) : '') + '</span></div><div class="bar2"><i style="width:' + pct + '%"></i></div>';
     var msg = s.msg || {}, body = '';
-    if (s.finished) {
+    if (s.finished && isDaily(s)) {
+      /* D1: the daily puzzle's end card says how it went, in the card's own signed words; one try a day, so only Home */
+      var dok = s.right > 0;
+      body = '<div class="sesav">' + Avatar.coach(dok ? 'proud' : 'worried', 52) + '</div><h3 class="ec-title" tabindex="-1">' + esc(Daily.lines('todo').title) + '</h3><p class="ec-text">' + esc(Daily.lines(dok ? 'solved' : 'missed').line) + '</p>' +
+        stepEnd(null, 'session', true, s) + slotHost('step', s);
+    } else if (s.finished) {
       var passed = s.pass == null || s.right >= s.pass;
       body = '<div class="sesav">' + Avatar.coach(passed ? 'proud' : 'worried', 52) + '</div><h3 class="ec-title" tabindex="-1">' + (passed ? 'Session complete' : 'Almost there') + '</h3><p class="ec-text">' + s.right + ' of ' + s.count + ' correct' + (s.pass != null ? (passed ? '. Passed! This step is done.' : '. You need ' + s.pass + ' to pass. Have another go.') : '.') + '</p>' +
         stepEnd(s.unit && s.part ? s.unit : null, 'session', passed, s) + slotHost('step', s);
@@ -1689,6 +1695,7 @@
   function ratedPick() {
     return function (s) {
       var used = {}; s.items.forEach(function (p) { if (p) used[p.id] = 1; });
+      var dr = prof.daily; if (dr && dr.id && dr.d === dayKey() && !dr.r) used[dr.id] = 1; /* D1: today's daily puzzle stays fresh for its one try */
       var r = prof.rating, band = 120, pool = [];
       while (!pool.length && band < 1600) { pool = PZ.filter(function (p) { return !p.hand && !used[p.id] && !(prof.puz[p.id] && prof.puz[p.id].ok) && Math.abs(p.rating - r) <= band; }); band += 120; }
       if (!pool.length) pool = PZ.filter(function (p) { return !used[p.id]; });
@@ -1736,7 +1743,7 @@
     var P = st.pz, s = st.ses;
     if (solved) {
       P.done = true;
-      if (!P.counted) { P.counted = true; s.cnt = true; s.ok = true; s.right++; recordPuzzle(P.p, true); }
+      if (!P.counted) { P.counted = true; s.cnt = true; s.ok = true; s.right++; if (isDaily(s)) dailyResult(P.p.id, true); recordPuzzle(P.p, true); }
       s.msg = { title: alt ? 'Solved (another way!)' : 'Solved!', text: puzzleLesson(P.p) };
       s.canNext = true; render(); return;
     }
@@ -1755,7 +1762,7 @@
   }
   function puzzleFail(mv, want) {
     var P = st.pz, s = st.ses;
-    if (!P.counted) { P.counted = true; s.cnt = true; s.ok = false; s.wrong++; recordPuzzle(P.p, false); }
+    if (!P.counted) { P.counted = true; s.cnt = true; s.ok = false; s.wrong++; if (isDaily(s)) dailyResult(P.p.id, false); recordPuzzle(P.p, false); }
     P.wait = true; render();
     setTimeout(function () {
       if (st.pz !== P) return; /* G2b */
@@ -1763,7 +1770,7 @@
       st.arrows = wm ? [{ from: wm.from, to: wm.to, color: 'var(--c-best)' }] : [];
       P.done = true; P.wait = false;
       s.msg = { title: 'Not quite', mv: 'You played ' + mv.san, text: (wm ? 'The winning move was ' + mvc(wm) + '. ' : '') + puzzleLesson(P.p), tip: 'This puzzle comes back in your review list tomorrow.' };
-      s.canNext = true; s.canRetry = true; render();
+      s.canNext = true; s.canRetry = !isDaily(s); render(); /* D1: one try a day */
     }, 600);
   }
   /* A counted puzzle, finished: solved or missed as the set saved it (round 2, item 4: s.ok, not the profile's last record).
@@ -1779,7 +1786,7 @@
       var wm = findMove(g, p.sol[0]);
       st.arrows = wm ? [{ from: wm.from, to: wm.to, color: 'var(--c-best)' }] : [];
       s.msg = { title: 'Not quite', text: (wm ? 'The winning move was ' + mvc(wm) + '. ' : '') + puzzleLesson(p), tip: 'This puzzle comes back in your review list tomorrow.' };
-      s.canRetry = true;
+      s.canRetry = !isDaily(s);
     }
     s.canNext = true; render();
   }
@@ -2583,19 +2590,61 @@
       '<button class="btn primary big bh-go" type="button" ' + (rl ? RESUME_LESSON : act[L.go]) + '>' + esc(rl ? Flow.resumeTitle(w.kind) : L.button) + '</button></div>' +
       (rs ? '<div class="card bh-card rs-card" id="resumeBHome">' + gameResume(false) + '</div>' : ec ? '<div class="card bh-card rs-card" id="resumeBHome">' + endedHtml(ec, false) + '</div>' : '') +
       (L.second ? '<button class="btn big bh-alt" type="button" ' + act[L.alt] + '>' + esc(L.second) + '</button>' : '');
+    /* D1 (DP-D1, DP-D9): once Foundations is done, the Daily puzzle card under the main card and its own second button */
+    var dp = tabOpen('train') && Daily.shows(true, s.kind) ? dailyHtml('dpbTitle') : '';
+    if (dp) html += '<div class="card bh-card dp-card" id="dailyBHome">' + dp + '</div>';
     var key = html + '|' + coach; if (el._k === key) return;
-    var a = document.activeElement, keep = a && el.contains(a) ? (a.classList.contains('bh-alt') ? '.bh-alt' : a.classList.contains('rs-go') ? '.rs-go' : '.bh-go') : null;
+    var a = document.activeElement, keep = a && el.contains(a) ? (a.classList.contains('bh-alt') ? '.bh-alt' : a.classList.contains('rs-go') ? '.rs-go' : a.classList.contains('dp-go') ? '.dp-go' : '.bh-go') : null;
     el._k = key; el.innerHTML = html;
     if (keep) { var f = el.querySelector(keep) || el.querySelector('.bh-go'); if (f) try { f.focus({ preventScroll: true }); } catch (e) {} }
   }
+  /* ---------- D1: the Daily puzzle card (docs/specs/daily-puzzle.product.md; the rules are in daily.js) ----------
+     prof.daily: today's pick and its result (Daily.today, Daily.record), saved in the profile so it is the same all day.
+     The puzzle is a 1-puzzle set on Train (DP-D5): it counts, waits and comes back like any set; s.opts.daily marks it (isDaily). */
+  function dayKey() { return Daily.key(new Date()); }
+  function isDaily(s) { return !!(s && s.opts && s.opts.daily); } /* a drill has no opts */
+  /* Today's record; a new day (or a puzzle gone from the bank) picks and saves a new one. */
+  function dailyRec() {
+    var r = Daily.today(prof.daily, dayKey(), PZ, prof.rating, prof.puz);
+    if (r !== prof.daily) { prof.daily = r; saveProfile(); }
+    return r;
+  }
+  /* The card's inside (id: its title's id). Empty when there is no puzzle to offer. */
+  function dailyHtml(id) {
+    var r = dailyRec(); if (!r.id) return '';
+    var L = Daily.lines(Daily.state(r, dayKey()));
+    return '<div class="bh-row"><span class="bh-ic z-train" aria-hidden="true">' + GLYPH.n + VS + '</span><div class="bh-tt"><p class="bh-kick">' + esc(L.kicker) + '</p><h3 class="bh-title" id="' + id + '">' + esc(L.title) + '</h3></div></div>' +
+      '<p class="dp-line">' + esc(L.line) + '</p>' + (L.button ? '<button class="btn big dp-go" type="button" data-act="daily">' + esc(L.button) + '</button>' : '');
+  }
+  /* Improver and Club Home, and a Beginner with Show everything on (DP-D1). Beginner Home draws its own (renderBHome). */
+  function renderDaily() {
+    var el = $('dailyCard'), html = prof.level && !plain() && tabOpen('train') ? dailyHtml('dpTitle') : ''; /* nothing before the level check */
+    el.hidden = !html;
+    if (el._k === html) return;
+    var keep = el.contains(document.activeElement);
+    el._k = html; el.innerHTML = html;
+    if (keep) { var f = el.querySelector('.dp-go') || $('contCard').querySelector('.bh-go'); if (f) try { f.focus({ preventScroll: true }); } catch (e) {} }
+  }
+  /* Solve it. One try a day (DP-D6): a result today leaves only the card. The daily puzzle that waits on Train (left
+     mid-puzzle, or read back after a restart) comes back as it is (G2b); otherwise it starts, and the newest on Train wins. */
+  function dailyStart() {
+    var r = dailyRec(), p = PZ_BY[r.id];
+    if (Daily.state(r, dayKey()) !== 'todo' || !p) { renderCoach(); return; }
+    var w = waitOn('train');
+    if (w && w.daily && w.items[0] === r.id) { resumeAct('train'); return; }
+    startSession('puzzles', { title: Daily.lines('todo').kicker, count: 1, items: [p], daily: true });
+  }
+  /* The first result for today's puzzle is its result (saved with the rated result that follows, recordPuzzle). */
+  function dailyResult(id, ok) { prof.daily = Daily.record(prof.daily, dayKey(), id, ok); }
   function renderCoach() {
     /* D40: Beginner Home only for a Beginner with Show everything off; otherwise the full Home, as an Improver at their stage */
     var bh = plain();
     $('bhome').hidden = !bh; HOME_CARDS.forEach(function (id) { $(id).hidden = bh; });
     syncHomeMode();
-    if (bh) { renderBHome(); return; }
+    if (bh) { $('dailyCard').hidden = true; renderBHome(); return; }
     var S = currentStage(), miles = stageMiles(S), done = miles.filter(function (m) { return m.ok; }).length, pl = plain(), fs = RM[firstStage()].stage;
     renderCont(); /* F-D10: the Next step is the Continue card; the stage card keeps its text, bar and milestones */
+    renderDaily();
     $('stageHero').innerHTML = '<div class="herorow">' + Avatar.coach(done ? 'happy' : 'neutral', 64) + '<div><p class="eyebrow">' + esc(Avatar.coachName()) + ' \u00B7 Stage ' + S.stage + ' of 6</p><h3>' + esc(S.name) + '</h3></div></div><p>' + esc(S.why) + '</p>' +
       '<div class="mbar"><i style="width:' + Math.round(100 * done / miles.length) + '%"></i></div><div class="meta"><span>' + done + ' of ' + miles.length + ' milestones</span>' + (pl ? '' : '<span>Rating band ' + esc(S.band) + '</span>') + '</div>';
     renderToday(); renderLook();
@@ -2922,6 +2971,7 @@
     if (d.act === 'home') { exitMode('home'); if (!document.activeElement || document.activeElement === document.body) focusTab(); return; }
     if (d.act === 'epart') { goPart(d.u, d.k); return; }
     if (d.act === 'more') { trainStart('rated'); return; }
+    if (d.act === 'daily') { dailyStart(); return; }
     if (d.act === 'rvnew') { st.mode = 'play'; st.rv = null; resetHints(); newGame(false); render(); return; }
     if (d.act === 'recgame') { newGame(false, { level: plain() ? Profile.LEVELS.beginner.opp : recLevel() }); return; }
     if (d.act === 'review') { enterReview(null); return; }

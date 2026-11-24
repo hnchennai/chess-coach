@@ -62,7 +62,22 @@
 
   function blank() {
     return { v: V, games: [], puz: {}, rating: 800, rn: 0, course: {}, days: {}, reviewed: [], t: 0, theme: null,
-      level: null, levelT: 0, placed: null, start: null, showAll: false, unlockAll: false, provisional: false, pgsDeclined: false, levelOfferT: 0, pieceTags: true };
+      level: null, levelT: 0, placed: null, start: null, showAll: false, unlockAll: false, provisional: false, pgsDeclined: false, levelOfferT: 0, pieceTags: true, daily: blankDaily() };
+  }
+  /* Daily puzzle (D1): today's pick and its result, and how many daily puzzles were finished. d: the local day ('2026-11-25',
+     as prof.days keys), id: the puzzle, r: null | 'solved' | 'missed', n: finished count (at least; merge keeps the larger). */
+  function blankDaily() { return { d: null, id: null, r: null, n: 0 }; }
+  function normDaily(x) {
+    if (!isObj(x) || typeof x.d !== 'string' || !/^\d{4}-\d{1,2}-\d{1,2}$/.test(x.d) || typeof x.id !== 'string' || !x.id) return blankDaily();
+    var n = Math.floor(+x.n); /* NaN fails the test below */
+    return { d: x.d, id: x.id, r: x.r === 'solved' || x.r === 'missed' ? x.r : null, n: n >= 0 ? n : 0 };
+  }
+  function dayNum(k) { var m = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(k || ''); return m ? +m[1] * 10000 + +m[2] * 100 + +m[3] : 0; }
+  /* Two copies' daily records: the newer day wins; on the same day a result wins, else the device's own pick. n: the larger. */
+  function mergeDaily(x, y) {
+    var w = x;
+    if (y.d && (!x.d || dayNum(y.d) > dayNum(x.d) || (y.d === x.d && !x.r && y.r))) w = y;
+    return { d: w.d, id: w.id, r: w.r, n: Math.max(x.n, y.n) };
   }
 
   /* Any saved shape -> v5. Never drops a field it does not know. null stays null (nothing saved). */
@@ -75,6 +90,7 @@
     o.rating = +o.rating || 800; o.rn = +o.rn || 0; o.t = +o.t || 0; o.theme = o.theme || null;
     o.showAll = !!o.showAll; o.unlockAll = !!o.unlockAll; o.provisional = !!o.provisional; o.pgsDeclined = !!o.pgsDeclined;
     o.levelT = +o.levelT || 0; o.levelOfferT = +o.levelOfferT || 0;
+    o.daily = normDaily(o.daily); /* D1 (AC10): a save from before the daily puzzle, or a broken record, reads as none yet */
     o.pieceTags = o.pieceTags !== false; /* G1 (G-D15): a save from before the setting, or a broken value, reads as on */
     if (!LEVELS[o.level]) o.level = null;
     if ((+p.v || 0) < V && !o.level && hasProgress(o)) {
@@ -189,6 +205,7 @@
     o.unlockAll = !!(a.unlockAll || bUnlock);
     o.levelOfferT = Math.max(a.levelOfferT, b.levelOfferT);
     o.pgsDeclined = a.pgsDeclined;
+    o.daily = mergeDaily(a.daily, b.daily);
     o.provisional = false;
     o.t = Math.max(a.t || 0, b.t || 0);
     o.v = Math.max(a.v, b.v, V);

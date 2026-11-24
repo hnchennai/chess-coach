@@ -187,7 +187,7 @@
   function lessonLine(i, n) { return 'Lesson · step ' + (i + 1) + ' of ' + n; }
   function setLine(s) { return s.kind === 'drill' ? 'Endgame drill' : (s.kind === 'puzzles' ? 'Puzzle ' : '') + (s.finished ? s.count : Math.min(s.i + 1, s.count)) + ' of ' + s.count; }
   /* The entry for what is on the board, built from plain facts. a: { over, lesson: { unit, i } } or { over, set: { kind,
-     title, unit, part, count, pass, rated, theme, review, i, right, wrong, counted, items, drill: { fen, moves } } }.
+     title, unit, part, count, pass, rated, theme, review, i, right, wrong, counted, items, drill: { fen, moves }, daily } }.
      items: puzzle ids dealt so far (all of them for a fixed set), [id, 0 | 1] pairs for Safe or blunder, opening line ids.
      counted: the current item's result is already in the score (and in the profile), so it is never counted twice. */
   function entryOf(a) {
@@ -197,6 +197,7 @@
     var e = { k: 'set', kind: s.kind, title: s.title, unit: s.unit || null, part: s.part || null, count: s.count, pass: s.pass == null ? null : s.pass, rated: !!s.rated,
       theme: s.theme || null, review: !!s.review, i: s.i, right: s.right, wrong: s.wrong, counted: !!s.counted, items: (s.items || []).slice() };
     if (s.kind === 'drill' && s.drill) e.drill = { fen: s.drill.fen, moves: s.drill.moves };
+    if (s.daily) e.daily = true; /* D1: the daily puzzle (a 1-puzzle set); other sets keep their saved shape */
     /* round 2: the counted item's own outcome (true: solved or right, false: missed), so it comes back as it ended */
     if (e.counted) e.ok = s.ok === true ? true : s.ok === false ? false : null;
     return e;
@@ -224,6 +225,9 @@
     if (e.counted && typeof e.ok !== 'boolean') return false; /* round 2: a counted item carries its outcome */
     if (e.theme != null && typeof e.theme !== 'string') return false;
     if (kind !== 'puzzles' && (e.rated || e.theme || e.review)) return false;
+    /* D1: the daily puzzle: one puzzle, on Train, never rated (it picks nothing), themed, a review or a lesson part */
+    if (e.daily != null && e.daily !== true) return false;
+    if (e.daily && (kind !== 'puzzles' || e.count !== 1 || e.unit != null || e.rated || e.theme || e.review)) return false;
     if (u) {
       /* a part of a lesson: the lesson must still have that part, of that kind. It waits on Learn; only a drill started
          from Train's list waits on Train */

@@ -1164,7 +1164,7 @@ const cases = [
     await page.context().close();
     // Show everything off: the same player follows Beginner Home on every card (D39)
     const p2 = await seeded(vp, prof({ unlockAll: true, rating: 950, rn: 20, levelOfferT: NOW, course: done(...FOUND), games: [WIN] }), { tab: 'coach' });
-    assert.equal((await p2.locator('#bhome .bh-title').textContent()).trim(), 'Puzzles at your level');
+    assert.equal((await p2.locator('#bhome .bh-title').first().textContent()).trim(), 'Puzzles at your level');
     await p2.evaluate(() => window.__coach.startPart('blunder', 'practice'));
     await jump(p2, 9); await lastQuiz(p2, true); await escNote(p2);
     c = await card(p2, '#sessionCard');

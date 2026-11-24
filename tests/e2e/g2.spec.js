@@ -196,7 +196,8 @@ const cases = [
     if (!PH(vp)) { assert.equal(L.tab, 'play', 'wide: the stored tab, as before'); assert.equal(L.board, true); return page; }
     assert.equal(L.tab, 'coach', 'G-D25: opens on Home, whatever tab it was closed on');
     assert.equal(L.board, false);
-    assert.deepEqual((await visibleIds(page, '#panel-coach > *')).filter((id) => id !== 'homeSlot'), HOME_ORDER, 'F-D8 order, nothing new without a game');
+    // D1 (DP-D9): the Daily puzzle card sits under the Continue card
+    assert.deepEqual((await visibleIds(page, '#panel-coach > *')).filter((id) => id !== 'homeSlot'), ['contCard', 'dailyCard'].concat(HOME_ORDER.slice(1)), 'F-D8 order, nothing new without a game');
     assert.equal(await slotOn(page, '#homeSlot'), true, 'day two: the tip at the bottom of Home');
     assert.equal(await resume(page, 'resumeHome'), null, 'no game: no Resume card');
     await shot(page, vp, 'home_club');

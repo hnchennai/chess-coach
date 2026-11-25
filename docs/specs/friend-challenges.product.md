@@ -45,6 +45,7 @@ Two friends play a turn-based game of chess in the app: one sends a challenge li
 | FC-D28 | The challenger names the friend from the row once the friend has accepted ("Name your friend", same rules). Built in FC4 with the game screen | Suresh, 2026-11-25 |
 | FC-D29 | Nicknames and the record against each friend stay on this phone only, never in the cloud save: they live in the device-only friend store (`suresh-chess-coach.friends.v1`), not in the profile. The profile stays v5. Finished friend games still go into the game history (`prof.games`) in FC4 | Suresh, 2026-11-25 |
 | FC-D30 | Android's automatic backup may restore the friend store, so a restored backup brings open friend games back. If two phones share an ID, the one that sent `hello` last gets the pushes. No backup rules change | Suresh, 2026-11-25 |
+| FC-D31 | The busy line "One moment." is approved: shown and read out while Share link, Accept or Cancel invite runs and while a challenge link loads, next to a spinner on the button | Suresh, 2026-11-25 |
 
 ## Wording
 Approved by Suresh, 2026-11-25 (FC-D23), letter for letter:
@@ -70,7 +71,7 @@ Approved on 2026-11-25 (FC-D25), proposed in FC3:
 |---|---|
 | Accept sheet, a Random invite | Your colour is picked at random. |
 | Accept sheet, under "Name your friend" (a small line) | optional, stays on this phone |
-| Time left (FC-D26) | Your move, 3 days left / Your move, 2 days left (48 hours or more, days rounded down) / Your move, 47 hours left ... Your move, 1 hour left (hours rounded down) / Your move, under 1 hour left / Your move, no time left |
+| Time left (FC-D26) | Your move, 2 days left (48 hours or more, days rounded down; just after a move it is just under 72 hours, so 2 days) / Your move, 47 hours left ... Your move, 1 hour left (hours rounded down) / Your move, under 1 hour left / Your move, no time left |
 | Opening your own link | This is your own challenge. Send the link to a friend. |
 | The 20 challenges a day limit | You have sent 20 challenges today. Try again tomorrow. |
 | Any other server failure | Something went wrong. Please try again. |
@@ -78,8 +79,8 @@ Approved on 2026-11-25 (FC-D25), proposed in FC3:
 | Sheet close button (screen readers only) | Close |
 | Website page, line under the title (also the link preview text) | Install Chess Coach from Google Play, then tap the link again. |
 
-Proposed in fix round 1, in use until approved (see Open questions):
-| Where | Proposed text |
+Approved on 2026-11-25 (FC-D31), proposed in fix round 1:
+| Where | Text |
 |---|---|
 | While a call runs (Share link, Accept, Cancel invite, the Accept sheet loading): the status line under the buttons, also read by screen readers, next to a spinner on the button | One moment. |
 
@@ -124,10 +125,9 @@ Proposed in fix round 1, in use until approved (see Open questions):
 - Confirmed by Suresh: FC-D1 to FC-D8, FC-D17 to FC-D19, FC-D21, FC-D22 (2026-11-24); FC-D23 (the approved wording) and FC-D24 (placeholders until the real Firebase config and fingerprints exist) (2026-11-25).
 - Technical, orchestrator (FC3, tech spec open question 4): the invite link is `https://hnchennai.github.io/c/?c=<code>`, served with HTTP 200 by `c/index.html`.
 - Confirmed by Suresh, 2026-11-25 (fix round 1): FC-D25 to FC-D30 (the FC3 proposals, time left rounded down, the last colour first, naming from the row in FC4, nicknames and records on the phone only, backups).
-- Proposed by Claude in fix round 1, in use until Suresh answers: "One moment." for a call in progress.
+- Confirmed by Suresh, 2026-11-25 (fix round 2): FC-D31, "One moment." for a call in progress.
 - Proposed by Claude, approved by Suresh on 2026-11-24: FC-D9 to FC-D16 and the beyond-code changes.
 - Verified by tool: none yet; Firebase pricing, the Blaze free quotas and the Play deletion rule are checked in readiness.
 
 ## Open questions
-From FC3 fix round 1 (2026-11-25), for Suresh:
-1. The busy line "One moment." (shown and read out while Share link, Accept or Cancel invite runs, and while a challenge link loads). Options: "One moment.", "Sending…", or no words (spinner only, which screen readers would not hear). Recommendation: "One moment."
+- None.

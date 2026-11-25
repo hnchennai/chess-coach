@@ -304,6 +304,7 @@ const cases = [
     assert.equal(s.label, W.nameLabel); assert.equal(s.hint, 'optional, stays on this phone'); assert.equal(s.max, 20);
     assert.deepEqual(s.buttons.slice(1), [W.accept, W.notNow]);
     assert.ok(s.minH >= 44);
+    assert.equal(await B.evaluate(() => document.activeElement && document.activeElement.dataset.act), 'faccept', 'fix round 2: focus on Accept, so no keyboard covers Accept and Not now');
     await shot(B, 'accept_sheet');
     assert.equal(await B.evaluate(() => window.__coach.st.tab), 'play', 'the app is on Play under the sheet');
     assert.ok(B.fb[0].includes('signUp') && B.fb.length === 2, 'sign-up, then peek');
@@ -612,6 +613,28 @@ const cases = [
     const c = await card(B);
     assert.deepEqual([c.rows.length, c.rows[0].name, c.rows[0].line], [1, 'Priya', 'Your move, 2 days left']);
     assert.equal(Object.keys(fb.store.dump().games).length, 1, 'one game');
+    return [A, B];
+  }],
+  ['Fix round 2: a link tapped mid-lesson parks the lesson as Close does; after Not now the player returns to the same step', async (vp, fb) => {
+    const A = await player(vp, fb, { who: 'A' });
+    const code = await challenge(A, 'w');
+    const B = await player(vp, fb, { who: 'B', prof: G.club() });
+    await B.evaluate(() => window.__coach.startPart('kq', 'learn'));
+    await B.locator('#navNext').click();
+    assert.deepEqual(await B.evaluate(() => [window.__coach.st.mode, window.__coach.st.ls.i]), ['lesson', 1]);
+    await B.evaluate((u) => window.__fc.open(u), linkOf(code));
+    await acceptSheet(B);
+    assert.equal(await B.evaluate(() => document.activeElement && document.activeElement.dataset.act), 'faccept');
+    await B.locator('#friendSheet .big[data-act="fclose"]').click();
+    if (vp.width <= 860) {
+      assert.equal(await B.evaluate(() => document.documentElement.dataset.scr || null), null, 'the board screen closed, as Close does');
+      await B.locator('#tab-path').click();
+      await B.waitForFunction(() => { const r = document.getElementById('resumePath'); return r && !r.hidden && r.getClientRects().length; });
+      assert.equal(await B.evaluate(() => document.querySelector('#resumePath .bh-title').textContent), 'Resume lesson');
+      assert.match(await B.evaluate(() => document.querySelector('#resumePath .rs-line').textContent), /^Lesson · step 2 of \d+$/);
+      await B.locator('#resumePath .rs-go').click();
+    }
+    assert.deepEqual(await B.evaluate(() => [window.__coach.st.mode, window.__coach.st.ls.i]), ['lesson', 1], 'the same lesson, the same step');
     return [A, B];
   }],
   ['FC-D27: the Challenge sheet starts on the colour used last time (Random the first time), also after a restart', async (vp, fb) => {

@@ -3492,7 +3492,7 @@
       f.col = r.col; f.loading = false;
       if (cold) FR.setLaunch(url, Date.now());
       drawFriendSheet();
-      var n = $('fgNick'); if (n) try { n.focus({ preventScroll: true }); } catch (e) {}
+      var n = $('friendSheet').querySelector('[data-act="faccept"]'); if (n) try { n.focus({ preventScroll: true }); } catch (e) {} /* fix round 2: Accept, not the optional name (no keyboard over the buttons) */
     }).catch(function (e) {
       if (frSheet !== f) return;
       f.loading = false; f.dead = true; frMsg(Friends.errorText(e && e.code));

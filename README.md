@@ -46,6 +46,7 @@ The whole app works offline: Stockfish, the 3D board, puzzles and lessons are in
   - `ANDROID_KEY_PASSWORD`: its password
 - Keep a backup of the key file and its password. The Play Store listing needs the same key, and a lost key means users can't update.
 - Every push to `main` builds version `1.0.<run number>`, signs it, and publishes a GitHub Release (`v1.0.N`) with the `.apk` (phone) and `.aab` (Play Store).
+- Builds of any other branch are test builds (`CC_TEST_BUILD=1`: Settings has the "Friend games (test)" toggle). Never upload a branch build's `.aab` to Play; only `main` builds go to Play.
 - Phone auto-updates: install Obtainium and add this repo (with a GitHub token, since the repo is private).
 
 ## Developing

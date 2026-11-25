@@ -45,6 +45,11 @@ Two friends play a turn-based game of chess in the app: one sends a challenge li
 | FC-D28 | The challenger names the friend from the row once the friend has accepted ("Name your friend", same rules). Built in FC4 with the game screen | Suresh, 2026-11-25 |
 | FC-D29 | Nicknames and the record against each friend stay on this phone only, never in the cloud save: they live in the device-only friend store (`suresh-chess-coach.friends.v1`), not in the profile. The profile stays v5. Finished friend games still go into the game history (`prof.games`) in FC4 | Suresh, 2026-11-25 |
 | FC-D30 | Android's automatic backup may restore the friend store, so a restored backup brings open friend games back. If two phones share an ID, the one that sent `hello` last gets the pushes. No backup rules change | Suresh, 2026-11-25 |
+| FC-D32 | All lines proposed in FC4 are approved as written (the friend board's title, Offer draw, Resign, Decline, Save, "Resign this game?" with Resign and Keep playing, the three draw lines, the end card's win, loss and draw lines, the history row, the review lines) | Suresh, 2026-11-25 |
+| FC-D33 | "Name your friend" shows on a row (and the friend board) whenever this phone has no nickname for that friend, for the challenger or the acceptor. This widens FC-D28 | Suresh, 2026-11-25 |
+| FC-D34 | The history row says "vs a friend" when there is no nickname | Suresh, 2026-11-25 |
+| FC-D35 | A waiting move shows "Not sent yet, 5 hours left" (FC-D26's time-left part after "Not sent yet, "), on the row and the board | Suresh, 2026-11-25 |
+| FC-D36 | Finished friend games go into the game history and the cloud save like engine games (the result and the anonymous friend key, no name). Nicknames and the W-L-D record stay on the phone (FC-D29 unchanged) | Suresh, 2026-11-25 |
 | FC-D31 | The busy line "One moment." is approved: shown and read out while Share link, Accept or Cancel invite runs and while a challenge link loads, next to a spinner on the button | Suresh, 2026-11-25 |
 
 ## Wording
@@ -56,7 +61,7 @@ Approved by Suresh, 2026-11-25 (FC-D23), letter for letter:
 | At 10 open games (under the disabled button) | You have 10 friend games open. Finish one to start another. |
 | Challenge sheet | Play as; White / Black / Random; button Share link |
 | Share text (written on the phone) | Play chess with me in Chess Coach: <link> |
-| Row lines | Your move, 2 days left / Their move / Waiting for your friend, until 1 Dec / Not sent yet |
+| Row lines | Your move, 2 days left / Their move / Waiting for your friend, until 1 Dec / Not sent yet (with the time left, FC-D35: Not sent yet, 5 hours left) |
 | Row record | W 2 · L 1 · D 0 |
 | Row name | the nickname, or Friend |
 | Waiting row button | Cancel invite (FC-D18) |
@@ -83,6 +88,24 @@ Approved on 2026-11-25 (FC-D31), proposed in fix round 1:
 | Where | Text |
 |---|---|
 | While a call runs (Share link, Accept, Cancel invite, the Accept sheet loading): the status line under the buttons, also read by screen readers, next to a spinner on the button | One moment. |
+
+Proposed in FC4 and approved on 2026-11-25 (FC-D32); the app's own lines are reused where they fit:
+| Where | Text |
+|---|---|
+| Friend board, mode bar (wide) and Close bar (phones), first line | Friend game vs Priya (no nickname: Friend game); second line: the row's line (Your move, 2 days left / Their move / Not sent yet, 5 hours left, FC-D35), then the end card's title |
+| Friend board, the opponent above the board | the nickname, or Friend |
+| Friend board, buttons | Offer draw; Resign |
+| Resign, the confirm step | Resign this game?; buttons Resign and Keep playing (the app's own) |
+| A draw offer from the friend | Your friend offers a draw.; buttons Accept (approved) and Decline |
+| A draw offer I made | You offered a draw. |
+| Offer refused by the server (one offer per own move) | You can offer a draw again after your next move. |
+| Name your friend (row and board button, sheet title and field) | Name your friend (approved), optional, stays on this phone (approved), buttons Save and Not now (approved) |
+| End card, a win | Checkmate. You win! (the app's own) with Great finish. Review it. (the app's own); You win! with Your friend resigned. / Your friend ran out of time. / Your friend left the game. |
+| End card, a loss | Checkmate (the app's own) / You resigned / Out of time, each with Your friend wins this one. Review it to find the turning point. |
+| End card, a draw | Draw with You both agreed to a draw. / The same position came up three times. / 50 moves without a capture or pawn move. / Not enough pieces left to checkmate. / The game reached the move limit.; Stalemate with No legal moves and no check, so it's a draw. (the app's own lines) |
+| End card buttons | Review this game; Home (the app's own) |
+| History row | 25 Nov · vs Priya (friend) · White; no nickname: vs a friend (FC-D34) |
+| Review of a friend game, the friend's moves | Your friend's move; Your friend played e5; Here is what the move does. |
 
 ## Scenarios
 1. **Invite.** Priya taps Challenge a friend on Play, picks Random, and shares the link to Ravi on WhatsApp. Her Play tab shows the game as "Waiting for your friend", with an expiry date 7 days ahead.
@@ -126,6 +149,7 @@ Approved on 2026-11-25 (FC-D31), proposed in fix round 1:
 - Technical, orchestrator (FC3, tech spec open question 4): the invite link is `https://hnchennai.github.io/c/?c=<code>`, served with HTTP 200 by `c/index.html`.
 - Confirmed by Suresh, 2026-11-25 (fix round 1): FC-D25 to FC-D30 (the FC3 proposals, time left rounded down, the last colour first, naming from the row in FC4, nicknames and records on the phone only, backups).
 - Confirmed by Suresh, 2026-11-25 (fix round 2): FC-D31, "One moment." for a call in progress.
+- Confirmed by Suresh, 2026-11-25 (FC4 fix round 1): FC-D32 to FC-D36 (the FC4 wording, naming on any unnamed row, "vs a friend", the time left on a waiting move, friend games in the history and the cloud save).
 - Proposed by Claude, approved by Suresh on 2026-11-24: FC-D9 to FC-D16 and the beyond-code changes.
 - Verified by tool: none yet; Firebase pricing, the Blaze free quotas and the Play deletion rule are checked in readiness.
 

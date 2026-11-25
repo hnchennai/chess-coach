@@ -50,8 +50,22 @@
     error: 'Something went wrong. Please try again.',
     close: 'Close',
     left: { none: 'no time left', underHour: 'under 1 hour left', hour: ' hour left', hours: ' hours left', days: ' days left' },
-    /* proposed in fix round 1 (not yet approved): what the busy state says (a live region) while a call runs */
-    busy: 'One moment.'
+    /* FC-D31 (approved 2026-11-25): what the busy state says (a live region) while a call runs */
+    busy: 'One moment.',
+    /* FC4, approved 2026-11-25 (FC-D32; product spec Wording section): the friend board, its controls, draw offers, the name
+       sheet, the history row (FC-D34) and the end card. Reuses the app's own lines where they fit. */
+    board: 'Friend game', vs: ' vs ',
+    resign: 'Resign', resignAsk: 'Resign this game?', keep: 'Keep playing',
+    offerDraw: 'Offer draw', decline: 'Decline',
+    drawOffered: 'Your friend offers a draw.', drawSent: 'You offered a draw.', drawLater: 'You can offer a draw again after your next move.',
+    save: 'Save',
+    rvTitle: 'Your friend\u2019s move', rvPlayed: 'Your friend played ', rvText: 'Here is what the move does.',
+    histVs: 'vs ', histTag: ' (friend)', histFriend: 'vs a friend',
+    winTitle: 'You win!', mateWin: 'Checkmate. You win!', mateLoss: 'Checkmate', resigned: 'You resigned', outOfTime: 'Out of time', draw: 'Draw', stalemate: 'Stalemate',
+    winText: 'Great finish. Review it.', lossText: 'Your friend wins this one. Review it to find the turning point.',
+    why: { resign: 'Your friend resigned.', time: 'Your friend ran out of time.', abandoned: 'Your friend left the game.', agreed: 'You both agreed to a draw.',
+      stalemate: 'No legal moves and no check, so it\u2019s a draw.', repetition: 'The same position came up three times.', fifty: '50 moves without a capture or pawn move.',
+      material: 'Not enough pieces left to checkmate.', cap: 'The game reached the move limit.' }
   });
 
   function isObj(x) { return !!x && typeof x === 'object' && !Array.isArray(x); }
@@ -81,11 +95,12 @@
       pend = { ply: p.ply, from: p.from, to: p.to, t: p.t };
       if (p.promo === 'q' || p.promo === 'r' || p.promo === 'b' || p.promo === 'n') pend.promo = p.promo;
     }
+    var dp = num(g.dp) && g.dp >= 0 && g.dp === Math.floor(g.dp) ? g.dp : null; /* FC4: the ply count at my last draw offer (as the server's drawPly) */
     var res = isObj(g.res) && (g.res.r === 'w' || g.res.r === 'b' || g.res.r === 'd' || g.res.r === null) && typeof g.res.why === 'string' ? { r: g.res.r, why: g.res.why } : null;
     return {
       id: id, me: me, opp: typeof g.opp === 'string' && OPP_RE.test(g.opp) ? g.opp : null, st: st, moves: g.moves.slice(),
       dl: num(g.dl) ? g.dl : null, draw: g.draw === 'w' || g.draw === 'b' ? g.draw : null, res: res, v: g.v, t: g.t,
-      exp: num(g.exp) ? g.exp : null, code: typeof g.code === 'string' && CODE_RE.test(g.code) ? g.code : null, pend: pend
+      exp: num(g.exp) ? g.exp : null, code: typeof g.code === 'string' && CODE_RE.test(g.code) ? g.code : null, pend: pend, dp: dp
     };
   }
 
@@ -119,7 +134,10 @@
       var g = normGame(v.id, v); if (!g) return;
       var old = s.games[g.id];
       if (old && old.v > g.v) return;
-      if (old && old.v === g.v) g.pend = old.pend;
+      /* FC4: the move waiting to be sent stays only while the server's game is still active and does not have it yet (my
+         turn at that ply); anything else (the move arrived, the game ended) drops it. dp is this phone's own (the view has none). */
+      g.pend = old && keepsPend(g, old.pend) ? old.pend : null;
+      g.dp = old ? old.dp : null;
       s.games[g.id] = g;
     });
     s.skew = num(serverNow) && num(localNow) ? serverNow - localNow : 0;
@@ -173,7 +191,7 @@
   function stateLine(g, now, skew) {
     var t = now + (num(skew) ? skew : 0);
     if (g.st === 'invited') return COPY.waiting + (g.exp != null ? ', ' + COPY.until + dayMonth(g.exp) : '');
-    if (g.pend) return COPY.notSent;
+    if (g.pend) return COPY.notSent + (g.dl != null ? ', ' + timeLeft(g.dl - t) : ''); /* FC-D35: the clock goes on (FC-D6) */
     if (turnOf(g) === g.me) return COPY.yourMove + (g.dl != null ? ', ' + timeLeft(g.dl - t) : '');
     return COPY.theirMove;
   }
@@ -199,7 +217,7 @@
       var kind = g.st === 'invited' ? 'invite' : turnOf(g) === g.me && !g.pend ? 'mine' : 'theirs';
       var fr = g.opp && isObj(f[g.opp]) ? f[g.opp] : null;
       list.push({ id: id, kind: kind, name: fr && fr.n ? fr.n : COPY.friend, line: stateLine(g, now, s.skew),
-        record: g.opp ? recordText(fr && fr.res) : null, code: g.code, me: g.me, key: kind === 'invite' ? g.exp || 0 : g.dl || 0 });
+        record: g.opp ? recordText(fr && fr.res) : null, code: g.code, me: g.me, key: kind === 'invite' ? g.exp || 0 : g.dl || 0, needsName: needsName(s, g) });
     });
     var order = { mine: 0, theirs: 1, invite: 2 };
     list.sort(function (a, b) { return order[a.kind] - order[b.kind] || a.key - b.key || (a.id < b.id ? -1 : 1); });
@@ -236,7 +254,89 @@
   /* Fix 8: the store without the refresh token (for window.__coach and debugging) */
   function safeCopy(s) { var c = JSON.parse(JSON.stringify(s)); delete c.rt; return c; }
 
-  return { CONFIG: CONFIG, name: name, replayed: replayed, safeCopy: safeCopy, REPLAY_MS: REPLAY_MS, KEY: KEY, MAX_OPEN: MAX_OPEN, NICK_MAX: NICK_MAX, COPY: COPY, CODE_RE: CODE_RE,
+  /* ---------- FC4: the friend board (tech spec section 9). Moves wait in the store as pend before any call (FC-D13). ---------- */
+  function keepsPend(g, p) { return !!p && g.st === 'active' && g.moves.length === p.ply && turnOf(g) === g.me; }
+  /* A move on my turn becomes the game's one pending move. mv: { from, to, promo? } (checked for legality by the app's chess.js). */
+  function queue(s, id, mv, now) {
+    var g = s.games[id];
+    if (!g || g.st !== 'active' || g.pend || turnOf(g) !== g.me || !isObj(mv) || !SQ_RE.test(mv.from) || !SQ_RE.test(mv.to)) return false;
+    var p = { ply: g.moves.length, from: mv.from, to: mv.to, t: num(now) ? now : 0 };
+    if (mv.promo === 'q' || mv.promo === 'r' || mv.promo === 'b' || mv.promo === 'n') p.promo = mv.promo;
+    g.pend = p;
+    return true;
+  }
+  function sendable(g) { return !!g && g.st === 'active' && !!g.pend && keepsPend(g, g.pend); }
+  function toSend(s) { return Object.keys(s.games).filter(function (id) { return sendable(s.games[id]); }).sort(); }
+  /* The move op's data: { g, ply, from, to, promo? } (functions/src/validate.js) */
+  function moveReq(g) { var p = g.pend, r = { g: g.id, ply: p.ply, from: p.from, to: p.to }; if (p.promo) r.promo = p.promo; return r; }
+  /* What an answer to a move does. err: null (ok) or { code, status } (fclient.js). 'keep': try again later (offline, the server
+     failed); 'done': nothing more (ok, or late: the answer's game shows the time loss); 'sync': the move can never go in (the game
+     ended, it is not my turn, the move or request is refused), so it is dropped and the game is synced. */
+  function settleSend(s, id, err) {
+    var g = s.games[id]; if (!g) return 'done';
+    if (!err) return 'done';
+    var st = err.status, c = err.code;
+    if (st === 'failed-precondition' || st === 'not-found' || st === 'invalid-argument') { g.pend = null; return c === 'late' ? 'done' : 'sync'; }
+    return 'keep';
+  }
+  /* A finished game from my side: { r: 'W' | 'L' | 'D', why }, or null (still open, or a cancelled or expired invite: no result) */
+  function outcome(g) {
+    if (!g || g.st !== 'over' || !g.res || g.res.r === null || (g.me !== 'w' && g.me !== 'b')) return null;
+    return { r: g.res.r === 'd' ? 'D' : g.res.r === g.me ? 'W' : 'L', why: g.res.why };
+  }
+  /* The end card's title and line for each ending (the app's own lines where they fit) */
+  function endCopy(g) {
+    var o = outcome(g), C = COPY; if (!o) return null;
+    if (o.r === 'W') return o.why === 'mate' ? { title: C.mateWin, text: C.winText } : { title: C.winTitle, text: C.why[o.why] || C.winText };
+    /* a loss by "abandoned" cannot reach this phone (the one who leaves loses its store); it counts as resigning (FC-D17) */
+    if (o.r === 'L') return { title: o.why === 'mate' ? C.mateLoss : o.why === 'time' ? C.outOfTime : C.resigned, text: C.lossText };
+    return { title: o.why === 'stalemate' ? C.stalemate : C.draw, text: C.why[o.why] || '' };
+  }
+  /* FC-D29: the record per friend, on this phone only: friends[opp].res[gameId]. Counted once per game (a game seen again in a
+     later sync changes nothing), never for r: null. A friend with no nickname gets an entry for the record. */
+  function recorded(s, g) { var f = g && g.opp && isObj(s.friends) ? s.friends[g.opp] : null; return !!(f && isObj(f.res) && f.res[g.id]); }
+  function record(s, id) {
+    var g = s.games[id], o = outcome(g);
+    if (!o || !g.opp || !OPP_RE.test(g.opp) || recorded(s, g)) return false;
+    var f = isObj(s.friends[g.opp]) ? s.friends[g.opp] : (s.friends[g.opp] = { n: '', t: 0, res: {} });
+    f.res[id] = o.r === 'W' ? 'w' : o.r === 'L' ? 'l' : 'd';
+    return true;
+  }
+  function toRecord(s) { return Object.keys(s.games).filter(function (id) { var g = s.games[id]; return !!outcome(g) && !!g.opp && !recorded(s, g); }).sort(); }
+  /* Tech spec section 9: the finished game for prof.games. Unrated (level null), empty tags (out of the weakness stats), the
+     friend's key (fr) and never the nickname (FC-D29: names stay on this phone). */
+  function entry(g, skew) {
+    var o = outcome(g); if (!o) return null;
+    return { id: 'f-' + g.id, d: endedAt(g, skew), r: o.r, /* d: when it ended on this phone's clock (fix round 1, fix 6) */ user: g.me, level: null, fr: g.opp, ann: {}, tags: {}, sans: g.moves.slice() };
+  }
+  function nickOf(s, opp) { var f = s && isObj(s.friends) && typeof opp === 'string' ? s.friends[opp] : null; return f && f.n ? f.n : ''; }
+  function histName(s, opp) { var n = nickOf(s, opp); return n ? COPY.histVs + n + COPY.histTag : COPY.histFriend; }
+  function oppName(s, g) { return nickOf(s, g && g.opp) || COPY.friend; }
+  function boardTitle(s, g) { var n = nickOf(s, g && g.opp); return COPY.board + (n ? COPY.vs + n : ''); }
+  /* The friend board's state line: the row's line while it is open (FC-D26 time left), the result's title once it is over */
+  function boardLine(g, now, skew) { var e = endCopy(g); return e ? e.title : stateLine(g, now, skew); }
+  /* FC-D11 draw offers: as the server, one offer per own move (dp: the ply count at my last offer) and none while one is open */
+  function ownMoves(c, n) { return c === 'w' ? Math.ceil(n / 2) : Math.floor(n / 2); }
+  function canOffer(g) {
+    if (!g || g.st !== 'active' || g.draw !== null || (g.me !== 'w' && g.me !== 'b')) return false;
+    return !(g.dp != null && ownMoves(g.me, g.moves.length) <= ownMoves(g.me, g.dp));
+  }
+  function offered(s, id) { var g = s.games[id]; if (g) g.dp = g.moves.length; }
+  /* Fix round 1: a friend's offer while my move waits is not answered (the server clears it when my move lands) */
+  function offerFrom(g) { return !g || !g.draw || g.st !== 'active' ? null : g.draw === g.me ? 'me' : g.pend ? null : 'friend'; }
+  /* Fix round 2: the line after the server refused my draw offer: "again after your next move" only when that is the reason
+     (no friend's offer open, no move of mine waiting); otherwise the board shows the game as the server has it */
+  function refusalLine(g, a) { return a === 'offer' && g && g.st === 'active' && !g.pend && g.draw === null ? COPY.drawLater : null; }
+  function drawLine(g) { var f = offerFrom(g); return f === 'friend' ? COPY.drawOffered : f === 'me' ? COPY.drawSent : null; }
+  /* FC-D28: "Name your friend" once the friend has accepted and has no nickname on this phone */
+  /* Fix round 1: when the game ended on this phone's clock (the server's end time less the skew), for the day it counts on */
+  function endedAt(g, skew) { return g.t - (num(skew) ? skew : 0); }
+  function needsName(s, g) { return !!g && g.st !== 'invited' && !!g.opp && OPP_RE.test(g.opp) && !nickOf(s, g.opp); }
+
+  return { CONFIG: CONFIG, name: name,
+    queue: queue, sendable: sendable, toSend: toSend, moveReq: moveReq, settleSend: settleSend, outcome: outcome, endCopy: endCopy, recorded: recorded, record: record,
+    toRecord: toRecord, entry: entry, histName: histName, oppName: oppName, boardTitle: boardTitle, boardLine: boardLine, canOffer: canOffer, offered: offered,
+    offerFrom: offerFrom, drawLine: drawLine, refusalLine: refusalLine, needsName: needsName, endedAt: endedAt, turnOf: turnOf, replayed: replayed, safeCopy: safeCopy, REPLAY_MS: REPLAY_MS, KEY: KEY, MAX_OPEN: MAX_OPEN, NICK_MAX: NICK_MAX, COPY: COPY, CODE_RE: CODE_RE,
     blank: blank, read: read, apply: apply, link: link, shareText: shareText, parseLink: parseLink, available: available,
     openCount: openCount, canChallenge: canChallenge, timeLeft: timeLeft, dayMonth: dayMonth, stateLine: stateLine,
     recordText: recordText, nick: nick, youPlay: youPlay, rows: rows, errorText: errorText, remember: remember };

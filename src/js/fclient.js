@@ -161,6 +161,11 @@
       setCol: function (c) { if (c === 'w' || c === 'b' || c === 'r') { store.col = c; save(); } },
       name: function (opp, n, t) { var ok = Friends.name(store, opp, n, t); if (ok) save(); return ok; },
       setLaunch: function (url, t) { store.launch = { url: url, t: t }; save(); },
+      /* FC4: the friend board. Each change is saved at once (the pending move before any call, FC-D13). */
+      queue: function (gid, mv, t) { var ok = Friends.queue(store, gid, mv, t); if (ok) save(); return ok; },
+      settleSend: function (gid, err) { var r = Friends.settleSend(store, gid, err); save(); return r; },
+      record: function (gid) { var ok = Friends.record(store, gid); if (ok) save(); return ok; },
+      offered: function (gid) { Friends.offered(store, gid); save(); },
       remember: function (code) { Friends.remember(store, code); save(); }
     };
   }

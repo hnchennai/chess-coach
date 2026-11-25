@@ -118,6 +118,7 @@ async function player(vp, fb, o) {
   const store = o.test === false || o.native === false ? null : { v: 1, test: true, games: {} };
   await ctx.addInitScript(seed, [G.PKEY, o.prof || G.improver({ rating: 1100 }), FKEY, store]);
   if (o.native !== false) await ctx.addInitScript(fakeCap, { launch: o.launch || null, shareCancel: !!o.shareCancel, noConfig: !!o.noConfig });
+  for (const x of o.extra || []) await ctx.addInitScript(x[0], x[1]); // FC4: more fakes (the ads plugin, a worker counter)
   const origin = o.release || o.native === false ? RORIGIN : ORIGIN;
   const page = await ctx.newPage();
   page.errors = []; page.outside = []; page.fb = []; page.scripts = [];
@@ -659,12 +660,12 @@ function serve(WWW, port) {
   });
   return new Promise((r) => srv.listen(port, '127.0.0.1', () => r(srv)));
 }
-async function run() {
+async function run(list) {
   const srv = await serve(TESTWWW, PORT), rsrv = await serve(REL, RPORT);
   browser = await chromium.launch();
   const results = []; let failures = 0;
   try {
-    for (const vp of VIEWPORTS) for (const [name, fn] of cases) {
+    for (const vp of VIEWPORTS) for (const [name, fn] of list || cases) {
       if (ONLY && !ONLY.test(name)) continue;
       const label = vp.width + 'x' + vp.height + ' ' + name, fb = fakeFirebase();
       let pages = [];
@@ -686,4 +687,6 @@ async function run() {
   console.log('\n' + (results.length - failures) + ' passed, ' + failures + ' failed');
   process.exit(failures ? 1 : 0);
 }
-run();
+// FC4 (tests/e2e/fc4.spec.js) runs its own cases on this harness
+if (require.main === module) run();
+else module.exports = { run, player, fakeFirebase, goPlay, card, sheet, challenge, linkOf, acceptSheet, doAccept, frStore, shot, layoutOk, W, FKEY, DAY, G };

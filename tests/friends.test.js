@@ -190,7 +190,7 @@ test('stateLine: the approved row lines', () => {
   assert.equal(F.stateLine(view({ me: 'w', moves: ['e4'] }), now, 0), 'Their move');
   const exp = new Date(2026, 11, 1, 18, 0).getTime();
   assert.equal(F.stateLine(invite({ exp }), now, 0), 'Waiting for your friend, until 1 Dec');
-  assert.equal(F.stateLine(view({ me: 'b', moves: ['e4'], pend: { ply: 1, from: 'e7', to: 'e5', t: T } }), now, 0), 'Not sent yet');
+  assert.equal(F.stateLine(view({ me: 'b', moves: ['e4'], pend: { ply: 1, from: 'e7', to: 'e5', t: T } }), now, 0), 'Not sent yet, 3 days left', 'FC-D35 (FC4 fix round 1): with the time left');
 });
 
 test('stateLine: time left counts from the server clock (skew), never from the phone alone', () => {

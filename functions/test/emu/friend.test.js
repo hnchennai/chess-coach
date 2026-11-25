@@ -87,6 +87,10 @@ test('full game flow: invite, peek, accept, moves both ways, illegal and out-of-
   // Criterion 1: used once
   await err(c.token, { op: 'peek', code: inv.code }, 'FAILED_PRECONDITION', 'used');
   await err(c.token, { op: 'accept', code: inv.code }, 'FAILED_PRECONDITION', 'used');
+  // FC3 fix round 1: the acceptor's retry after a lost answer gets the same game back
+  const reAcc = await ok(b.token, { op: 'accept', code: inv.code });
+  assert.equal(reAcc.games[0].id, g);
+  assert.equal(reAcc.games[0].v, acc.games[0].v, 'nothing changed');
 
   // Scenario 6: out of turn and illegal moves change nothing
   await err(b.token, { op: 'move', g, ply: 0, from: 'e7', to: 'e5' }, 'FAILED_PRECONDITION', 'turn');

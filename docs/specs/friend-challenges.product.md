@@ -92,7 +92,7 @@ Approved on 2026-11-25 (FC-D31), proposed in fix round 1:
 Proposed in FC4 and approved on 2026-11-25 (FC-D32); the app's own lines are reused where they fit:
 | Where | Text |
 |---|---|
-| Friend board, mode bar (wide) and Close bar (phones), first line | Friend game vs Priya (no nickname: Friend game); second line: the row's line (Your move, 2 days left / Their move / Not sent yet), then the end card's title |
+| Friend board, mode bar (wide) and Close bar (phones), first line | Friend game vs Priya (no nickname: Friend game); second line: the row's line (Your move, 2 days left / Their move / Not sent yet, 5 hours left, FC-D35), then the end card's title |
 | Friend board, the opponent above the board | the nickname, or Friend |
 | Friend board, buttons | Offer draw; Resign |
 | Resign, the confirm step | Resign this game?; buttons Resign and Keep playing (the app's own) |

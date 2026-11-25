@@ -1491,8 +1491,9 @@
   }
   function newGame(force, opts) {
     opts = opts || {};
+    var fromFriend = st.mode === 'friend'; if (fromFriend) frLeave(); /* FC4 fix round 2: from the friend board, the normal Play page asks the question */
     /* Fix round 1: on a phone the question comes whatever is on the board (a closed lesson or set may be waiting over the game) */
-    if (!force && (st.mode === 'play' || st.mode === 'friend' || phone()) && G.history().length > 2 && !G.game_over() && !st.confirmNew) { st.confirmNew = true; $('newConfirm').hidden = false; st.scr = 'tabs'; switchTab('play'); return; } /* G2a: the question is on Play's start page */
+    if (!force && (st.mode === 'play' || st.mode === 'friend' || phone()) && G.history().length > 2 && !G.game_over() && !st.confirmNew) { st.confirmNew = true; $('newConfirm').hidden = false; st.scr = 'tabs'; switchTab('play'); if (fromFriend) render(); return; } /* G2a: the question is on Play's start page */
     $('newConfirm').hidden = true; st.confirmNew = false; st.nm = null; /* G1: a new game clears the name line */
     rateReset(); /* D2 (fix 3) */
     stow('play'); /* G2b, G-D35: a lesson or set that is open waits on its own tab, at every width */
@@ -2881,7 +2882,10 @@
         cloud.game = db.doc('data/users/' + uid + '/chess'); cloud.prof = db.doc('data/users/' + uid + '/profile');
         return pullCloud();
       });
-    }).catch(function () { syncNote('Saved on this device only.', false); if (!cloud.game) cloudState = 'failed'; }); /* D-1: a setup error fails closed */
+    }).catch(function () {
+      syncNote('Saved on this device only.', false); if (!cloud.game) cloudState = 'failed'; /* D-1: a setup error fails closed */
+      if (!frPulled) { frPulled = true; try { frSettle(); } catch (e) {} } /* FC4 fix round 2: no cloud this session: friend games are recorded on this phone now */
+    });
     document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'visible') { cloud.tries = 0; pullCloud(); } });
     window.addEventListener('online', function () { cloud.tries = 0; pullCloud(); });
   }
@@ -3670,7 +3674,7 @@
   function frSettle() {
     if (!FR) return;
     var s = FR.store(), add = false;
-    if (cloudSettled() || frPulled) Friends.toRecord(s).forEach(function (id) {
+    if (cloudSettled() || frPulled || cloudState === 'failed') Friends.toRecord(s).forEach(function (id) {
       var e = Friends.entry(s.games[id], s.skew); if (!e) return;
       if (!prof.games.some(function (x) { return x && x.id === e.id; })) { prof.games.unshift(e); prof.games = prof.games.slice(0, 30); dayRec(e.d).games++; add = true; }
       FR.record(id);
@@ -3715,10 +3719,11 @@
     frAct(act, 'draw', { g: id, a: a }, function (e, here) {
       if (!e) { if (a === 'offer') FR.offered(id); if (here) frBarMsg = null; return; }
       if (e.code === 'draw') { /* not possible now: the server's state (its answer carries the game) wins */
-        /* fix 2: refused because the friend's offer is open (crossed offers): that offer shows, with Accept and Decline */
-        var crossed = a === 'offer' && Friends.offerFrom(FR.store().games[id]) === 'friend';
-        if (a === 'offer' && !crossed) FR.offered(id);
-        if (here) frMsgFor(id, a === 'offer' && !crossed ? Friends.COPY.drawLater : null);
+        /* fix 2: refused because the friend's offer is open (crossed offers): that offer shows, with Accept and Decline; fix round 2:
+           with a move of mine waiting, no line either */
+        var line = Friends.refusalLine(FR.store().games[id], a);
+        if (line) FR.offered(id);
+        if (here) frMsgFor(id, line);
         frSync(true); return;
       }
       if (here) frMsgFor(id, frErr(e));
@@ -3816,5 +3821,6 @@
     closeAct: closeAct, /* G2a: what the Close button does */ backPressed: backPressed, /* G2c: what the phone's back button does (true: used) */ /* how often an end card was scrolled into view (e2e) */
     fr: function () { return FR ? Friends.safeCopy(FR.store()) : null; }, /* FC3: the friend store without the refresh token (e2e, fix 8) */
     frTick: function () { frTick(); }, /* FC4: the 60 s timer's work, at once (e2e) */
+    newGame: function () { newGame(false); }, /* FC4 fix round 2: what Start new game and Home's game steps do (e2e) */
     nextLabel: function () { return nextAction(currentStage()).label; } /* today's Next step, for the e2e check that the Continue card follows it */ };
 })();

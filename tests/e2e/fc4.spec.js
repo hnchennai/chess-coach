@@ -454,6 +454,13 @@ const cases = [
       assert.deepEqual(await A.evaluate(() => window.__coach.hist()), sans0, 'a puzzle set started beside it');
       assert.deepEqual(await A.evaluate(() => [window.__coach.st.fid, window.__coach.st.fg]), [null, null], 'a puzzle set clears the friend board');
     }
+    // Fix round 2: a new engine game asked for from the friend board (Start new game, Home's game step) asks first, on the normal Play page
+    await openBoard(A, gid);
+    await A.evaluate(() => window.__coach.newGame());
+    await A.waitForFunction(() => window.__coach.st.mode === 'play');
+    assert.equal(await A.evaluate(() => { const n = document.getElementById('newConfirm'); return !!n && n.getClientRects().length > 0; }), true, '"Tap again to abandon it" is on screen');
+    assert.deepEqual(await A.evaluate(() => [window.__coach.hist(), window.__coach.st.fid]), [sans0, null], 'the moves are intact after one tap');
+    if (phone(vp)) await A.evaluate(() => window.__coach.st.confirmNew = false);
     await openBoard(A, gid);
     await A.evaluate(() => window.__coach.startPart('kq', 'learn'));
     await A.waitForFunction(() => window.__coach.st.mode === 'lesson');
@@ -538,7 +545,10 @@ const cases = [
     await C.evaluate(() => window.__releaseCloud());
     await C.waitForFunction(() => window.__coach.getProf().games.length === 1, null, { timeout: 10000 });
     assert.equal((await profOf(C)).days[dkeyOf(end)].games, n0(dkeyOf(end)) + 1);
-    return [A, B, C];
+    // Fix round 2: a cloud whose set-up fails records the game in that session too
+    const D = await player(vp, fb, who('D', { extra: EXTRA.concat([[seedStore, st], [() => { window.claude = { use: () => Promise.reject(new Error('no cloud')) }; }, null]]) }));
+    await D.waitForFunction(() => window.__coach.getProf().games.length === 1, null, { timeout: 10000 });
+    return [A, B, C, D];
   }],
   ['Fix 9: endings through the real server: stalemate, the friend left (abandoned), the move limit', async (vp, fb) => {
     const A = await player(vp, fb, who('A')), B = await player(vp, fb, who('B'));

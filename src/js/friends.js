@@ -324,6 +324,9 @@
   function offered(s, id) { var g = s.games[id]; if (g) g.dp = g.moves.length; }
   /* Fix round 1: a friend's offer while my move waits is not answered (the server clears it when my move lands) */
   function offerFrom(g) { return !g || !g.draw || g.st !== 'active' ? null : g.draw === g.me ? 'me' : g.pend ? null : 'friend'; }
+  /* Fix round 2: the line after the server refused my draw offer: "again after your next move" only when that is the reason
+     (no friend's offer open, no move of mine waiting); otherwise the board shows the game as the server has it */
+  function refusalLine(g, a) { return a === 'offer' && g && g.st === 'active' && !g.pend && g.draw === null ? COPY.drawLater : null; }
   function drawLine(g) { var f = offerFrom(g); return f === 'friend' ? COPY.drawOffered : f === 'me' ? COPY.drawSent : null; }
   /* FC-D28: "Name your friend" once the friend has accepted and has no nickname on this phone */
   /* Fix round 1: when the game ended on this phone's clock (the server's end time less the skew), for the day it counts on */
@@ -333,7 +336,7 @@
   return { CONFIG: CONFIG, name: name,
     queue: queue, sendable: sendable, toSend: toSend, moveReq: moveReq, settleSend: settleSend, outcome: outcome, endCopy: endCopy, recorded: recorded, record: record,
     toRecord: toRecord, entry: entry, histName: histName, oppName: oppName, boardTitle: boardTitle, boardLine: boardLine, canOffer: canOffer, offered: offered,
-    offerFrom: offerFrom, drawLine: drawLine, needsName: needsName, endedAt: endedAt, turnOf: turnOf, replayed: replayed, safeCopy: safeCopy, REPLAY_MS: REPLAY_MS, KEY: KEY, MAX_OPEN: MAX_OPEN, NICK_MAX: NICK_MAX, COPY: COPY, CODE_RE: CODE_RE,
+    offerFrom: offerFrom, drawLine: drawLine, refusalLine: refusalLine, needsName: needsName, endedAt: endedAt, turnOf: turnOf, replayed: replayed, safeCopy: safeCopy, REPLAY_MS: REPLAY_MS, KEY: KEY, MAX_OPEN: MAX_OPEN, NICK_MAX: NICK_MAX, COPY: COPY, CODE_RE: CODE_RE,
     blank: blank, read: read, apply: apply, link: link, shareText: shareText, parseLink: parseLink, available: available,
     openCount: openCount, canChallenge: canChallenge, timeLeft: timeLeft, dayMonth: dayMonth, stateLine: stateLine,
     recordText: recordText, nick: nick, youPlay: youPlay, rows: rows, errorText: errorText, remember: remember };

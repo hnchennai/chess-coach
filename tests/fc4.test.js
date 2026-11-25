@@ -263,3 +263,12 @@ test('Fix 6: the history entry carries the local end time (server end less the s
   assert.equal(F.entry(g, 2000).d, T + 3000);
   assert.equal(F.entry(g).d, T + 5000);
 });
+
+test('Fix round 2: a refused draw offer says "again after your next move" only when no friend offer is open and no move of mine waits', () => {
+  assert.equal(F.refusalLine(view({ moves: ['e4', 'e5'] }), 'offer'), 'You can offer a draw again after your next move.');
+  assert.equal(F.refusalLine(view({ moves: ['e4', 'e5'], draw: 'b' }), 'offer'), null, 'crossed offers: the friend’s offer shows instead');
+  const s = store([view({ moves: [], draw: 'b' })]);
+  F.queue(s, GID, { from: 'e2', to: 'e4' }, T);
+  assert.equal(F.refusalLine(s.games[GID], 'offer'), null, 'my move waits: no line');
+  assert.equal(F.refusalLine(view({ draw: 'b' }), 'accept'), null, 'accept or decline refused: no line');
+});

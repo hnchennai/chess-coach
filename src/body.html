@@ -145,6 +145,8 @@
           </div>
           <p class="note" id="newConfirm" hidden>Your current game isn't finished. Tap again to abandon it.</p>
         </div>
+        <!-- FC3: Friend games, Android app only (app.js FRIENDS GLUE fills it). Empty and hidden on the web and while the feature is off -->
+        <div class="card fgcard" id="friendCard" hidden></div>
         <div class="card" id="recentPlay" hidden><p class="eyebrow">Recent games</p><div id="recentList"></div></div>
       </div>
 
@@ -207,8 +209,12 @@
     <section class="card lookset" aria-labelledby="lookSetTitle"><h3 class="settitle" id="lookSetTitle">Coach and pieces</h3><div id="lookSet"></div></section>
     <!-- D2 (DP-D3, AC7): the daily puzzle reminder, Android app only. Empty and hidden on the web (app.js renderRemind fills it) -->
     <section class="card remindset" id="remindSet" hidden></section>
+    <!-- FC3: "Friend games (test)", Android app only and only while the launch switch is off. Empty and hidden on the web -->
+    <section class="card fgset" id="friendSet" hidden></section>
     <!-- F3b (A-D17): "Privacy policy" for everyone; "Privacy choices" only where Google reports a choice applies (app.js adChoice) -->
     <div class="card privset"><a class="linkbtn rowlink" data-act="privacy" href="https://hnchennai.github.io/privacy.html" target="_blank" rel="noopener">Privacy policy</a><button class="linkbtn rowlink" type="button" data-act="privchoices" id="privChoices" hidden>Privacy choices</button><p class="adsdebug" id="adDebug" hidden></p></div> <!-- adDebug: test builds only (launch switch off), the ads state for phone tests; empty and hidden on the web and once real ads are on -->
   </div>
 </div>
+<!-- FC3: the friend sheet (Challenge a friend, or A friend challenges you), filled by app.js FRIENDS GLUE -->
+<div class="sheet" id="friendSheet" hidden></div>
 <div class="raninote" id="raniNote" role="status" hidden></div>

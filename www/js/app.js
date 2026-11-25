@@ -888,6 +888,7 @@
       if (rc._h !== rh) { rc._h = rh; $('recentList').innerHTML = rh; }
       rc.hidden = false;
     }
+    renderFriends(); /* FC3: the Friend games card above Recent games (FRIENDS GLUE) */
   }
   /* Resume: the board screen opens on what is waiting. The game: as "Resume game" (G2b: a lesson or set that is open is
      parked, exitMode). A lesson or set that never left the board: only the screen opens. One that is parked or was read from
@@ -1078,7 +1079,7 @@
   /* One plugin call. Always a promise; a throw becomes a rejection, so no caller can leak an error. */
   function adCall(m, a) { try { var r = a === undefined ? AD[m]() : AD[m](a); return r && typeof r.then === 'function' ? r : Promise.resolve(r); } catch (e) { return Promise.reject(e); } }
   /* A-D12: a sheet, a dialog or an offer is open: Settings, the level check, any of Rani's notes, or one of Google's forms */
-  function adOverlay() { var sh = $('settingsSheet'); return !!((sh && !sh.hidden) || Placement.isOpen() || noteCur || ad.form); }
+  function adOverlay() { var sh = $('settingsSheet'); return !!((sh && !sh.hidden) || frSheetOpen() || Placement.isOpen() || noteCur || ad.form); }
   /* Criterion 1: the slot rule's own answer for the screen the player is on (the place stripPlace names, on phones too). */
   var AD_CARD = { game: 'gameEnd', learn: 'learnEnd', step: 'sessionCard' };
   /* A-D19: on Home the banner never shares the screen with the board, moved or not. The board column is hidden on Beginner Home. */
@@ -2354,7 +2355,7 @@
   var setOpener = null;
   function openSettings() {
     var sh = $('settingsSheet'); if (!sh || !sh.hidden) return;
-    setOpener = document.activeElement; renderLevelCard(); renderLook(); adDebug(); renderRemind(); remindPerm();
+    setOpener = document.activeElement; renderLevelCard(); renderLook(); adDebug(); renderRemind(); remindPerm(); renderFriendSet();
     sh.hidden = false; document.documentElement.classList.add('sheet-open'); adSync(); /* A-D12 */
     var pn = sh.querySelector('.sheet-panel'); if (pn) pn.focus({ preventScroll: true });
   }
@@ -2750,6 +2751,7 @@
     if (name === 'train') renderTrain();
     if (name === 'path') renderPath();
     if (name === 'coach') renderCoach();
+    if (name === 'play') frSync(false); /* FC3: friend games refresh when Play opens (FRIENDS GLUE) */
     lsSet('suresh-chess-coach.tab', name);
     renderZones(); renderEnd(); syncScreen(); renderHint(); renderSlots(); releaseOffer();
   }
@@ -2892,7 +2894,7 @@
   });
   document.addEventListener('keydown', function (e) {
     if (/input|select|textarea/i.test(e.target.tagName || '')) return;
-    var ss = $('settingsSheet'); if ((ss && !ss.hidden) || Placement.isOpen()) return; /* arrow keys in a sheet must not move the lesson or review behind it */
+    var ss = $('settingsSheet'); if ((ss && !ss.hidden) || frSheetOpen() || Placement.isOpen()) return; /* arrow keys in a sheet must not move the lesson or review behind it */
     if (st.mode === 'review') { if (e.key === 'ArrowLeft') { navTo(st.rv.ply - 1); e.preventDefault(); } if (e.key === 'ArrowRight') { navTo(st.rv.ply + 1); e.preventDefault(); } }
     if (st.mode === 'lesson') { if (e.key === 'ArrowLeft') lessonNav(-1); if (e.key === 'ArrowRight') lessonNav(1); }
   });
@@ -2982,6 +2984,7 @@
   });
   document.addEventListener('click', function (e) {
     if (e.target && e.target.id === 'settingsSheet') { closeSettings(); return; }
+    if (e.target && e.target.id === 'friendSheet') { frClose(); return; }
     var t = e.target.closest('button'); if (!t || t.closest('.tabs')) return;
     var d = t.dataset;
     if (d.unit) { if (!phone() && st.mode !== 'play' && st.mode !== 'review') { stow('play'); clearSession(); st.mode = 'play'; resetHints(); } /* phones: looking at a lesson's page keeps what is waiting; only starting something ends it. Wide (G-D35): the lesson or set on the board waits */ st.end = null; st.unitOpen = d.unit; switchTab('path'); render(); return; }
@@ -2997,6 +3000,15 @@
     if (d.act === 'daily') { dailyStart(); return; }
     if (d.act === 'rmyes' || d.act === 'rmno') { answerRemind(d.act === 'rmyes'); return; } /* D2: Rani's reminder offer */
     if (d.act === 'remind') { toggleRemind(); return; } /* D2: the Settings switch */
+    /* FC3: friend games (FRIENDS GLUE) */
+    if (d.act === 'fchallenge') { frChallenge(); return; }
+    if (d.act === 'fsend') { frSend(); return; }
+    if (d.act === 'faccept') { frAccept(); return; }
+    if (d.act === 'fclose') { frClose(); return; }
+    if (d.act === 'fcancel') { frCancel(d.g); return; }
+    if (d.act === 'fshare') { frAgain(d.g); return; }
+    if (d.act === 'ftest') { frToggle(); return; }
+    if (d.fcol) { frPick(d.fcol); return; }
     if (d.act === 'rvnew') { st.mode = 'play'; st.rv = null; resetHints(); newGame(false); render(); return; }
     if (d.act === 'recgame') { newGame(false, { level: plain() ? Profile.LEVELS.beginner.opp : recLevel() }); return; }
     if (d.act === 'review') { enterReview(null); return; }
@@ -3062,7 +3074,7 @@
     /* G-D33: never chose pieces or a view: the classic pieces on the flat board. A saved choice is kept (Flow.firstLook). */
     var look = Flow.firstLook({ pieces: lsGet('suresh-chess-coach.pieces'), theme: prof.theme, v3d: lsGet(K3D) }, function (id) { return !!Avatar.SETS[id]; });
     st.theme = look.theme;
-    if (raw && (+raw.v || 0) < Profile.V && prof.placed === 'derived') { lsSet(PSTORE, prof); showNote('You’re set as ' + Profile.LEVELS[prof.level].name + '. Change it any time in Settings.', 'level'); }
+    if (raw && (+raw.v || 0) < Profile.DERIVE_V && prof.placed === 'derived') { lsSet(PSTORE, prof); showNote('You’re set as ' + Profile.LEVELS[prof.level].name + '. Change it any time in Settings.', 'level'); }
     applyLevel();
     Brain.onState(function (s) { enginePill(s); if (s === 'ready' && st.mode === 'play' && G.turn() === st.user && !G.game_over() && !st.busy) analyseForUser().then(render); });
     Brain.init('sf/stockfish.js'); enginePill(Brain.state());
@@ -3076,6 +3088,7 @@
     if (Profile.needsCheck(prof)) openPlacement(false);
     booted = true;
     remindBoot(); /* D2: the reminder's tap and resume listeners, and the next 7 days of reminders (Android app only) */
+    friendsBoot(); /* FC3: challenge links and the friend games refresh on resume (Android app only) */
     adBoot(); /* F3b: the one moment the ads start-up may begin (from day two, no activity open); on day one and on the web, nothing */
     initCloud();
   }
@@ -3083,6 +3096,7 @@
      match wins; this does it, each step with the same code as its Esc, its Close or its tab tap. Returns false only on Home
      with nothing open: the caller then puts the app in the background, as back did before. ---------- */
   function backPressed() {
+    if (frSheetOpen()) { frClose(); return true; } /* FC3: a friend sheet closes first, as its Esc */
     var sh = $('settingsSheet'), step = Flow.backStep({ settings: !!sh && !sh.hidden, check: Placement.isOpen(), note: !!noteCur, wide: !phone(), scr: st.scr, tab: st.tab });
     /* fix round 1: Close, Home and leaving drop a sticky move tip and a move preview, as the X or a tab tap does. A sheet or a
        note closes as its Esc does, which leaves a tip behind it alone (s2a). */
@@ -3298,6 +3312,207 @@
     s.rateT = now; rmSet(s);
     pcall(function () { return IAR.requestReview(); }).catch(rmNone);
   }
+  /* ---------- FRIENDS GLUE (slice FC3: friend challenges; docs/specs/friend-challenges.product.md, FC-D1 to FC-D24 and the
+     Wording section; tech spec sections 3, 8 and 9). The UI only: rules and wording are in friends.js, the network in fclient.js.
+     Android app only: fclient.js and fconfig.js are loaded only there (scripts/build.sh). On the web FR stays null, so there is
+     no card, no Settings row, no sheet and no request (FC-D4, scenario 11). In the app the card shows only when
+     Friends.available() says so (the launch switch, off until FC6, or Settings' "Friend games (test)").
+     No request is made before the player's first Challenge or opened challenge link (FC-D3). Every plugin call and every
+     request is a promise whose failure is caught; nothing here throws into the UI. ---------- */
+  var FR = null, frNative = false, frShare = null, frApp = null;
+  (function () {
+    try {
+      var C = window.Capacitor;
+      if (!C || typeof C.isNativePlatform !== 'function' || !C.isNativePlatform() || typeof C.getPlatform !== 'function' || C.getPlatform() !== 'android') return;
+      if (!window.FClient || !window.FCONFIG || !window.Friends) return;
+      frNative = true; frShare = (C.Plugins && C.Plugins.Share) || null; frApp = (C.Plugins && C.Plugins.App) || null;
+      FR = window.FClient.make({ config: window.FCONFIG, fetch: function (u, i) { return window.fetch(u, i); }, now: function () { return Date.now(); },
+        storage: { get: function () { try { return localStorage.getItem(Friends.KEY); } catch (e) { return null; } }, set: function (v) { try { localStorage.setItem(Friends.KEY, v); } catch (e) {} } } });
+    } catch (e) { FR = null; }
+  })();
+  var frSheet = null, frOpener = null, frLine = null, frLastSync = 0, frPending = null, frRecent = { code: null, t: 0 };
+  function frOn() { return !!FR && Friends.available({ native: frNative, test: FR.store().test }); }
+  function frOffline() { return navigator.onLine === false; }
+  /* The card on Play, above Recent games (tech spec section 9). Rows: the nickname or "Friend", the state line, the record. */
+  function renderFriends() {
+    var card = $('friendCard'); if (!card) return;
+    if (frPending && frOn() && !Placement.isOpen()) { var u = frPending; frPending = null; setTimeout(function () { frLink(u.url, u.cold); }, 0); }
+    if (!frOn()) { if (!card.hidden) { card.hidden = true; card.innerHTML = ''; card._h = ''; } return; }
+    var s = FR.store(), rows = Friends.rows(s, prof.friends, Date.now()), full = !Friends.canChallenge(s), C = Friends.COPY;
+    var h = '<p class="eyebrow" id="friendTitle">' + esc(C.card) + '</p>' +
+      (rows.length ? '<div class="fg-list">' + rows.map(function (r) {
+        return '<div class="fg-row" data-kind="' + r.kind + '" data-g="' + esc(r.id) + '"><div class="fg-tt"><b>' + esc(r.name) + '</b><span class="fg-state">' + esc(r.line) + '</span>' +
+          (r.record ? '<small class="fg-rec">' + esc(r.record) + '</small>' : '') + '</div>' +
+          (r.kind === 'invite' ? '<div class="fg-btns"><button class="btn sm" type="button" data-act="fshare" data-g="' + esc(r.id) + '">' + esc(C.share) + '</button>' +
+            '<button class="btn sm" type="button" data-act="fcancel" data-g="' + esc(r.id) + '">' + esc(C.cancel) + '</button></div>' : '') + '</div>';
+      }).join('') + '</div>' : '') +
+      (frLine ? '<p class="fg-msg" role="status">' + esc(frLine) + '</p>' : '') +
+      '<button class="btn primary fg-go" type="button" data-act="fchallenge"' + (full ? ' disabled aria-describedby="friendFull"' : '') + '>' + esc(C.challenge) + '</button>' +
+      (full ? '<p class="fg-full" id="friendFull">' + esc(C.full) + '</p>' : '');
+    if (card._h !== h) { var f = document.activeElement, keep = f && card.contains(f) ? (f.dataset.act || '') + '|' + (f.dataset.g || '') : null; card._h = h; card.innerHTML = h; frRefocus(card, keep); }
+    card.setAttribute('aria-labelledby', 'friendTitle');
+    card.hidden = false;
+  }
+  /* A re-render keeps focus on the same button (or the Challenge button when that row went) */
+  function frRefocus(box, keep) {
+    if (keep == null) return;
+    var p = keep.split('|'), b = box.querySelector('[data-act="' + p[0] + '"]' + (p[1] ? '[data-g="' + p[1] + '"]' : '')) || box.querySelector('[data-act="fchallenge"]');
+    if (b) try { b.focus({ preventScroll: true }); } catch (e) {}
+  }
+  /* Play tab open (at most every 10 seconds) and App resume (always). Only with an ID: a sync never creates one. */
+  function frSync(force) {
+    if (!frOn() || !FR.signedIn()) return;
+    if (!force && Date.now() - frLastSync < 10000) return;
+    frLastSync = Date.now();
+    if (frOffline()) { frLine = Friends.COPY.offline; renderFriends(); return; }
+    var p = FR.sync(); if (!p) return;
+    p.then(function () { frLine = null; renderFriends(); }, function (e) { frLine = e && e.code === 'offline' ? Friends.COPY.offline : null; renderFriends(); });
+  }
+  /* The share sheet with the approved text: "Play chess with me in Chess Coach: <link>". A cancelled share is not an error. */
+  function frShareLink(code) {
+    if (!frShare || !code) return;
+    pcall(function () { return frShare.share({ text: Friends.shareText(code) }); }).catch(rmNone);
+  }
+  /* ----- the friend sheet: "Challenge a friend" or "A friend challenges you" (one at a time) ----- */
+  function frSheetOpen() { var sh = $('friendSheet'); return !!sh && !sh.hidden; }
+  function frOpen(kind, o) {
+    var sh = $('friendSheet'); if (!sh) return;
+    closeSettings(true);
+    if (!frSheetOpen()) frOpener = document.activeElement;
+    frSheet = Object.assign({ kind: kind, msg: null, busy: false }, o || {});
+    drawFriendSheet();
+    sh.hidden = false; document.documentElement.classList.add('sheet-open'); adSync(); /* A-D12: no banner under a sheet */
+    var pn = sh.querySelector('.sheet-panel'); if (pn) pn.focus({ preventScroll: true });
+  }
+  function frClose(noFocus) {
+    var sh = $('friendSheet'); if (!sh || sh.hidden) return;
+    sh.hidden = true; frSheet = null; sh.innerHTML = '';
+    var ss = $('settingsSheet'); if (!ss || ss.hidden) document.documentElement.classList.remove('sheet-open');
+    adSync();
+    var back = frOpener && frOpener.isConnected && frOpener.offsetParent !== null ? frOpener : null; frOpener = null;
+    if (!noFocus) { if (back) back.focus(); else focusTab(); }
+  }
+  function drawFriendSheet() {
+    var sh = $('friendSheet'), f = frSheet, C = Friends.COPY; if (!sh || !f) return;
+    var nick = $('fgNick'), typed = nick ? nick.value : '';
+    var top = '<div class="sheet-top"><h2 id="fgTitle">' + esc(f.kind === 'challenge' ? C.challenge : C.acceptTitle) + '</h2><button class="pl-x" type="button" data-act="fclose" aria-label="Close"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6 L18 18 M18 6 L6 18"/></svg></button></div>';
+    var msg = '<p class="fg-msg" id="fgMsg" role="status"' + (f.msg ? '' : ' hidden') + '>' + esc(f.msg || '') + '</p>', body;
+    if (f.kind === 'challenge') {
+      body = '<p class="fg-lbl" id="fgColLbl">' + esc(C.playAs) + '</p><div class="seg fg-seg" role="radiogroup" aria-labelledby="fgColLbl">' +
+        [['w', C.white], ['b', C.black], ['r', C.random]].map(function (x) {
+          var on = f.col === x[0];
+          return '<button class="segbtn' + (on ? ' on' : '') + '" type="button" role="radio" aria-checked="' + on + '" tabindex="' + (on ? 0 : -1) + '" data-fcol="' + x[0] + '">' + esc(x[1]) + '</button>';
+        }).join('') + '</div>' + msg +
+        '<button class="btn primary big fg-send" type="button" data-act="fsend"' + (f.busy ? ' disabled' : '') + '>' + esc(C.share) + '</button>';
+    } else {
+      body = '<p class="fg-col" id="fgCol">' + esc(Friends.youPlay(f.col)) + '</p>' +
+        '<label class="fg-lbl" for="fgNick">' + esc(C.nameLabel) + ' <small>' + esc(C.nameHint) + '</small></label>' +
+        '<input id="fgNick" type="text" maxlength="' + Friends.NICK_MAX + '" autocomplete="off" autocapitalize="words" spellcheck="false" enterkeyhint="done">' + msg +
+        '<div class="fg-acts"><button class="btn primary big" type="button" data-act="faccept"' + (f.busy ? ' disabled' : '') + '>' + esc(C.accept) + '</button>' +
+        '<button class="btn big" type="button" data-act="fclose">' + esc(C.notNow) + '</button></div>';
+    }
+    var a = document.activeElement, keep = a && sh.contains(a) ? (a.id || a.dataset.act || a.dataset.fcol) : null;
+    sh.innerHTML = '<div class="sheet-panel" role="dialog" aria-modal="true" aria-labelledby="fgTitle" tabindex="-1">' + top + '<div class="card fg-sheet">' + body + '</div></div>';
+    var n2 = $('fgNick'); if (n2) n2.value = typed;
+    if (keep) { var b = $(keep) || sh.querySelector('[data-act="' + keep + '"], [data-fcol="' + keep + '"]'); if (b && !b.disabled) try { b.focus({ preventScroll: true }); } catch (e) {} else { var pn = sh.querySelector('.sheet-panel'); if (pn) pn.focus({ preventScroll: true }); } }
+  }
+  function frMsg(text) { if (!frSheet) return; frSheet.msg = text; frSheet.busy = false; drawFriendSheet(); }
+  function frChallenge() {
+    if (!frOn()) return;
+    if (!Friends.canChallenge(FR.store())) { renderFriends(); return; }
+    frOpen('challenge', { col: 'r' });
+  }
+  /* Share link: the invite op (the first one signs up), then Android's share sheet. The sheet closes on success; the waiting
+     row on Play can share the same link again. */
+  function frSend() {
+    var f = frSheet; if (!f || f.kind !== 'challenge' || f.busy) return;
+    if (frOffline()) { frMsg(Friends.COPY.offline); return; }
+    f.busy = true; f.msg = null; drawFriendSheet();
+    FR.op('invite', { col: f.col }).then(function (r) {
+      if (frSheet !== f) return;
+      frClose(true); frLine = null; renderFriends();
+      var b = document.querySelector('#friendCard [data-act="fchallenge"]'); if (b && !b.disabled) try { b.focus({ preventScroll: true }); } catch (e) {}
+      frShareLink(r && r.code);
+    }).catch(function (e) { if (frSheet === f) frMsg(Friends.errorText(e && e.code)); renderFriends(); });
+  }
+  /* A challenge link (cold start: App.getLaunchUrl; warm: appUrlOpen). Only a valid link to hnchennai.github.io/c/ is used.
+     Peek (which signs up on the first use) gives the colour for the Accept sheet. */
+  function frLink(url, cold) {
+    if (!FR) return;
+    if (!frOn()) return; /* the feature is off on this phone: the link does nothing */
+    if (Placement.isOpen()) { frPending = { url: url, cold: cold }; return; } /* after the level check */
+    var code = Friends.parseLink(url);
+    if (!code) { showNote(Friends.COPY.invalid); return; }
+    if (cold && FR.store().links.indexOf(code) > -1) return; /* the same launch link again (the activity was recreated) */
+    if (frRecent.code === code && Date.now() - frRecent.t < 3000) return; /* one tap, delivered twice */
+    frRecent = { code: code, t: Date.now() }; FR.remember(code);
+    if (frOffline()) { showNote(Friends.COPY.offline); return; }
+    FR.op('peek', { code: code }).then(function (r) {
+      if (!r) return;
+      if (phone() && actOpen()) closeAct();
+      frLastSync = Date.now(); /* just signed in or refreshed: Play opening under the sheet needs no sync of its own */
+      switchTab('play'); render();
+      frOpen('accept', { code: code, col: r.col });
+    }).catch(function (e) { showNote(Friends.errorText(e && e.code)); });
+  }
+  /* Accept: the nickname (optional, trimmed, at most 20 characters) goes into the profile under the friend's key, never to the
+     server (FC-D5). */
+  function frAccept() {
+    var f = frSheet; if (!f || f.kind !== 'accept' || f.busy) return;
+    var n = Friends.nick(($('fgNick') || {}).value);
+    if (frOffline()) { frMsg(Friends.COPY.offline); return; }
+    f.busy = true; f.msg = null; drawFriendSheet();
+    FR.op('accept', { code: f.code }).then(function (r) {
+      var g = r && r.games && r.games[0];
+      if (n && g && g.opp) {
+        var old = prof.friends[g.opp];
+        prof.friends[g.opp] = { n: n, t: Date.now(), res: old && old.res ? old.res : {} };
+        saveProfile();
+      }
+      if (frSheet === f) frClose(true);
+      frLine = null; switchTab('play'); render(); focusTab();
+    }).catch(function (e) { if (frSheet === f) frMsg(Friends.errorText(e && e.code)); });
+  }
+  /* FC-D18: Cancel invite frees its slot */
+  function frCancel(id) {
+    if (!frOn()) return;
+    if (frOffline()) { frLine = Friends.COPY.offline; renderFriends(); return; }
+    FR.op('cancel', { g: id }).then(function () { frLine = null; renderFriends(); }, function (e) { frLine = Friends.errorText(e && e.code); renderFriends(); });
+  }
+  function frAgain(id) { var g = FR && FR.store().games[id]; if (g && g.code) frShareLink(g.code); }
+  function frPick(c) { if (!frSheet || frSheet.kind !== 'challenge' || ['w', 'b', 'r'].indexOf(c) < 0) return; frSheet.col = c; frSheet.msg = null; drawFriendSheet(); var b = document.querySelector('[data-fcol="' + c + '"]'); if (b) b.focus(); }
+  /* Settings: "Friend games (test)", only in the app and only while the launch switch is off (tech spec section 9) */
+  function renderFriendSet() {
+    var box = $('friendSet'); if (!box) return;
+    if (!FR || Friends.CONFIG.live) { box.hidden = true; return; }
+    var on = FR.store().test === true;
+    box.innerHTML = '<button class="switchrow" type="button" role="switch" aria-checked="' + on + '" data-act="ftest" id="friendSw"><span><b>' + esc(Friends.COPY.setting) + '</b></span><i class="sw" aria-hidden="true"></i></button>';
+    box.hidden = false;
+  }
+  function frToggle() { if (!FR) return; FR.setTest(!FR.store().test); renderFriendSet(); var b = $('friendSw'); if (b) b.focus(); friendsBoot(true); render(); } /* later: no launch link (one from before the toggle is not read now) */
+  document.addEventListener('keydown', function (e) {
+    if (!frSheetOpen()) return;
+    var sh = $('friendSheet');
+    if (e.key === 'Escape') { if (!e.defaultPrevented) { e.preventDefault(); frClose(); } return; } /* a note on top closes first */
+    if (e.key === 'Tab') { trapTab(sh.querySelector('.sheet-panel'), e); return; }
+    if (e.key === 'Enter' && e.target && e.target.id === 'fgNick') { e.preventDefault(); frAccept(); return; }
+    var t = e.target; if (!t || !t.dataset || !t.dataset.fcol) return;
+    var d = { ArrowLeft: -1, ArrowUp: -1, ArrowRight: 1, ArrowDown: 1 }[e.key]; if (!d) return;
+    e.preventDefault(); var o = ['w', 'b', 'r'], i = o.indexOf(t.dataset.fcol); frPick(o[(i + d + 3) % 3]);
+  });
+  /* Start-up: App's links and resume. A launch link is read once; appUrlOpen brings links while the app runs. Only while the
+     feature is on (the switch or the test toggle): with it off the App plugin gets no call from here (G-D18, g2c.spec.js).
+     Turning the test toggle on later adds the listeners then. */
+  var frBooted = false;
+  function friendsBoot(later) {
+    renderFriendSet();
+    if (!FR || !frApp || frBooted || !frOn()) return;
+    frBooted = true;
+    try { var a = frApp.addListener('appUrlOpen', function (d) { try { frLink(d && d.url, false); } catch (e) {} }); if (a && typeof a.catch === 'function') a.catch(rmNone); } catch (e) {}
+    try { var b = frApp.addListener('resume', function () { try { frSync(true); } catch (e) {} }); if (b && typeof b.catch === 'function') b.catch(rmNone); } catch (e) {}
+    window.addEventListener('online', function () { if (frLine === Friends.COPY.offline) frSync(true); }); /* back online: the no-internet line goes once a sync works */
+    if (!later && typeof frApp.getLaunchUrl === 'function') pcall(function () { return frApp.getLaunchUrl(); }).then(function (r) { if (r && r.url) frLink(r.url, true); }).catch(rmNone);
+  }
   if (window.claude && window.claude.hot && window.claude.hot.snapshot) { try { window.claude.hot.snapshot(snapshot); } catch (e) {} }
   window.claude && window.claude.hot && window.claude.hot.ready ? window.claude.hot.ready(start) : start((window.claude && window.claude.hot && window.claude.hot.data) || {});
   window.__coach = { st: st, getProf: function () { return prof; }, PZ: PZ, startPart: startPart, trainStart: trainStart, openPlacement: openPlacement, nextUnit: nextUnit, hist: function () { return G.history(); }, openSettings: openSettings,
@@ -3305,5 +3520,6 @@
     note: function (t) { showNote(t); }, /* one of Rani's notes, as the app shows them (e2e) */
     reveals: function () { return revealN; },
     closeAct: closeAct, /* G2a: what the Close button does */ backPressed: backPressed, /* G2c: what the phone's back button does (true: used) */ /* how often an end card was scrolled into view (e2e) */
+    fr: function () { return FR ? JSON.parse(JSON.stringify(FR.store())) : null; }, /* FC3: the friend store (e2e) */
     nextLabel: function () { return nextAction(currentStage()).label; } /* today's Next step, for the e2e check that the Continue card follows it */ };
 })();

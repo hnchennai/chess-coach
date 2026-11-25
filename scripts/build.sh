@@ -11,8 +11,12 @@ cp $S/js/*.js $O/js/
   printf '<!DOCTYPE html>\n<html lang="en">\n<head>\n<meta charset="utf-8">\n<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">\n<meta name="theme-color" content="#1f6b4a">\n'
   cat $S/head.html $S/body.html
   echo '<script src="vendor/chess.js"></script>'
-  for f in engine tactics brain course roadmap avatar themes board3d coach3d ramayana3d puzzles profile placement words home daily remind flow tips ads app; do
-    if [ "$f" = ads ]; then
+  for f in engine tactics brain course roadmap avatar themes board3d coach3d ramayana3d puzzles profile placement words home daily remind friends fconfig fclient flow tips ads app; do
+    if [ "$f" = fconfig ] || [ "$f" = fclient ]; then
+      # FC-D4: friend challenges are Android only. The friend server's config and client are fetched only inside the app,
+      # as ads.js below, so the web version has no code that could reach the friend server (scenario 11, criterion 10).
+      printf '%s\n' "<script>if(window.Capacitor)document.write('<script src=\"js/$f.js\"><\\/script>')</script>"
+    elif [ "$f" = ads ]; then
       # A-D9: the web version loads no ads code. ads.js is fetched only inside the Android app, where Capacitor's bridge exists
       # before any page script runs. Without it app.js finds no window.Ads and does no ads work at all.
       printf '%s\n' "<script>if(window.Capacitor)document.write('<script src=\"js/ads.js\"><\\/script>')</script>"

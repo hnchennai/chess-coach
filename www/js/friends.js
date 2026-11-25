@@ -1,0 +1,212 @@
+/* ---------- Friend challenges (slice FC3): the device store, invite links, the rows on Play and the launch switch.
+   Pure: no DOM, no plugin, no network, no clock (the app passes the time). Decisions: docs/specs/friend-challenges.product.md
+   (FC-D1 to FC-D24, Wording) and friend-challenges.tech.md sections 8 and 9. The network glue is fclient.js (Android app only);
+   the UI glue is in app.js (search "FRIENDS GLUE"). On the web this file is loaded but nothing in it is ever acted on (FC-D4). ---------- */
+(function (root, factory) {
+  var F = factory();
+  if (typeof module === 'object' && module.exports) module.exports = F; else root.Friends = F;
+})(typeof window !== 'undefined' ? window : this, function () {
+  'use strict';
+  /* THE LAUNCH SWITCH (tech spec section 0). Off until slice FC6 and the Play forms are done; turning it on is a checkpoint
+     (Suresh's yes). While it is off only a test build's "Friend games (test)" toggle shows the feature. */
+  var CONFIG = Object.freeze({ live: false });
+  /* Device only, never in the profile or the cloud save (FC-D3): a new phone or a reinstall starts with a new ID */
+  var KEY = 'suresh-chess-coach.friends.v1';
+  var MAX_OPEN = 10; /* FC-D12 */
+  var NICK_MAX = 20;
+  var HOST = 'hnchennai.github.io', PATH = '/c/';
+  var CODE_RE = /^[0-9A-HJKMNP-TV-Z]{10}$/;  /* 10 Crockford base32 characters (functions/src/ids.js) */
+  var GAME_RE = /^[A-Za-z0-9]{20}$/;
+  var OPP_RE = /^[0-9a-f]{12}$/;
+  var SQ_RE = /^[a-h][1-8]$/;
+  var DAY = 86400000, HOUR = 3600000;
+  var MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  var LINKS_KEPT = 10;
+
+  /* FC-D23: the approved wording (Suresh, 2026-11-25), letter for letter. The lines marked "proposed" are listed in the
+     product spec's Wording section and wait for his approval. No em dashes. */
+  var COPY = Object.freeze({
+    card: 'Friend games',
+    challenge: 'Challenge a friend',
+    full: 'You have 10 friend games open. Finish one to start another.',
+    playAs: 'Play as', white: 'White', black: 'Black', random: 'Random',
+    share: 'Share link',
+    shareText: 'Play chess with me in Chess Coach: ',
+    yourMove: 'Your move', theirMove: 'Their move', waiting: 'Waiting for your friend', until: 'until ', notSent: 'Not sent yet',
+    friend: 'Friend',
+    acceptTitle: 'A friend challenges you', youPlay: 'You play ',
+    nameLabel: 'Name your friend', nameHint: 'optional, stays on this phone',
+    accept: 'Accept', notNow: 'Not now',
+    invalid: 'This challenge is no longer valid.',
+    offline: 'Friend games need the internet. Try again when you are online.',
+    cancel: 'Cancel invite', /* FC-D18 */
+    setting: 'Friend games (test)',
+    /* proposed (not yet approved): */
+    randomCol: 'Your colour is picked at random.',
+    own: 'This is your own challenge. Send the link to a friend.',
+    limit: 'You have sent 20 challenges today. Try again tomorrow.',
+    error: 'Something went wrong. Please try again.',
+    left: { none: 'no time left', underHour: 'under 1 hour left', hour: ' hour left', hours: ' hours left', day: ' day left', days: ' days left' }
+  });
+
+  function isObj(x) { return !!x && typeof x === 'object' && !Array.isArray(x); }
+  function num(x) { return typeof x === 'number' && isFinite(x); }
+
+  function blank() { return { v: 1, uid: null, rt: null, tok: null, since: 0, skew: 0, test: false, links: [], games: {} }; }
+
+  /* One game as the app keeps it: the server's view (functions/src/ops.js view()) plus pend (FC4's unsent move). null if broken. */
+  function normGame(id, g) {
+    if (!GAME_RE.test(id) || !isObj(g)) return null;
+    var st = g.st, me = g.me;
+    if (st !== 'invited' && st !== 'active' && st !== 'over') return null;
+    if (me !== 'w' && me !== 'b' && me !== 'r') return null;
+    if (!Array.isArray(g.moves) || !g.moves.every(function (m) { return typeof m === 'string' && m.length > 0 && m.length < 10; })) return null;
+    if (!num(g.v) || !num(g.t)) return null;
+    var p = g.pend, pend = null;
+    if (isObj(p) && num(p.ply) && p.ply >= 0 && SQ_RE.test(p.from) && SQ_RE.test(p.to) && num(p.t)) {
+      pend = { ply: p.ply, from: p.from, to: p.to, t: p.t };
+      if (p.promo === 'q' || p.promo === 'r' || p.promo === 'b' || p.promo === 'n') pend.promo = p.promo;
+    }
+    var res = isObj(g.res) && (g.res.r === 'w' || g.res.r === 'b' || g.res.r === 'd' || g.res.r === null) && typeof g.res.why === 'string' ? { r: g.res.r, why: g.res.why } : null;
+    return {
+      id: id, me: me, opp: typeof g.opp === 'string' && OPP_RE.test(g.opp) ? g.opp : null, st: st, moves: g.moves.slice(),
+      dl: num(g.dl) ? g.dl : null, draw: g.draw === 'w' || g.draw === 'b' ? g.draw : null, res: res, v: g.v, t: g.t,
+      exp: num(g.exp) ? g.exp : null, code: typeof g.code === 'string' && CODE_RE.test(g.code) ? g.code : null, pend: pend
+    };
+  }
+
+  /* The store from its stored string (or an object). Anything missing or broken reads as blank, field by field; a broken
+     game is dropped. Never throws. */
+  function read(raw) {
+    var o = null;
+    if (isObj(raw)) o = raw;
+    else { try { o = typeof raw === 'string' && raw ? JSON.parse(raw) : null; } catch (e) { o = null; } }
+    var s = blank();
+    if (!isObj(o)) return s;
+    if (typeof o.uid === 'string' && o.uid) s.uid = o.uid;
+    if (typeof o.rt === 'string' && o.rt) s.rt = o.rt;
+    if (typeof o.tok === 'string' && o.tok) s.tok = o.tok;
+    if (num(o.since) && o.since >= 0) s.since = o.since;
+    if (num(o.skew)) s.skew = o.skew;
+    s.test = o.test === true;
+    if (Array.isArray(o.links)) s.links = o.links.filter(function (c) { return typeof c === 'string' && CODE_RE.test(c); }).slice(-LINKS_KEPT);
+    if (isObj(o.games)) Object.keys(o.games).forEach(function (id) { var g = normGame(id, o.games[id]); if (g) s.games[id] = g; });
+    return s;
+  }
+
+  /* Server answers go into the store: answers overlap, so per game the higher v wins (tech spec section 6, sync).
+     serverNow and localNow give the skew between the phone's clock and the server's (section 9, clocks). */
+  function apply(s, games, serverNow, localNow) {
+    (Array.isArray(games) ? games : []).forEach(function (v) {
+      if (!isObj(v) || typeof v.id !== 'string') return;
+      var g = normGame(v.id, v); if (!g) return;
+      var old = s.games[g.id];
+      if (old && old.v > g.v) return;
+      if (old && old.v === g.v) g.pend = old.pend;
+      s.games[g.id] = g;
+    });
+    s.skew = num(serverNow) && num(localNow) ? serverNow - localNow : 0;
+    return s;
+  }
+
+  /* The invite link (orchestrator's decision for tech spec open question 4): served with HTTP 200 by c/index.html on the
+     website, the code in the query so the page and Android's intent fallback can both read it. */
+  function link(code) {
+    if (!CODE_RE.test(code)) throw new Error('bad invite code');
+    return 'https://' + HOST + PATH + '?c=' + code;
+  }
+  function shareText(code) { return COPY.shareText + link(code); }
+
+  /* Only https://hnchennai.github.io/c/?c=<code>: no other scheme, host, port, user, path, or a second code. Returns the code or null. */
+  function parseLink(url) {
+    if (typeof url !== 'string' || url.length > 2000) return null;
+    var m = /^https:\/\/([^/?#]+)(\/[^?#]*)?(\?[^#]*)?(#.*)?$/i.exec(url);
+    if (!m || m[1].toLowerCase() !== HOST || m[2] !== PATH || !m[3]) return null;
+    var found = null, n = 0;
+    m[3].slice(1).split('&').forEach(function (kv) {
+      var i = kv.indexOf('='), k = i < 0 ? kv : kv.slice(0, i);
+      if (k === 'c') { n++; found = i < 0 ? '' : kv.slice(i + 1); }
+    });
+    return n === 1 && CODE_RE.test(found) ? found : null;
+  }
+
+  /* Tech spec section 9: the feature shows only in the Android app, and only with the launch switch on or the test toggle. */
+  function available(o) {
+    if (!isObj(o) || o.native !== true) return false;
+    return (o.live === undefined ? CONFIG.live : o.live === true) || o.test === true;
+  }
+
+  function isOpen(g) { return g.st === 'invited' || g.st === 'active'; }
+  function openCount(s) { return Object.keys(s.games).filter(function (id) { return isOpen(s.games[id]); }).length; }
+  function canChallenge(s) { return openCount(s) < MAX_OPEN; }
+  function turnOf(g) { return g.moves.length % 2 === 0 ? 'w' : 'b'; }
+
+  /* Time left as words: whole days rounded up while at least a day is left, then hours, then under an hour. */
+  function timeLeft(ms) {
+    var L = COPY.left;
+    if (!(ms > 0)) return L.none;
+    if (ms >= DAY) { var d = Math.ceil(ms / DAY); return d + (d === 1 ? L.day : L.days); }
+    if (ms >= HOUR) { var h = Math.ceil(ms / HOUR); return h + (h === 1 ? L.hour : L.hours); }
+    return L.underHour;
+  }
+  function dayMonth(ms) { var d = new Date(ms); return d.getDate() + ' ' + MONTHS[d.getMonth()]; }
+
+  /* A row's line. now: the phone's clock; skew: server minus phone (store.skew), so time left counts in server time. */
+  function stateLine(g, now, skew) {
+    var t = now + (num(skew) ? skew : 0);
+    if (g.st === 'invited') return COPY.waiting + (g.exp != null ? ', ' + COPY.until + dayMonth(g.exp) : '');
+    if (g.pend) return COPY.notSent;
+    if (turnOf(g) === g.me) return COPY.yourMove + (g.dl != null ? ', ' + timeLeft(g.dl - t) : '');
+    return COPY.theirMove;
+  }
+
+  function recordText(res) {
+    var n = { w: 0, l: 0, d: 0 };
+    if (isObj(res)) Object.keys(res).forEach(function (k) { if (n[res[k]] !== undefined) n[res[k]]++; });
+    return 'W ' + n.w + ' · L ' + n.l + ' · D ' + n.d;
+  }
+
+  function nick(s) {
+    if (typeof s !== 'string') return '';
+    return Array.from(s.replace(/[\u0000-\u001f\u007f]/g, '').trim()).slice(0, NICK_MAX).join('').trim();
+  }
+  function youPlay(c) { return c === 'w' ? COPY.youPlay + COPY.white : c === 'b' ? COPY.youPlay + COPY.black : COPY.randomCol; }
+
+  /* The rows on Play's card: open games only (a finished game goes to the history in FC4). Your move first (least time
+     first), then their move, then invites (soonest expiry first). friends: prof.friends (nicknames and records). */
+  function rows(s, friends, now) {
+    var f = isObj(friends) ? friends : {}, list = [];
+    Object.keys(s.games).forEach(function (id) {
+      var g = s.games[id]; if (!isOpen(g)) return;
+      var kind = g.st === 'invited' ? 'invite' : turnOf(g) === g.me && !g.pend ? 'mine' : 'theirs';
+      var fr = g.opp && isObj(f[g.opp]) ? f[g.opp] : null;
+      list.push({ id: id, kind: kind, name: fr && fr.n ? fr.n : COPY.friend, line: stateLine(g, now, s.skew),
+        record: g.opp ? recordText(fr && fr.res) : null, code: g.code, me: g.me, key: kind === 'invite' ? g.exp || 0 : g.dl || 0 });
+    });
+    var order = { mine: 0, theirs: 1, invite: 2 };
+    list.sort(function (a, b) { return order[a.kind] - order[b.kind] || a.key - b.key || (a.id < b.id ? -1 : 1); });
+    return list;
+  }
+
+  /* A failure (a server message code, 'offline' or 'bad-link') as the line the player reads */
+  function errorText(code) {
+    if (code === 'expired' || code === 'used' || code === 'not-found' || code === 'bad-link') return COPY.invalid;
+    if (code === 'full') return COPY.full;
+    if (code === 'offline') return COPY.offline;
+    if (code === 'own') return COPY.own;
+    if (code === 'limit') return COPY.limit;
+    return COPY.error;
+  }
+
+  /* A launch link already handled (a recreated activity hands the same launch link over again) */
+  function remember(s, code) {
+    if (!CODE_RE.test(code)) return s;
+    s.links = s.links.filter(function (c) { return c !== code; }).concat([code]).slice(-LINKS_KEPT);
+    return s;
+  }
+
+  return { CONFIG: CONFIG, KEY: KEY, MAX_OPEN: MAX_OPEN, NICK_MAX: NICK_MAX, COPY: COPY, CODE_RE: CODE_RE,
+    blank: blank, read: read, apply: apply, link: link, shareText: shareText, parseLink: parseLink, available: available,
+    openCount: openCount, canChallenge: canChallenge, timeLeft: timeLeft, dayMonth: dayMonth, stateLine: stateLine,
+    recordText: recordText, nick: nick, youPlay: youPlay, rows: rows, errorText: errorText, remember: remember };
+});

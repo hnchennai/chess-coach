@@ -37,6 +37,40 @@ Two friends play a turn-based game of chess in the app: one sends a challenge li
 | FC-D20 | `google-services.json` is committed to the public repo (it holds no secret); safety comes from deny-all Firestore rules, API key restrictions and App Check. Data safety says there are no accounts and gives the deletion page URL | Claude (technical), 2026-11-24 |
 | FC-D21 | A friend game that reaches 600 plies (300 moves each) ends automatically as a draw, reason "move limit" | Suresh, 2026-11-24 |
 | FC-D22 | When a player deletes their friend game data, a game already past its deadline ends on time (the side that ran out of time loses), as the timer job would have ended it. Every other open game counts as a win for the friend (FC-D17) | Suresh, 2026-11-24 |
+| FC-D23 | The wording in "Wording" below (approved list) is used exactly as written, in the app and on the website. Any other text a slice needs is proposed there and used until Suresh approves or changes it. No em dashes anywhere | Suresh, 2026-11-25 |
+| FC-D24 | The real Firebase config and the Play signing fingerprints are not available yet. Until they are, the app's `fconfig.js` (project id, API key) and the website's `assetlinks.json` (two fingerprints) hold clearly marked PLACEHOLDERS, the app refuses every friend server call while they are placeholders, and the launch switch `Friends.CONFIG.live` stays off. No test ever calls a real Firebase host | Suresh, 2026-11-25 |
+
+## Wording
+Approved by Suresh, 2026-11-25 (FC-D23), letter for letter:
+| Where | Text |
+|---|---|
+| Play card title | Friend games |
+| Play card button | Challenge a friend |
+| At 10 open games (under the disabled button) | You have 10 friend games open. Finish one to start another. |
+| Challenge sheet | Play as; White / Black / Random; button Share link |
+| Share text (written on the phone) | Play chess with me in Chess Coach: <link> |
+| Row lines | Your move, 2 days left / Their move / Waiting for your friend, until 1 Dec / Not sent yet |
+| Row record | W 2 · L 1 · D 0 |
+| Row name | the nickname, or Friend |
+| Waiting row button | Cancel invite (FC-D18) |
+| Accept sheet | A friend challenges you; You play White (or Black); Name your friend (optional, stays on this phone); buttons Accept and Not now |
+| Bad, used, cancelled or expired link | This challenge is no longer valid. |
+| No internet | Friend games need the internet. Try again when you are online. |
+| Website page | A friend challenged you to chess; buttons Get Chess Coach on Google Play and Open in Chess Coach |
+| Settings (test builds, switch off) | Friend games (test) |
+
+Proposed in FC3, in use until approved (see Open questions):
+| Where | Proposed text |
+|---|---|
+| Accept sheet, a Random invite | Your colour is picked at random. |
+| Accept sheet, how "optional, stays on this phone" shows | a small line under "Name your friend": optional, stays on this phone |
+| Time left, other amounts | Your move, 1 day left / Your move, 5 hours left / Your move, 1 hour left / Your move, under 1 hour left / Your move, no time left (days are rounded up while a day or more is left) |
+| Opening your own link | This is your own challenge. Send the link to a friend. |
+| The 20 challenges a day limit | You have sent 20 challenges today. Try again tomorrow. |
+| Any other server failure | Something went wrong. Please try again. |
+| Waiting row, second button | Share link (the approved button text, reused to send the same link again) |
+| Sheet close button (screen readers only) | Close |
+| Website page, line under the title (also the link preview text) | Install Chess Coach from Google Play, then tap the link again. |
 
 ## Scenarios
 1. **Invite.** Priya taps Challenge a friend on Play, picks Random, and shares the link to Ravi on WhatsApp. Her Play tab shows the game as "Waiting for your friend", with an expiry date 7 days ahead.
@@ -76,9 +110,14 @@ Two friends play a turn-based game of chess in the app: one sends a challenge li
 - Moving games to a new phone (a later Play Games link could do it).
 
 ## Assumption register
-- Confirmed by Suresh: FC-D1 to FC-D8, FC-D17 to FC-D19, FC-D21, FC-D22 (2026-11-24).
+- Confirmed by Suresh: FC-D1 to FC-D8, FC-D17 to FC-D19, FC-D21, FC-D22 (2026-11-24); FC-D23 (the approved wording) and FC-D24 (placeholders until the real Firebase config and fingerprints exist) (2026-11-25).
+- Technical, orchestrator (FC3, tech spec open question 4): the invite link is `https://hnchennai.github.io/c/?c=<code>`, served with HTTP 200 by `c/index.html`.
+- Proposed by Claude in FC3, in use until Suresh answers: the wording in the "Proposed" table; Random picked first in the Challenge sheet; time left rounded up to whole days, then hours.
 - Proposed by Claude, approved by Suresh on 2026-11-24: FC-D9 to FC-D16 and the beyond-code changes.
 - Verified by tool: none yet; Firebase pricing, the Blaze free quotas and the Play deletion rule are checked in readiness.
 
 ## Open questions
-- None.
+From FC3 (2026-11-25), for Suresh:
+1. The proposed wording in "Wording" (the Random invite line, the time left forms, own link, 20 a day, other failures, the website line). Recommendation: approve as written.
+2. How does the challenger name the friend? Today only the one who accepts can (Accept sheet); the challenger's row says "Friend". Options: (a) "Name your friend" on the row once the friend has accepted; (b) on the friend board in FC4; (c) leave it. Recommendation: (a) in FC4, with the same 20-character field.
+3. Which colour is picked first in the Challenge sheet? FC3 picks Random. Options: Random, White, or the last one used. Recommendation: the last one used, Random the first time.

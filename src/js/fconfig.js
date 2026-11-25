@@ -3,7 +3,8 @@
    deny-all Firestore rules, the key's API allowlist, App Check (FC6) and the function's own checks.
    PLACEHOLDERS (FC-D24): the real project id and API key come from Suresh's Firebase project. Until they are filled in,
    fclient.js refuses every call (FClient.configured is false), so no build can reach a Firebase host by mistake.
-   Tests set window.FC_CONFIG before any script runs; its values replace these (tests/e2e/fc3.spec.js points at a fake host). ---------- */
+   Tests set window.FC_CONFIG before any script runs; in a test build only (window.CC_BUILD.test, scripts/build.sh) its values
+   replace these (tests/e2e/fc3.spec.js points at a fake host). A release build ignores it (FC3 fix round 1, fix 8). ---------- */
 (function (root) {
   'use strict';
   var PROJECT = 'PLACEHOLDER-firebase-project-id'; /* FC-D24: Suresh fills this from the Firebase console (Project settings) */
@@ -15,7 +16,8 @@
     tokenBase: 'https://securetoken.googleapis.com',
     fnBase: 'https://asia-south1-' + PROJECT + '.cloudfunctions.net'
   };
-  var o = root.FC_CONFIG && typeof root.FC_CONFIG === 'object' ? root.FC_CONFIG : {};
+  var testBuild = !!(root.CC_BUILD && root.CC_BUILD.test === true);
+  var o = testBuild && root.FC_CONFIG && typeof root.FC_CONFIG === 'object' ? root.FC_CONFIG : {};
   Object.keys(o).forEach(function (k) { if (typeof o[k] === 'string') base[k] = o[k]; });
   root.FCONFIG = Object.freeze(base);
 })(window);

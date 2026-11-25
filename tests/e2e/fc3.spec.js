@@ -19,10 +19,14 @@ const G = require('./g2.spec.js');
 const { makeOps } = require('../../functions/src/ops');
 const { MemStore } = require('../../functions/src/memstore');
 
-const WWW = process.env.FC_WWW || path.join(__dirname, '..', '..', 'www'); // FC_WWW: another build (red runs against main)
+// Fix round 1, fix 1: friend games run only in a test build (CC_TEST_BUILD=1). The cases run on a test build made here in a
+// temp folder; the committed www/ is the release build (web and release cases). FC_WWW: another build (red runs against main).
+const REL = process.env.FC_WWW || path.join(__dirname, '..', '..', 'www');
+const TESTWWW = process.env.FC_WWW || (() => { const d = fs.mkdtempSync(path.join(require('os').tmpdir(), 'fc3-www-')); fs.cpSync(REL, d, { recursive: true }); require('child_process').execFileSync('sh', [path.join(__dirname, '..', '..', 'scripts', 'build.sh')], { env: Object.assign({}, process.env, { CC_TEST_BUILD: '1', CC_WWW_OUT: d }), stdio: 'pipe' }); return d; })();
 const SHOTS = process.env.FC_SHOTS || ''; // a folder: screenshots of the card and the sheets
 const PORT = 8000 + Math.floor(Math.random() * 900);
-const ORIGIN = 'http://127.0.0.1:' + PORT;
+const ORIGIN = 'http://127.0.0.1:' + PORT; // the test build
+const RPORT = PORT + 1000, RORIGIN = 'http://127.0.0.1:' + RPORT; // the release build
 const VIEWPORTS = [{ width: 360, height: 800 }, { width: 412, height: 915 }, { width: 1280, height: 900 }].filter((v) => !process.env.FC_VP || String(v.width) === process.env.FC_VP);
 const ONLY = process.env.FC_ONLY ? new RegExp(process.env.FC_ONLY) : null;
 const DAY = 86400000;
@@ -39,7 +43,7 @@ const SHARE_RE = /^Play chess with me in Chess Coach: https:\/\/hnchennai\.githu
 
 // ---------- the fake Firebase: Auth REST and the callable, on the real ops ----------
 function fakeFirebase() {
-  const fb = { off: 0, store: new MemStore(), tokens: new Map(), refresh: new Map(), uids: [], calls: [], down: false };
+  const fb = { off: 0, store: new MemStore(), tokens: new Map(), refresh: new Map(), uids: [], calls: [], down: false, delay: {}, lose: null };
   const now = () => Date.now() + fb.off;
   const ops = makeOps({ store: fb.store, now, rand: crypto.randomBytes, push: async () => {}, log: () => {}, deleteAuthUser: async () => {} });
   fb.ops = ops;
@@ -65,8 +69,11 @@ function fakeFirebase() {
     if (url === 'https://fn.fc.test/friend') {
       const h = r.headers(), m = /^Bearer (.+)$/.exec(h.authorization || ''), uid = m && fb.tokens.get(m[1]);
       let data = null; try { data = JSON.parse(body).data; } catch (e) { data = null; }
+      const op = data && data.op;
+      if (fb.delay[op]) await new Promise((r) => setTimeout(r, fb.delay[op]));
       try {
         const result = await ops.handle(uid ? { uid } : null, data);
+        if (fb.lose === op) { fb.lose = null; return route.abort('connectionreset'); } // fix 6: the op ran, its answer is lost
         return json(route, 200, { result });
       } catch (e) {
         const st = e.status || 'internal';
@@ -82,7 +89,7 @@ function fakeFirebase() {
 function fakeCap(cfg) {
   const C = cfg || {};
   const N = window.__fc = { share: [], ls: {}, launch: C.launch || null };
-  window.FC_CONFIG = { projectId: 'demo-fc3', apiKey: 'fake-key', authBase: 'https://auth.fc.test', tokenBase: 'https://token.fc.test', fnBase: 'https://fn.fc.test' };
+  if (!C.noConfig) window.FC_CONFIG = { projectId: 'demo-fc3', apiKey: 'fake-key', authBase: 'https://auth.fc.test', tokenBase: 'https://token.fc.test', fnBase: 'https://fn.fc.test' };
   const App = {
     addListener(name, f) { (N.ls[name] = N.ls[name] || []).push(f); return Promise.resolve({ remove() {} }); },
     getLaunchUrl() { return Promise.resolve(N.launch ? { url: N.launch } : undefined); },
@@ -101,7 +108,8 @@ function seed([pk, p, fk, f]) {
 }
 
 let browser;
-// One player: a browser context of its own. o: { native (false: the web build), test (the toggle on), launch (a cold-start link), prof, who }
+// One player: a browser context of its own. o: { native (false: the web build), test (the toggle on), launch (a cold-start link), prof, who,
+// release (the release build: www/), noConfig (no FC_CONFIG: placeholder config) }
 async function player(vp, fb, o) {
   o = o || {};
   const ctx = await browser.newContext({ viewport: vp, deviceScaleFactor: 1 });
@@ -109,7 +117,8 @@ async function player(vp, fb, o) {
   await ctx.route(/.*/, (route) => { const u = route.request().url(); if (FAKE.test(u)) return fb.handle(route, who); if (/fonts\.(googleapis|gstatic)\.com/.test(u)) return route.fulfill({ status: 200, contentType: 'text/css', body: '' }); return route.continue(); });
   const store = o.test === false || o.native === false ? null : { v: 1, test: true, games: {} };
   await ctx.addInitScript(seed, [G.PKEY, o.prof || G.improver({ rating: 1100 }), FKEY, store]);
-  if (o.native !== false) await ctx.addInitScript(fakeCap, { launch: o.launch || null, shareCancel: !!o.shareCancel });
+  if (o.native !== false) await ctx.addInitScript(fakeCap, { launch: o.launch || null, shareCancel: !!o.shareCancel, noConfig: !!o.noConfig });
+  const origin = o.release || o.native === false ? RORIGIN : ORIGIN;
   const page = await ctx.newPage();
   page.errors = []; page.outside = []; page.fb = []; page.scripts = [];
   page.on('console', (m) => { if ((m.type() === 'error' || m.type() === 'warning') && !/GL Driver Message|WebGL context was lost|THREE\.WebGLRenderer: Context (Lost|Restored)/.test(m.text()) && !/net::ERR_INTERNET_DISCONNECTED|Failed to load resource/.test(m.text())) page.errors.push(m.type() + ': ' + m.text()); });
@@ -117,10 +126,10 @@ async function player(vp, fb, o) {
   page.on('request', (r) => {
     const u = r.url();
     if (FAKE.test(u)) page.fb.push(u);
-    else if (u.startsWith(ORIGIN + '/')) page.scripts.push(u.slice(ORIGIN.length));
+    else if (u.startsWith(origin + '/')) page.scripts.push(u.slice(origin.length));
     else if (!/^(data|blob|about):/.test(u) && !/fonts\.(googleapis|gstatic)\.com/.test(u)) page.outside.push(u);
   });
-  await page.goto(ORIGIN + '/index.html');
+  await page.goto(origin + '/index.html');
   await page.waitForFunction(() => window.__coach && window.Placement);
   return page;
 }
@@ -167,7 +176,11 @@ async function challenge(page, col) {
   return m[1];
 }
 const linkOf = (code) => 'https://hnchennai.github.io/c/?c=' + code;
-async function acceptSheet(page) { await page.waitForFunction(() => { const s = document.getElementById('friendSheet'); return s && !s.hidden && document.querySelector('[data-act="faccept"]'); }, null, { timeout: 15000 }); return sheet(page); }
+// The Accept sheet once peek has answered (fix 4: it opens at once in a loading state)
+async function acceptSheet(page) { await page.waitForFunction(() => { const s = document.getElementById('friendSheet'), c = document.getElementById('fgCol'); return s && !s.hidden && c && c.textContent; }, null, { timeout: 15000 }); return sheet(page); }
+// The sheet after a failed peek: the line, and only Not now
+async function deadSheet(page) { await page.waitForFunction(() => { const s = document.getElementById('friendSheet'), m = document.getElementById('fgMsg'); return s && !s.hidden && m && m.textContent && !document.querySelector('[data-act="faccept"]'); }, null, { timeout: 15000 }); return sheet(page); }
+const closeNote = (page) => page.evaluate(() => { const b = document.querySelector('#raniNote button'); if (b) b.click(); });
 async function doAccept(page, name) {
   if (name != null) await page.locator('#fgNick').fill(name);
   await page.locator('#friendSheet [data-act="faccept"]').click();
@@ -268,7 +281,9 @@ const cases = [
     layoutOk(c, 'with an invite');
     await shot(page, 'card_invite');
     const st = await frStore(page);
-    assert.ok(st.uid && st.rt, 'the ID and refresh token are on the device');
+    const dev = JSON.parse(await page.evaluate((k) => localStorage.getItem(k), FKEY));
+    assert.ok(st.uid && dev.rt, 'the ID and refresh token are on the device');
+    assert.equal(st.rt, undefined, 'fix 8: window.__coach.fr() leaves the refresh token out');
     assert.equal(st.games[inv.g].code, m[1]);
     // the waiting row shares the same link again
     await page.locator('#friendCard [data-act="fshare"]').click();
@@ -277,10 +292,10 @@ const cases = [
     assert.equal(page.fb.length, 2, 'sharing again needs no request');
     // and the profile never holds the ID or a token (FC-D3: device only)
     const raw = await page.evaluate((k) => localStorage.getItem(k), G.PKEY);
-    assert.ok(!raw.includes(st.uid) && !raw.includes(st.rt), 'nothing of the friend store in the profile');
+    assert.ok(!raw.includes(st.uid) && !raw.includes(dev.rt), 'nothing of the friend store in the profile');
     return [page];
   }],
-  ['Scenario 2: accept by a cold-start link: Accept sheet, You play White, the nickname (trimmed, 20 characters) on this phone only, Your move 3 days left', async (vp, fb) => {
+  ['Scenario 2: accept by a cold-start link: Accept sheet, You play White, the nickname (20 characters) in the friend store only, Your move 2 days left', async (vp, fb) => {
     const A = await player(vp, fb, { who: 'A' });
     const code = await challenge(A, 'b');
     const B = await player(vp, fb, { who: 'B', launch: linkOf(code) });
@@ -297,12 +312,13 @@ const cases = [
     assert.equal(g.st, 'active');
     const c = await card(B);
     assert.equal(c.rows.length, 1);
-    assert.deepEqual([c.rows[0].kind, c.rows[0].name, c.rows[0].line, c.rows[0].record], ['mine', 'Priyadarshini Ramana', 'Your move, 3 days left', 'W 0 · L 0 · D 0']);
-    const p = await B.evaluate(() => window.__coach.getProf());
-    const opp = (await frStore(B)).games[c.rows[0].g].opp;
-    assert.equal(p.v, 6);
-    assert.equal(p.friends[opp].n, 'Priyadarshini Ramana'); assert.deepEqual(p.friends[opp].res, {});
-    assert.equal(JSON.parse(await B.evaluate((k) => localStorage.getItem(k), G.PKEY)).friends[opp].n, 'Priyadarshini Ramana', 'saved');
+    assert.deepEqual([c.rows[0].kind, c.rows[0].name, c.rows[0].line, c.rows[0].record], ['mine', 'Priyadarshini Ramana', 'Your move, 2 days left', 'W 0 · L 0 · D 0'], 'FC-D26: never overstates');
+    const p = await B.evaluate(() => window.__coach.getProf()), fst = await frStore(B);
+    const opp = fst.games[c.rows[0].g].opp;
+    assert.equal(p.v, 5, 'FC-D29: the profile stays v5'); assert.equal(p.friends, undefined, 'no friends in the profile');
+    assert.ok(!(await B.evaluate((k) => localStorage.getItem(k), G.PKEY)).includes('Priya'), 'nor in the saved profile (cloud save)');
+    assert.deepEqual(fst.friends[opp], Object.assign({ n: 'Priyadarshini Ramana', res: {} }, { t: fst.friends[opp].t }), 'in the friend store on this phone');
+    assert.equal(fst.rt, undefined, 'fix 8: window.__coach.fr() never hands out the refresh token');
     assert.ok(!fb.calls.some((x) => x.body.includes('Priya')), 'FC-D5: the nickname never goes to the server');
     // the challenger's row turns into "Their move" on resume, named "Friend"
     const ra = await rowsAfterResume(A, 1);
@@ -327,13 +343,13 @@ const cases = [
     const st = await frStore(B), g = Object.values(st.games)[0];
     const c = await card(B);
     assert.equal(c.rows[0].name, W.friend);
-    assert.equal(c.rows[0].line, g.me === 'w' ? 'Your move, 3 days left' : W.theirMove);
-    assert.deepEqual((await B.evaluate(() => window.__coach.getProf())).friends, {}, 'no nickname, nothing stored');
+    assert.equal(c.rows[0].line, g.me === 'w' ? 'Your move, 2 days left' : W.theirMove);
+    assert.deepEqual(st.friends, {}, 'no nickname, nothing stored');
     // the server's clock 1 day and an hour ahead: time left counts in server time (skew), not the phone's
     fb.off = DAY + 3600000;
     const mover = g.me === 'w' ? B : A;
     await mover.evaluate(() => window.__fc.resume());
-    await mover.waitForFunction(() => { const r = document.querySelector('#friendCard .fg-row[data-kind="mine"] .fg-state'); return r && r.textContent === 'Your move, 2 days left'; }, null, { timeout: 10000 });
+    await mover.waitForFunction(() => { const r = document.querySelector('#friendCard .fg-row[data-kind="mine"] .fg-state'); return r && r.textContent === 'Your move, 46 hours left'; }, null, { timeout: 10000 });
     return [A, B];
   }],
   ['Bad and used links say "This challenge is no longer valid."; a bad one needs no request', async (vp, fb) => {
@@ -353,19 +369,24 @@ const cases = [
     // a third player taps the same (now used) link, warm and cold
     const C = await player(vp, fb, { who: 'C' });
     await C.evaluate((u) => window.__fc.open(u), linkOf(code));
-    await C.waitForFunction(() => !document.getElementById('raniNote').hidden, null, { timeout: 10000 });
-    assert.ok((await noteText(C)).includes(W.invalid));
-    assert.equal(await sheet(C), null, 'no Accept sheet');
+    let ds = await deadSheet(C);
+    assert.equal(ds.msg, W.invalid); assert.deepEqual(ds.buttons.slice(1), [W.notNow], 'no Accept, only Not now');
+    await C.locator('#friendSheet .big[data-act="fclose"]').click();
     const D = await player(vp, fb, { who: 'D', launch: linkOf(code) });
-    await D.waitForFunction(() => !document.getElementById('raniNote').hidden, null, { timeout: 10000 });
-    assert.ok((await noteText(D)).includes(W.invalid));
+    ds = await deadSheet(D);
+    assert.equal(ds.msg, W.invalid);
+    // the one who accepted taps the link again: no error, it is their game (fix 6)
+    await B.waitForTimeout(3100);
+    await B.evaluate((u) => window.__fc.open(u), linkOf(code));
+    await B.waitForFunction(() => document.getElementById('friendSheet').hidden && document.querySelectorAll('#friendCard .fg-row').length === 1, null, { timeout: 10000 });
+    assert.equal(await noteText(B), null);
     // a cancelled invite is no longer valid either
     const code2 = await challenge(A, 'w');
     await A.locator('#friendCard .fg-row[data-kind="invite"] [data-act="fcancel"]').click();
     await A.waitForFunction(() => !document.querySelector('#friendCard .fg-row[data-kind="invite"]'));
-    await C.evaluate(() => { const b = document.querySelector('#raniNote button'); if (b) b.click(); });
+    await C.waitForTimeout(3100);
     await C.evaluate((u) => window.__fc.open(u), linkOf(code2));
-    await C.waitForFunction(() => !document.getElementById('raniNote').hidden && document.getElementById('raniNote').innerText.includes('no longer valid'), null, { timeout: 10000 });
+    assert.equal((await deadSheet(C)).msg, W.invalid);
     return [A, B, C, D];
   }],
   ['Offline: "Friend games need the internet. Try again when you are online." on Share link, on a link, and on Play', async (vp, fb) => {
@@ -374,7 +395,7 @@ const cases = [
     await A.context().setOffline(true);
     await A.locator('#friendCard [data-act="fchallenge"]').click();
     await A.locator('#friendSheet [data-act="fsend"]').click();
-    await A.waitForFunction(() => { const m = document.getElementById('fgMsg'); return m && !m.hidden; });
+    await A.waitForFunction((t) => { const m = document.getElementById('fgMsg'); return m && m.textContent === t; }, W.offline);
     assert.equal((await sheet(A)).msg, W.offline);
     assert.equal((await shares(A)).length, 0, 'nothing shared');
     assert.equal(A.fb.length, 0);
@@ -394,12 +415,12 @@ const cases = [
     assert.equal((await card(A)).rows.length, 1, 'the rows stay on screen offline');
     await A.context().setOffline(false);
     await A.evaluate(() => window.__fc.resume());
-    await A.waitForFunction(() => !document.querySelector('#friendCard .fg-msg'));
+    await A.waitForFunction(() => document.getElementById('friendStatus').textContent === '');
     // the server unreachable while the phone says it is online
     fb.down = true;
     await A.locator('#friendCard [data-act="fchallenge"]').click();
     await A.locator('#friendSheet [data-act="fsend"]').click();
-    await A.waitForFunction(() => { const m = document.getElementById('fgMsg'); return m && !m.hidden; }, null, { timeout: 25000 });
+    await A.waitForFunction((t) => { const m = document.getElementById('fgMsg'); return m && m.textContent === t; }, W.offline, { timeout: 25000 });
     assert.equal((await sheet(A)).msg, W.offline);
     fb.down = false;
     return [A];
@@ -455,20 +476,168 @@ const cases = [
     assert.equal(fb.store.get('games', fb.store.get('invites', code).g).st, 'invited', 'still waiting for a friend');
     assert.equal(await card(B).then((c) => c.rows.length), 0);
     return [A, B];
+  }],
+  // ---------- fix round 1 ----------
+  ['Fix 1, fix 8: a release build never shows the test toggle or the card, even with a stored test flag, and ignores FC_CONFIG; nor a test build without a real config', async (vp, fb) => {
+    const R = await player(vp, fb, { who: 'R', release: true });
+    assert.equal(await R.evaluate(() => JSON.stringify(window.CC_BUILD)), '{"test":false}');
+    assert.match(await R.evaluate(() => window.FCONFIG.apiKey), /PLACEHOLDER/, 'FC_CONFIG ignored');
+    assert.equal((await frStore(R)).test, true, 'the stored flag is there');
+    await goPlay(R);
+    assert.equal(await card(R), null, 'no card');
+    await R.evaluate(() => window.__coach.openSettings());
+    assert.equal(await R.evaluate(() => { const s = document.getElementById('friendSet'); return s.hidden && s.innerHTML === ''; }), true, 'no toggle');
+    assert.deepEqual(await R.evaluate(() => Object.keys(window.__fc.ls)), ['backButton'], 'no link listener');
+    const N = await player(vp, fb, { who: 'N', noConfig: true });
+    assert.equal(await N.evaluate(() => window.CC_BUILD.test), true);
+    await goPlay(N);
+    assert.equal(await card(N), null, 'placeholder config: no card');
+    await N.evaluate(() => window.__coach.openSettings());
+    assert.equal(await N.evaluate(() => document.getElementById('friendSet').hidden), true, 'placeholder config: no toggle');
+    assert.equal(R.fb.length + N.fb.length, 0);
+    return [R, N];
+  }],
+  ['Fix 2: a failed or offline tap is not remembered; after Not now a later tap shows the sheet again; a cold link shown in the last 2 minutes is not shown again', async (vp, fb) => {
+    const A = await player(vp, fb, { who: 'A' });
+    const code = await challenge(A, 'w');
+    const B = await player(vp, fb, { who: 'B' });
+    await B.context().setOffline(true);
+    await B.evaluate((u) => window.__fc.open(u), linkOf(code));
+    await B.waitForFunction(() => !document.getElementById('raniNote').hidden);
+    assert.ok((await noteText(B)).includes(W.offline));
+    await closeNote(B); await B.context().setOffline(false); await B.waitForTimeout(3100);
+    await B.evaluate((u) => window.__fc.open(u), linkOf(code));
+    assert.equal((await acceptSheet(B)).col, 'You play Black', 'online again: the next tap shows the sheet');
+    await B.locator('#friendSheet .big[data-act="fclose"]').click();
+    await B.waitForTimeout(3100);
+    await B.evaluate((u) => window.__fc.open(u), linkOf(code));
+    await acceptSheet(B); // after Not now, a deliberate tap shows it again
+    await B.locator('#friendSheet .big[data-act="fclose"]').click();
+    fb.down = true; await B.waitForTimeout(3100);
+    await B.evaluate((u) => window.__fc.open(u), linkOf(code));
+    assert.equal((await deadSheet(B)).msg, W.offline, 'the server out of reach: the line in the sheet');
+    await B.locator('#friendSheet .big[data-act="fclose"]').click();
+    fb.down = false; await B.waitForTimeout(3100);
+    await B.evaluate((u) => window.__fc.open(u), linkOf(code));
+    await acceptSheet(B);
+    assert.deepEqual((await frStore(B)).links, [], 'nothing remembered until it is accepted');
+    // cold: shown, Not now, then the activity is recreated with the same launch link: not shown again
+    const C = await player(vp, fb, { who: 'C', launch: linkOf(code) });
+    await acceptSheet(C);
+    await C.locator('#friendSheet .big[data-act="fclose"]').click();
+    await C.reload(); await C.waitForFunction(() => window.__coach); await C.waitForTimeout(800);
+    assert.equal(await sheet(C), null, 'the same launch link within 2 minutes: an activity recreate, not a new tap');
+    await C.evaluate((u) => window.__fc.open(u), linkOf(code));
+    await acceptSheet(C); // a new tap still works
+    return [A, B, C];
+  }],
+  ['Fix 4, fix 7: the Accept sheet opens at once while loading; Share link, Accept and Cancel invite are busy while their call runs; no double submit; one persistent status line', async (vp, fb) => {
+    const ops = (op) => fb.calls.filter((c) => c.body.includes('"op":"' + op + '"')).length;
+    const busyOf = (page, sel) => page.evaluate((q) => { const b = document.querySelector(q); return b ? { busy: b.getAttribute('aria-busy'), disabled: b.disabled, spin: !!b.querySelector('.fg-spin'), text: b.textContent } : null; }, sel);
+    const A = await player(vp, fb, { who: 'A' });
+    await goPlay(A);
+    await A.locator('#friendCard [data-act="fchallenge"]').click();
+    await A.evaluate(() => { document.getElementById('fgMsg').__mark = 1; });
+    fb.delay.invite = 900;
+    await A.locator('#friendSheet [data-act="fsend"]').click();
+    assert.deepEqual(await busyOf(A, '#friendSheet [data-act="fsend"]'), { busy: 'true', disabled: true, spin: true, text: W.share });
+    assert.equal(await A.evaluate(() => document.getElementById('fgMsg').textContent), 'One moment.');
+    await A.evaluate(() => document.querySelector('#friendSheet [data-act="fsend"]').click()); // a second tap
+    await A.waitForFunction(() => window.__fc.share.length === 1);
+    await A.waitForTimeout(300);
+    assert.equal(ops('invite'), 1, 'one invite only');
+    const code = SHARE_RE.exec((await shares(A))[0].text)[1];
+    // the Accept sheet: at once, loading, then filled; the status line is the same element throughout
+    const B = await player(vp, fb, { who: 'B' });
+    fb.delay.peek = 900;
+    await B.evaluate((u) => window.__fc.open(u), linkOf(code));
+    await B.waitForFunction(() => !document.getElementById('friendSheet').hidden);
+    const ld = await sheet(B);
+    assert.equal(ld.title, W.acceptTitle); assert.equal(ld.col, ''); assert.equal(ld.msg, 'One moment.');
+    assert.deepEqual(await busyOf(B, '[data-act="faccept"]'), { busy: 'true', disabled: true, spin: true, text: W.accept });
+    await B.evaluate(() => { document.getElementById('fgMsg').__mark = 1; });
+    assert.equal((await acceptSheet(B)).msg, '', 'filled: the busy line goes');
+    assert.equal(await B.evaluate(() => document.getElementById('fgMsg').__mark), 1, 'fix 7: the same live region, only its text changed');
+    fb.delay.accept = 900;
+    await B.locator('#fgNick').fill('Ravi');
+    await B.locator('#friendSheet [data-act="faccept"]').click();
+    assert.equal((await busyOf(B, '[data-act="faccept"]')).busy, 'true');
+    assert.equal(await B.evaluate(() => document.getElementById('fgMsg').__mark), 1);
+    await B.evaluate(() => { const b = document.querySelector('[data-act="faccept"]'); if (b) b.click(); });
+    await B.waitForFunction(() => document.getElementById('friendSheet').hidden);
+    assert.equal(ops('accept'), 1, 'one accept only');
+    // Cancel invite: busy, and one call only
+    await challenge(A, 'w');
+    fb.delay.cancel = 900;
+    await A.evaluate(() => { document.getElementById('friendStatus').__mark = 1; });
+    await A.locator('#friendCard .fg-row[data-kind="invite"] [data-act="fcancel"]').click();
+    assert.deepEqual(await busyOf(A, '#friendCard .fg-row[data-kind="invite"] [data-act="fcancel"]'), { busy: 'true', disabled: true, spin: true, text: W.cancel });
+    assert.equal(await A.evaluate(() => document.getElementById('friendStatus').textContent), 'One moment.');
+    await A.evaluate(() => document.querySelector('#friendCard [data-act="fcancel"]').click());
+    await A.waitForFunction(() => !document.querySelector('#friendCard .fg-row[data-kind="invite"]'), null, { timeout: 10000 });
+    assert.equal(ops('cancel'), 1, 'one cancel only');
+    assert.equal(await A.evaluate(() => document.getElementById('friendStatus').__mark + '|' + document.getElementById('friendStatus').textContent), '1|', 'the same card status line, empty again');
+    return [A, B];
+  }],
+  ['Fix 5: Cancel invite answered "over" or "used" is no error: the row goes, or becomes the started game', async (vp, fb) => {
+    const A = await player(vp, fb, { who: 'A' });
+    const c1 = await challenge(A, 'w');
+    const uid = (await A.evaluate(() => window.__coach.fr())).uid;
+    await fb.ops.handle({ uid }, { op: 'cancel', g: fb.store.get('invites', c1).g }); // ended elsewhere first
+    await A.locator('#friendCard [data-act="fcancel"]').click();
+    await A.waitForFunction(() => !document.querySelector('#friendCard .fg-row'), null, { timeout: 10000 });
+    assert.equal((await card(A)).msg, '', 'over: no error line');
+    const c2 = await challenge(A, 'w');
+    await fb.ops.handle({ uid: 'uidFriend' }, { op: 'accept', code: c2 }); // the friend accepted first
+    await A.locator('#friendCard [data-act="fcancel"]').click();
+    await A.waitForFunction(() => { const r = document.querySelector('#friendCard .fg-row'); return r && r.dataset.kind === 'mine'; }, null, { timeout: 10000 });
+    const c = await card(A);
+    assert.equal(c.msg, '', 'used: no error line');
+    assert.deepEqual([c.rows[0].name, c.rows[0].line], [W.friend, 'Your move, 2 days left'], 'the row is the started game');
+    return [A];
+  }],
+  ['Fix 6: the Accept answer is lost: Accept again gets the same game and saves the nickname', async (vp, fb) => {
+    const A = await player(vp, fb, { who: 'A' });
+    const code = await challenge(A, 'b');
+    const B = await player(vp, fb, { who: 'B' });
+    await B.evaluate((u) => window.__fc.open(u), linkOf(code));
+    await acceptSheet(B);
+    fb.lose = 'accept';
+    await B.locator('#fgNick').fill('Priya');
+    await B.locator('#friendSheet [data-act="faccept"]').click();
+    await B.waitForFunction((t) => document.getElementById('fgMsg').textContent === t, W.offline);
+    assert.equal((await sheet(B)).msg, W.offline, 'the answer never came');
+    assert.equal(fb.store.get('games', fb.store.get('invites', code).g).st, 'active', 'but the server accepted');
+    await doAccept(B, null);
+    const c = await card(B);
+    assert.deepEqual([c.rows.length, c.rows[0].name, c.rows[0].line], [1, 'Priya', 'Your move, 2 days left']);
+    assert.equal(Object.keys(fb.store.dump().games).length, 1, 'one game');
+    return [A, B];
+  }],
+  ['FC-D27: the Challenge sheet starts on the colour used last time (Random the first time), also after a restart', async (vp, fb) => {
+    const A = await player(vp, fb, { who: 'A' });
+    await challenge(A, 'b');
+    await A.locator('#friendCard [data-act="fchallenge"]').click();
+    assert.deepEqual((await sheet(A)).cols.map((x) => x[1]), ['false', 'true', 'false']);
+    await A.keyboard.press('Escape');
+    await A.reload(); await A.waitForFunction(() => window.__coach); await goPlay(A);
+    await A.locator('#friendCard [data-act="fchallenge"]').click();
+    assert.deepEqual((await sheet(A)).cols.map((x) => x[1]), ['false', 'true', 'false'], 'after a restart');
+    return [A];
   }]
 ];
 
 const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css', '.wasm': 'application/wasm', '.png': 'image/png', '.svg': 'image/svg+xml', '.json': 'application/json', '.glb': 'model/gltf-binary', '.bin': 'application/octet-stream' };
-function serve() {
+function serve(WWW, port) {
   const srv = http.createServer((req, res) => {
     const f = path.join(WWW, path.normalize(decodeURIComponent(req.url.split('?')[0])));
     if (!f.startsWith(WWW + path.sep)) { res.writeHead(403); res.end(); return; }
     fs.readFile(f, (err, data) => { if (err) { res.writeHead(404); res.end(); return; } res.writeHead(200, { 'Content-Type': TYPES[path.extname(f)] || 'application/octet-stream' }); res.end(data); });
   });
-  return new Promise((r) => srv.listen(PORT, '127.0.0.1', () => r(srv)));
+  return new Promise((r) => srv.listen(port, '127.0.0.1', () => r(srv)));
 }
 async function run() {
-  const srv = await serve();
+  const srv = await serve(TESTWWW, PORT), rsrv = await serve(REL, RPORT);
   browser = await chromium.launch();
   const results = []; let failures = 0;
   try {
@@ -489,7 +658,7 @@ async function run() {
         for (const p of pages || []) if (p.errors && p.errors.length) results.push('     page errors: ' + JSON.stringify(p.errors).slice(0, 400));
       } finally { for (const p of browser.contexts()) await p.close(); }
     }
-  } finally { await browser.close(); srv.close(); }
+  } finally { await browser.close(); srv.close(); rsrv.close(); }
   console.log(results.join('\n'));
   console.log('\n' + (results.length - failures) + ' passed, ' + failures + ' failed');
   process.exit(failures ? 1 : 0);

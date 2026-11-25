@@ -10,7 +10,8 @@
   /* THE LAUNCH SWITCH (tech spec section 0). Off until slice FC6 and the Play forms are done; turning it on is a checkpoint
      (Suresh's yes). While it is off only a test build's "Friend games (test)" toggle shows the feature. */
   var CONFIG = Object.freeze({ live: false });
-  /* Device only, never in the profile or the cloud save (FC-D3): a new phone or a reinstall starts with a new ID */
+  /* Device only, never in the profile or the cloud save (FC-D3, FC-D29): the ID, the games, and the nicknames and records per
+     friend. A new phone or a reinstall starts with a new ID, unless Android restores the app's backup (FC-D30). */
   var KEY = 'suresh-chess-coach.friends.v1';
   var MAX_OPEN = 10; /* FC-D12 */
   var NICK_MAX = 20;
@@ -22,8 +23,9 @@
   var DAY = 86400000, HOUR = 3600000;
   var MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
   var LINKS_KEPT = 10;
+  var REPLAY_MS = 120000; /* fix 2: the same launch link again within 2 minutes is an activity recreate, not a new tap */
 
-  /* FC-D23: the approved wording (Suresh, 2026-11-25), letter for letter. The lines marked "proposed" are listed in the
+  /* FC-D23, FC-D25: the approved wording (Suresh, 2026-11-25), letter for letter. Lines marked "proposed" are listed in the
      product spec's Wording section and wait for his approval. No em dashes. */
   var COPY = Object.freeze({
     card: 'Friend games',
@@ -41,18 +43,30 @@
     offline: 'Friend games need the internet. Try again when you are online.',
     cancel: 'Cancel invite', /* FC-D18 */
     setting: 'Friend games (test)',
-    /* proposed (not yet approved): */
+    /* FC-D25 (approved 2026-11-25): */
     randomCol: 'Your colour is picked at random.',
     own: 'This is your own challenge. Send the link to a friend.',
     limit: 'You have sent 20 challenges today. Try again tomorrow.',
     error: 'Something went wrong. Please try again.',
-    left: { none: 'no time left', underHour: 'under 1 hour left', hour: ' hour left', hours: ' hours left', day: ' day left', days: ' days left' }
+    close: 'Close',
+    left: { none: 'no time left', underHour: 'under 1 hour left', hour: ' hour left', hours: ' hours left', days: ' days left' },
+    /* proposed in fix round 1 (not yet approved): what the busy state says (a live region) while a call runs */
+    busy: 'One moment.'
   });
 
   function isObj(x) { return !!x && typeof x === 'object' && !Array.isArray(x); }
   function num(x) { return typeof x === 'number' && isFinite(x); }
 
-  function blank() { return { v: 1, uid: null, rt: null, tok: null, since: 0, skew: 0, test: false, links: [], games: {} }; }
+  /* col: the colour picked last in the Challenge sheet (FC-D27); launch: the last launch link shown and when (fix 2);
+     friends: { <opp>: { n: nickname, t: ms, res: { <gameId>: 'w'|'l'|'d' } } } (FC-D29; FC4 fills res) */
+  function blank() { return { v: 1, uid: null, rt: null, tok: null, since: 0, skew: 0, test: false, col: 'r', launch: null, links: [], friends: {}, games: {} }; }
+
+  function normFriend(x) {
+    var res = {}, r = isObj(x.res) ? x.res : {};
+    Object.keys(r).forEach(function (g) { if (r[g] === 'w' || r[g] === 'l' || r[g] === 'd') res[g] = r[g]; });
+    var t = +x.t;
+    return { n: nick(x.n), t: t > 0 && isFinite(t) ? t : 0, res: res };
+  }
 
   /* One game as the app keeps it: the server's view (functions/src/ops.js view()) plus pend (FC4's unsent move). null if broken. */
   function normGame(id, g) {
@@ -89,6 +103,9 @@
     if (num(o.since) && o.since >= 0) s.since = o.since;
     if (num(o.skew)) s.skew = o.skew;
     s.test = o.test === true;
+    if (o.col === 'w' || o.col === 'b' || o.col === 'r') s.col = o.col;
+    if (isObj(o.launch) && typeof o.launch.url === 'string' && o.launch.url.length <= 2000 && num(o.launch.t)) s.launch = { url: o.launch.url, t: o.launch.t };
+    if (isObj(o.friends)) Object.keys(o.friends).forEach(function (k) { if (OPP_RE.test(k) && isObj(o.friends[k])) s.friends[k] = normFriend(o.friends[k]); });
     if (Array.isArray(o.links)) s.links = o.links.filter(function (c) { return typeof c === 'string' && CODE_RE.test(c); }).slice(-LINKS_KEPT);
     if (isObj(o.games)) Object.keys(o.games).forEach(function (id) { var g = normGame(id, o.games[id]); if (g) s.games[id] = g; });
     return s;
@@ -141,12 +158,13 @@
   function canChallenge(s) { return openCount(s) < MAX_OPEN; }
   function turnOf(g) { return g.moves.length % 2 === 0 ? 'w' : 'b'; }
 
-  /* Time left as words: whole days rounded up while at least a day is left, then hours, then under an hour. */
+  /* FC-D26: time left never overstates. From 48 hours: whole days rounded down; under 48 hours: whole hours rounded down;
+     then "under 1 hour left"; then "no time left". */
   function timeLeft(ms) {
     var L = COPY.left;
     if (!(ms > 0)) return L.none;
-    if (ms >= DAY) { var d = Math.ceil(ms / DAY); return d + (d === 1 ? L.day : L.days); }
-    if (ms >= HOUR) { var h = Math.ceil(ms / HOUR); return h + (h === 1 ? L.hour : L.hours); }
+    if (ms >= 2 * DAY) return Math.floor(ms / DAY) + L.days;
+    if (ms >= HOUR) { var h = Math.floor(ms / HOUR); return h + (h === 1 ? L.hour : L.hours); }
     return L.underHour;
   }
   function dayMonth(ms) { var d = new Date(ms); return d.getDate() + ' ' + MONTHS[d.getMonth()]; }
@@ -173,9 +191,9 @@
   function youPlay(c) { return c === 'w' ? COPY.youPlay + COPY.white : c === 'b' ? COPY.youPlay + COPY.black : COPY.randomCol; }
 
   /* The rows on Play's card: open games only (a finished game goes to the history in FC4). Your move first (least time
-     first), then their move, then invites (soonest expiry first). friends: prof.friends (nicknames and records). */
-  function rows(s, friends, now) {
-    var f = isObj(friends) ? friends : {}, list = [];
+     first), then their move, then invites (soonest expiry first). Names and records from s.friends (FC-D29). */
+  function rows(s, now) {
+    var f = isObj(s.friends) ? s.friends : {}, list = [];
     Object.keys(s.games).forEach(function (id) {
       var g = s.games[id]; if (!isOpen(g)) return;
       var kind = g.st === 'invited' ? 'invite' : turnOf(g) === g.me && !g.pend ? 'mine' : 'theirs';
@@ -205,7 +223,20 @@
     return s;
   }
 
-  return { CONFIG: CONFIG, KEY: KEY, MAX_OPEN: MAX_OPEN, NICK_MAX: NICK_MAX, COPY: COPY, CODE_RE: CODE_RE,
+  /* FC-D29: a nickname for one friend key, on this phone only. Keeps the record. An empty name or a bad key changes nothing. */
+  function name(s, opp, n, now) {
+    var v = nick(n);
+    if (!v || typeof opp !== 'string' || !OPP_RE.test(opp)) return false;
+    var old = isObj(s.friends[opp]) ? s.friends[opp] : null;
+    s.friends[opp] = { n: v, t: now, res: old ? old.res : {} };
+    return true;
+  }
+  /* Fix 2: the same launch link again within 2 minutes of showing it */
+  function replayed(s, url, now) { return !!s.launch && s.launch.url === url && now - s.launch.t >= 0 && now - s.launch.t < REPLAY_MS; }
+  /* Fix 8: the store without the refresh token (for window.__coach and debugging) */
+  function safeCopy(s) { var c = JSON.parse(JSON.stringify(s)); delete c.rt; return c; }
+
+  return { CONFIG: CONFIG, name: name, replayed: replayed, safeCopy: safeCopy, REPLAY_MS: REPLAY_MS, KEY: KEY, MAX_OPEN: MAX_OPEN, NICK_MAX: NICK_MAX, COPY: COPY, CODE_RE: CODE_RE,
     blank: blank, read: read, apply: apply, link: link, shareText: shareText, parseLink: parseLink, available: available,
     openCount: openCount, canChallenge: canChallenge, timeLeft: timeLeft, dayMonth: dayMonth, stateLine: stateLine,
     recordText: recordText, nick: nick, youPlay: youPlay, rows: rows, errorText: errorText, remember: remember };

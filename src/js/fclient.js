@@ -158,6 +158,9 @@
       op: op,
       sync: sync,
       setTest: function (on) { store.test = !!on; save(); },
+      setCol: function (c) { if (c === 'w' || c === 'b' || c === 'r') { store.col = c; save(); } },
+      name: function (opp, n, t) { var ok = Friends.name(store, opp, n, t); if (ok) save(); return ok; },
+      setLaunch: function (url, t) { store.launch = { url: url, t: t }; save(); },
       remember: function (code) { Friends.remember(store, code); save(); }
     };
   }

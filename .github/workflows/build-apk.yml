@@ -33,6 +33,20 @@ jobs:
           # the ads unit tests too: an edit inside ads.js that hands out the real unit while the switch is off fails here
           node --test tests/ads.test.js
 
+      # FC3 fix round 1 (fix 1): main (and so every release) is a release build: the committed www/ with js/buildflags.js test: false.
+      # Any other branch is rebuilt here as a test build (CC_TEST_BUILD=1), where Settings may show "Friend games (test)"
+      # (only with a real friend server config). Fails if the flag is not what it must be.
+      - name: Release or test build
+        run: |
+          if [ "$GITHUB_REF" = "refs/heads/main" ]; then
+            grep -qF 'window.CC_BUILD = Object.freeze({ test: false });' www/js/buildflags.js || { echo "::error::main must be a release build (www/js/buildflags.js test: false)"; exit 1; }
+            echo "Release build"
+          else
+            CC_TEST_BUILD=1 sh scripts/build.sh
+            grep -qF 'window.CC_BUILD = Object.freeze({ test: true });' www/js/buildflags.js || { echo "::error::the test build flag did not apply"; exit 1; }
+            echo "Test build"
+          fi
+
       - uses: actions/setup-java@v4
         with:
           distribution: temurin

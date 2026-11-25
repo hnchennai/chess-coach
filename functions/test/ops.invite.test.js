@@ -2,7 +2,7 @@
 // hello, invite, peek, accept, cancel (tech spec section 6; product scenarios 1 and 2, criterion 1, FC-D9, FC-D12, FC-D18).
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { setup, fails, DAY, T0, sha12 } = require('./helpers');
+const { setup, fails, DAY, T0, sha12, strings } = require('./helpers');
 
 const A = 'uid-alice-000000000001';
 const B = 'uid-bob-00000000000002';
@@ -151,8 +151,36 @@ test('scenario 2 and criterion 1: accept starts the game once; a second accept f
   assert.equal(store.count('games'), 1, 'exactly one game');
   await fails(call(C, { op: 'peek', code: inv.code }), 'failed-precondition', 'used');
   await fails(call(C, { op: 'accept', code: inv.code }), 'failed-precondition', 'used');
-  await fails(call(B, { op: 'accept', code: inv.code }), 'failed-precondition', 'used');
   assert.equal(store.get('games', id).uids[1], B, 'the game did not change');
+});
+
+test('FC3 fix 6: a lost accept answer: the acceptor\'s retry succeeds with the same game, peek says it is accepted; others still get "used"', async () => {
+  const { call, store, clock, pushes } = setup();
+  const inv = await call(A, { op: 'invite', col: 'w' });
+  const id = inv.games[0].id;
+  const first = await call(B, { op: 'accept', code: inv.code });
+  const used = store.get('invites', inv.code);
+  assert.deepEqual(Object.keys(used).sort(), ['exp', 'expireAt', 'g', 'used'], 'the used invite keeps the game id, still no uid');
+  assert.equal(used.g, id);
+  assert.ok(!strings(used).includes(A) && !strings(used).includes(B), 'no uid in it');
+  const before = store.get('games', id);
+  pushes.length = 0;
+  clock.t += 60000;
+  const again = await call(B, { op: 'accept', code: inv.code });
+  assert.deepEqual(again.games, first.games, 'the same view: nothing changed');
+  assert.deepEqual(store.get('games', id), before, 'the game did not change');
+  assert.equal(pushes.length, 0, 'no second push');
+  const pk = await call(B, { op: 'peek', code: inv.code });
+  assert.equal(pk.accepted, true);
+  assert.equal(pk.col, 'b', 'my colour in that game');
+  assert.equal(pk.games[0].id, id);
+  await fails(call(C, { op: 'peek', code: inv.code }), 'failed-precondition', 'used');
+  await fails(call(C, { op: 'accept', code: inv.code }), 'failed-precondition', 'used');
+  await fails(call(A, { op: 'accept', code: inv.code }), 'failed-precondition', 'used', 'the challenger is not the acceptor');
+  // once the game is over the retry still answers with the game (its result)
+  await call(A, { op: 'resign', g: id });
+  const late = await call(B, { op: 'accept', code: inv.code });
+  assert.equal(late.games[0].st, 'over');
 });
 
 test('accept pushes "move" to White only when White is the challenger', async () => {

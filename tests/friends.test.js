@@ -95,7 +95,7 @@ test('available(): native Android, and the launch switch or the test toggle', ()
 
 test('Store: blank shape, device only', () => {
   assert.equal(F.KEY, 'suresh-chess-coach.friends.v1');
-  assert.deepEqual(F.blank(), { v: 1, uid: null, rt: null, tok: null, since: 0, skew: 0, test: false, links: [], games: {} });
+  assert.deepEqual(F.blank(), { v: 1, uid: null, rt: null, tok: null, since: 0, skew: 0, test: false, col: 'r', launch: null, links: [], friends: {}, games: {} });
 });
 
 test('Store migrate: missing, broken or foreign data reads as blank, field by field', () => {
@@ -157,18 +157,19 @@ test('openCount and canChallenge: FC-D12, at most 10 open (invited and active) g
   assert.equal(F.canChallenge(s), false);
 });
 
-test('timeLeft: days rounded up, then hours, then under an hour', () => {
+test('FC-D26 timeLeft: never overstates: whole days rounded down from 48 hours, then whole hours rounded down', () => {
+  const MIN = 60000;
   assert.equal(F.timeLeft(3 * DAY), '3 days left');
-  assert.equal(F.timeLeft(3 * DAY - 1), '3 days left', 'just after a move: 3 days');
-  assert.equal(F.timeLeft(2 * DAY + 1), '3 days left');
-  assert.equal(F.timeLeft(2 * DAY), '2 days left');
-  assert.equal(F.timeLeft(DAY + 1), '2 days left');
-  assert.equal(F.timeLeft(DAY), '1 day left');
-  assert.equal(F.timeLeft(DAY - 1), '24 hours left');
-  assert.equal(F.timeLeft(5 * HOUR), '5 hours left');
-  assert.equal(F.timeLeft(HOUR + 1), '2 hours left');
+  assert.equal(F.timeLeft(3 * DAY - 1), '2 days left', 'just after a move: 2 days, never 3');
+  assert.equal(F.timeLeft(2 * DAY + 1), '2 days left');
+  assert.equal(F.timeLeft(48 * HOUR), '2 days left');
+  assert.equal(F.timeLeft(47 * HOUR + 59 * MIN), '47 hours left');
+  assert.equal(F.timeLeft(25 * HOUR), '25 hours left');
+  assert.equal(F.timeLeft(DAY), '24 hours left');
+  assert.equal(F.timeLeft(5 * HOUR + 59 * MIN), '5 hours left');
+  assert.equal(F.timeLeft(2 * HOUR - 1), '1 hour left');
   assert.equal(F.timeLeft(HOUR), '1 hour left');
-  assert.equal(F.timeLeft(HOUR - 1), 'under 1 hour left');
+  assert.equal(F.timeLeft(59 * MIN), 'under 1 hour left');
   assert.equal(F.timeLeft(1), 'under 1 hour left');
   assert.equal(F.timeLeft(0), 'no time left');
   assert.equal(F.timeLeft(-5), 'no time left');
@@ -183,6 +184,7 @@ test('dayMonth: "1 Dec" in local time', () => {
 test('stateLine: the approved row lines', () => {
   const now = T; // local clock, no skew
   assert.equal(F.stateLine(view({ me: 'w', moves: [] }), now, 0), 'Your move, 3 days left');
+  assert.equal(F.stateLine(view({ me: 'w', moves: [], dl: T + 3 * DAY - 60000 }), now, 0), 'Your move, 2 days left', 'a minute after the move');
   assert.equal(F.stateLine(view({ me: 'b', moves: [] }), now, 0), 'Their move');
   assert.equal(F.stateLine(view({ me: 'b', moves: ['e4'], dl: T + 2 * DAY }), now, 0), 'Your move, 2 days left');
   assert.equal(F.stateLine(view({ me: 'w', moves: ['e4'] }), now, 0), 'Their move');
@@ -216,7 +218,7 @@ test('nick(): trimmed, control characters out, at most 20 characters', () => {
   assert.equal(F.nick(42), '');
 });
 
-test('rows(): open games only, my move first, then their move, then invites; names from the profile', () => {
+test('rows(): open games only, my move first, then their move, then invites; names from the friend store (FC-D29)', () => {
   const s = F.blank();
   const A = 'A'.repeat(20), B = 'B'.repeat(20), C = 'C'.repeat(20), D = 'D'.repeat(20), E = 'E'.repeat(20);
   F.apply(s, [
@@ -226,12 +228,12 @@ test('rows(): open games only, my move first, then their move, then invites; nam
     view({ id: D, me: 'w', opp: 'cccccccccccc', moves: [], dl: T + 3 * DAY }), // my move, 3 days
     view({ id: E, st: 'over', res: { r: 'w', why: 'mate' } })
   ], T, T);
-  const friends = { bbbbbbbbbbbb: { n: 'Priya', t: 1, res: { x: 'w', y: 'l' } }, aaaaaaaaaaaa: { n: '', t: 1, res: {} } };
-  const r = F.rows(s, friends, T);
+  s.friends = { bbbbbbbbbbbb: { n: 'Priya', t: 1, res: { x: 'w', y: 'l' } }, aaaaaaaaaaaa: { n: '', t: 1, res: {} } };
+  const r = F.rows(s, T);
   assert.deepEqual(r.map((x) => x.id), [C, D, B, A]);
   assert.deepEqual(r.map((x) => x.kind), ['mine', 'mine', 'theirs', 'invite']);
   assert.deepEqual(r.map((x) => x.name), ['Priya', 'Friend', 'Friend', 'Friend']);
-  assert.equal(r[0].line, 'Your move, 1 day left');
+  assert.equal(r[0].line, 'Your move, 24 hours left');
   assert.equal(r[0].record, 'W 1 · L 1 · D 0');
   assert.equal(r[3].line, 'Waiting for your friend, until 2 Dec');
   assert.equal(r[3].record, null, 'an invite has no friend yet, so no record');
@@ -255,4 +257,56 @@ test('remember(): handled launch links, at most 10, newest last', () => {
   F.remember(s, CODE); F.remember(s, CODE);
   assert.equal(s.links.filter((c) => c === CODE).length, 1);
   assert.equal(s.links[s.links.length - 1], CODE);
+});
+
+test('FC-D29: nicknames and records live in the friend store: migrate keeps good entries, trims names, drops bad keys and results', () => {
+  const raw = JSON.stringify({ v: 1, friends: {
+    aaaaaaaaaaaa: { n: '  Priyadarshini Ramanathan  ', t: 5, res: { g1: 'w', g2: 'l', g3: 'd', g4: 'x' } },
+    'AAAAAAAAAAAA': { n: 'upper', t: 1, res: {} },
+    'short': { n: 'x', t: 1, res: {} },
+    '__proto__': { n: 'x', t: 1, res: {} },
+    bbbbbbbbbbbb: 'broken',
+    cccccccccccc: { n: 42, t: 'x', res: 'x' }
+  } });
+  const s = F.read(raw);
+  assert.deepEqual(Object.keys(s.friends).sort(), ['aaaaaaaaaaaa', 'cccccccccccc']);
+  assert.equal(s.friends.aaaaaaaaaaaa.n, 'Priyadarshini Ramana');
+  assert.deepEqual(s.friends.aaaaaaaaaaaa.res, { g1: 'w', g2: 'l', g3: 'd' });
+  assert.deepEqual(s.friends.cccccccccccc, { n: '', t: 0, res: {} });
+  [null, 'x', [], 7].forEach((f) => assert.deepEqual(F.read(JSON.stringify({ v: 1, friends: f })).friends, {}));
+});
+
+test('FC-D29 name(): sets a nickname for a friend key, keeps the record; an empty name changes nothing; a bad key is refused', () => {
+  const s = F.blank();
+  s.friends.aaaaaaaaaaaa = { n: 'Old', t: 1, res: { g1: 'w' } };
+  assert.equal(F.name(s, 'aaaaaaaaaaaa', '  Priya  ', 50), true);
+  assert.deepEqual(s.friends.aaaaaaaaaaaa, { n: 'Priya', t: 50, res: { g1: 'w' } });
+  assert.equal(F.name(s, 'bbbbbbbbbbbb', '   ', 60), false);
+  assert.equal(s.friends.bbbbbbbbbbbb, undefined);
+  assert.equal(F.name(s, 'bbbbbbbbbbbb', 'Ravi', 60), true);
+  assert.deepEqual(s.friends.bbbbbbbbbbbb, { n: 'Ravi', t: 60, res: {} });
+  assert.equal(F.name(s, 'NOTAKEY', 'x', 1), false);
+  assert.equal(F.name(s, '__proto__', 'x', 1), false);
+});
+
+test('FC-D27: the colour used last time is kept on the phone; Random the first time; anything else reads as Random', () => {
+  assert.equal(F.blank().col, 'r');
+  assert.equal(F.read(JSON.stringify({ v: 1, col: 'b' })).col, 'b');
+  assert.equal(F.read(JSON.stringify({ v: 1, col: 'x' })).col, 'r');
+});
+
+test('Fix 2: the last launch link and when it was handled (replay guard on an activity recreate)', () => {
+  const s = F.read(JSON.stringify({ v: 1, launch: { url: 'https://hnchennai.github.io/c/?c=' + CODE, t: T } }));
+  assert.deepEqual(s.launch, { url: 'https://hnchennai.github.io/c/?c=' + CODE, t: T });
+  assert.equal(F.replayed(s, 'https://hnchennai.github.io/c/?c=' + CODE, T + 119999), true, 'within 2 minutes');
+  assert.equal(F.replayed(s, 'https://hnchennai.github.io/c/?c=' + CODE, T + 120001), false, 'after 2 minutes');
+  assert.equal(F.replayed(s, 'https://hnchennai.github.io/c/?c=0000000000', T + 1), false, 'another link');
+  assert.equal(F.read(JSON.stringify({ v: 1, launch: { url: 7, t: 'x' } })).launch, null);
+});
+
+test('Fix 8: a copy of the store without the refresh token, for tests and debugging', () => {
+  const s = Object.assign(F.blank(), { uid: 'u1', rt: 'secret' });
+  const c = F.safeCopy(s);
+  assert.equal(c.rt, undefined); assert.equal(c.uid, 'u1');
+  assert.equal(s.rt, 'secret', 'the store itself is unchanged');
 });

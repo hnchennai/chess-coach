@@ -1,13 +1,10 @@
-/* ---------- Profile: player level, data shape (v6), migrate and merge. Pure: no DOM, no network. ---------- */
+/* ---------- Profile: player level, data shape (v5), migrate and merge. Pure: no DOM, no network. ---------- */
 (function (root, factory) {
   var P = factory(root);
   if (typeof module === 'object' && module.exports) module.exports = P; else root.Profile = P;
 })(typeof window !== 'undefined' ? window : this, function (root) {
   'use strict';
-  var V = 6;
-  /* Saves older than this got a level derived from their progress when levels came in (v5). Never again for v5 and later. */
-  var DERIVE_V = 5;
-  var NICK_MAX = 20; /* friend challenges (FC3): a nickname is at most 20 characters, trimmed */
+  var V = 5;
   /* One table, used everywhere (product spec "Levels"). opp = index into the app's OPP list. */
   var LEVELS = {
     beginner: { id: 'beginner', name: 'Beginner', min: 0, max: 800, rating: 600, opp: 1, courseLevel: 1, who: 'Never played, or know little more than the moves.' },
@@ -65,7 +62,7 @@
 
   function blank() {
     return { v: V, games: [], puz: {}, rating: 800, rn: 0, course: {}, days: {}, reviewed: [], t: 0, theme: null,
-      level: null, levelT: 0, placed: null, start: null, showAll: false, unlockAll: false, provisional: false, pgsDeclined: false, levelOfferT: 0, pieceTags: true, daily: blankDaily(), friends: {} };
+      level: null, levelT: 0, placed: null, start: null, showAll: false, unlockAll: false, provisional: false, pgsDeclined: false, levelOfferT: 0, pieceTags: true, daily: blankDaily() };
   }
   /* Daily puzzle (D1): today's pick and its result, and how many daily puzzles were finished. d: the local day ('2026-11-25',
      as prof.days keys), id: the puzzle, r: null | 'solved' | 'missed', n: finished count (at least; merge keeps the larger). */
@@ -83,39 +80,7 @@
     return { d: w.d, id: w.id, r: w.r, n: Math.max(x.n, y.n) };
   }
 
-  /* Friend challenges (v6, FC3; friend-challenges.tech.md section 9): friends: { <opp>: { n, t, res: { <gameId>: 'w'|'l'|'d' } } }.
-     opp is the server's per-pair key for one friend; n the nickname this player gave them (only on this phone and in their own cloud
-     save, never on the friend server); t when it was set; res the result of each finished game against them (FC4 fills it). */
-  function nick(s) {
-    if (typeof s !== 'string') return '';
-    return Array.from(s.replace(/[\u0000-\u001f\u007f]/g, '').trim()).slice(0, NICK_MAX).join('').trim();
-  }
-  function normFriend(x) {
-    var res = {}, r = isObj(x.res) ? x.res : {};
-    Object.keys(r).forEach(function (g) { if (r[g] === 'w' || r[g] === 'l' || r[g] === 'd') res[g] = r[g]; });
-    var t = +x.t;
-    return { n: nick(x.n), t: t > 0 && isFinite(t) ? t : 0, res: res };
-  }
-  function normFriends(f) {
-    var o = {};
-    if (!isObj(f)) return o;
-    Object.keys(f).forEach(function (k) { if (k && isObj(f[k])) o[k] = normFriend(f[k]); });
-    return o;
-  }
-  /* Two copies: every key of both; per key the union of res (a result is never lost; the same game has one result, the
-     device's copy is kept), the nickname and its t from the newer t. */
-  function mergeFriends(x, y) {
-    var o = clone(x);
-    Object.keys(y).forEach(function (k) {
-      var b = y[k], a = o[k];
-      if (!a) { o[k] = clone(b); return; }
-      Object.keys(b.res).forEach(function (g) { if (!a.res[g]) a.res[g] = b.res[g]; });
-      if (b.t > a.t) { a.n = b.n; a.t = b.t; }
-    });
-    return o;
-  }
-
-  /* Any saved shape -> v6. Never drops a field it does not know. null stays null (nothing saved). */
+  /* Any saved shape -> v5. Never drops a field it does not know. null stays null (nothing saved). */
   function migrate(p) {
     if (!p || typeof p !== 'object') return null;
     var o = blank(), src = clone(p);
@@ -127,9 +92,8 @@
     o.levelT = +o.levelT || 0; o.levelOfferT = +o.levelOfferT || 0;
     o.daily = normDaily(o.daily); /* D1 (AC10): a save from before the daily puzzle, or a broken record, reads as none yet */
     o.pieceTags = o.pieceTags !== false; /* G1 (G-D15): a save from before the setting, or a broken value, reads as on */
-    o.friends = normFriends(o.friends); /* v6 (FC3): a save from before friend challenges, or a broken map, reads as none */
     if (!LEVELS[o.level]) o.level = null;
-    if ((+p.v || 0) < DERIVE_V && !o.level && hasProgress(o)) {
+    if ((+p.v || 0) < V && !o.level && hasProgress(o)) {
       o.level = levelFromRating(o.rating); o.levelT = 0; o.placed = 'derived'; o.start = 'rules'; o.unlockAll = true; o.provisional = false;
     }
     o.v = Math.max(+p.v || 0, V);
@@ -242,13 +206,12 @@
     o.levelOfferT = Math.max(a.levelOfferT, b.levelOfferT);
     o.pgsDeclined = a.pgsDeclined;
     o.daily = mergeDaily(a.daily, b.daily);
-    o.friends = mergeFriends(a.friends, b.friends);
     o.provisional = false;
     o.t = Math.max(a.t || 0, b.t || 0);
     o.v = Math.max(a.v, b.v, V);
     return o;
   }
 
-  return { V: V, DERIVE_V: DERIVE_V, NICK_MAX: NICK_MAX, nick: nick, LEVELS: LEVELS, ORDER: ORDER, levelFromRating: levelFromRating, startUnit: startUnit, puzzleCount: puzzleCount, scoreLevel: scoreLevel,
+  return { V: V, LEVELS: LEVELS, ORDER: ORDER, levelFromRating: levelFromRating, startUnit: startUnit, puzzleCount: puzzleCount, scoreLevel: scoreLevel,
     migrate: migrate, needsCheck: needsCheck, setLevel: setLevel, nextUnit: nextUnit, unlockDone: unlockDone, levelComplete: levelComplete, offerDue: offerDue, levelDoneAt: levelDoneAt, lessonOfferDue: lessonOfferDue, merge: merge, blank: blank };
 });

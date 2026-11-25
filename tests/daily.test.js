@@ -115,7 +115,7 @@ test('AC10: migrate adds an empty daily record to an old save and keeps everythi
   const p = P.migrate(old);
   assert.deepEqual(p.daily, { d: null, id: null, r: null, n: 0 });
   assert.equal(p.rating, 1100); assert.equal(p.rn, 30); assert.deepEqual(p.puz, old.puz); assert.deepEqual(p.days, old.days); assert.equal(p.level, 'improver');
-  assert.equal(p.v, 6, 'D1 made no version bump (a new field with a safe default, as G1\'s pieceTags); v6 is friend challenges (FC3)');
+  assert.equal(p.v, 5, 'no version bump: a new field with a safe default, as G1\'s pieceTags');
   assert.deepEqual(P.blank().daily, { d: null, id: null, r: null, n: 0 });
 });
 

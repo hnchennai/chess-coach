@@ -167,11 +167,16 @@ function makeOps({ store, now, rand, push, log = console.error, deleteAuthUser, 
   const fail = (code, games) => ({ fail: ['failed-precondition', code], games });
   const notFound = () => ({ fail: ['not-found', 'not-found'] });
 
-  // An invite usable by uid: returns { inv, g } or a failure
+  // An invite usable by uid: returns { inv, g }, { mine } (uid already accepted it: a retry after a lost answer, FC3
+  // fix round 1; the used invite keeps its game id, never a uid) or a failure
   async function usableInvite(t, code, uid, ts) {
     const inv = await t.invite(code);
     if (!inv) return { bad: notFound() };
-    if (inv.used) return { bad: fail('used') };
+    if (inv.used) {
+      const ug = typeof inv.g === 'string' ? await t.game(inv.g) : null;
+      if (ug && ug.st !== 'invited' && ug.by !== uid && ug.uids.includes(uid)) return { inv, mine: { id: inv.g, g: ug } };
+      return { bad: fail('used') };
+    }
     const g = await t.game(inv.g);
     if (ts > inv.exp || (g && g.res && g.res.why === 'expired')) return { bad: fail('expired') };
     if (!g || g.st !== 'invited') return { bad: fail('used') };
@@ -231,16 +236,18 @@ function makeOps({ store, now, rand, push, log = console.error, deleteAuthUser, 
 
     async peek(uid, req) {
       return run(uid, async (t, ts) => {
-        const { bad, inv, g } = await usableInvite(t, req.code, uid, ts);
+        const { bad, inv, g, mine } = await usableInvite(t, req.code, uid, ts);
         if (bad) return bad;
+        if (mine) return { out: { now: ts, col: colourOf(mine.g, uid), exp: inv.exp, accepted: true, games: [view(mine.id, mine.g, uid)] } };
         return { out: { now: ts, col: ACCEPTOR_COL[g.col], exp: inv.exp } };
       });
     },
 
     async accept(uid, req) {
       return run(uid, async (t, ts) => {
-        const { bad, inv, g } = await usableInvite(t, req.code, uid, ts);
+        const { bad, inv, g, mine } = await usableInvite(t, req.code, uid, ts);
         if (bad) return bad;
+        if (mine) return { out: { now: ts, games: [view(mine.id, mine.g, uid)] } }; // a retry: the same game, nothing changes
         const open = await t.openCount(uid);
         if (open >= MAX_OPEN) return fail('full');
         const by = inv.by;
@@ -251,8 +258,9 @@ function makeOps({ store, now, rand, push, log = console.error, deleteAuthUser, 
           st: 'active', dl, rem, v: g.v + 1, t: ts, expireAt: null, code: null,
         };
         t.setGame(inv.g, ng);
-        // Kept (not deleted) so a second tap says "used"; it holds no uid and TTL removes it at its expiry.
-        t.setInvite(req.code, { used: true, exp: inv.exp, expireAt: inv.expireAt });
+        // Kept (not deleted) so a second tap says "used"; it holds no uid and TTL removes it at its expiry. It keeps the game
+        // id, so the acceptor's retry after a lost answer gets the game back (FC3 fix round 1).
+        t.setInvite(req.code, { used: true, g: inv.g, exp: inv.exp, expireAt: inv.expireAt });
         const push = byWhite ? [{ to: by, t: 'move', g: inv.g }] : [];
         // writeUser: the acceptor's open-game count went up (see the note at the top)
         return { writeUser: true, push, out: { now: ts, games: [view(inv.g, ng, uid)] } };

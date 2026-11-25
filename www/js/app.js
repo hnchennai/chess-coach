@@ -3074,7 +3074,7 @@
     /* G-D33: never chose pieces or a view: the classic pieces on the flat board. A saved choice is kept (Flow.firstLook). */
     var look = Flow.firstLook({ pieces: lsGet('suresh-chess-coach.pieces'), theme: prof.theme, v3d: lsGet(K3D) }, function (id) { return !!Avatar.SETS[id]; });
     st.theme = look.theme;
-    if (raw && (+raw.v || 0) < Profile.DERIVE_V && prof.placed === 'derived') { lsSet(PSTORE, prof); showNote('You’re set as ' + Profile.LEVELS[prof.level].name + '. Change it any time in Settings.', 'level'); }
+    if (raw && (+raw.v || 0) < Profile.V && prof.placed === 'derived') { lsSet(PSTORE, prof); showNote('You’re set as ' + Profile.LEVELS[prof.level].name + '. Change it any time in Settings.', 'level'); }
     applyLevel();
     Brain.onState(function (s) { enginePill(s); if (s === 'ready' && st.mode === 'play' && G.turn() === st.user && !G.game_over() && !st.busy) analyseForUser().then(render); });
     Brain.init('sf/stockfish.js'); enginePill(Brain.state());
@@ -3312,14 +3312,16 @@
     s.rateT = now; rmSet(s);
     pcall(function () { return IAR.requestReview(); }).catch(rmNone);
   }
-  /* ---------- FRIENDS GLUE (slice FC3: friend challenges; docs/specs/friend-challenges.product.md, FC-D1 to FC-D24 and the
+  /* ---------- FRIENDS GLUE (slice FC3: friend challenges; docs/specs/friend-challenges.product.md, FC-D1 to FC-D30 and the
      Wording section; tech spec sections 3, 8 and 9). The UI only: rules and wording are in friends.js, the network in fclient.js.
      Android app only: fclient.js and fconfig.js are loaded only there (scripts/build.sh). On the web FR stays null, so there is
      no card, no Settings row, no sheet and no request (FC-D4, scenario 11). In the app the card shows only when
-     Friends.available() says so (the launch switch, off until FC6, or Settings' "Friend games (test)").
-     No request is made before the player's first Challenge or opened challenge link (FC-D3). Every plugin call and every
-     request is a promise whose failure is caught; nothing here throws into the UI. ---------- */
-  var FR = null, frNative = false, frShare = null, frApp = null;
+     Friends.available() says so: the launch switch (off until FC6), or Settings' "Friend games (test)", which exists only in a
+     test build (window.CC_BUILD.test, written by scripts/build.sh) with a real friend server config (fix round 1, fix 1).
+     No request is made before the player's first Challenge or opened challenge link (FC-D3). Nicknames and records are in the
+     friend store on this phone, never in the profile or the cloud save (FC-D29). Every plugin call and every request is a
+     promise whose failure is caught; nothing here throws into the UI. ---------- */
+  var FR = null, frNative = false, frShare = null, frApp = null, frTestBuild = !!(window.CC_BUILD && window.CC_BUILD.test === true);
   (function () {
     try {
       var C = window.Capacitor;
@@ -3330,34 +3332,50 @@
         storage: { get: function () { try { return localStorage.getItem(Friends.KEY); } catch (e) { return null; } }, set: function (v) { try { localStorage.setItem(Friends.KEY, v); } catch (e) {} } } });
     } catch (e) { FR = null; }
   })();
-  var frSheet = null, frOpener = null, frLine = null, frLastSync = 0, frPending = null, frRecent = { code: null, t: 0 };
-  function frOn() { return !!FR && Friends.available({ native: frNative, test: FR.store().test }); }
+  var frSheet = null, frOpener = null, frLine = null, frLastSync = 0, frPending = null, frRecent = { code: null, t: 0 }, frBusy = {};
+  /* fix 1: the test toggle counts only in a test build with a real config (a release build never shows or honours it) */
+  function frToggleShown() { return !!FR && !Friends.CONFIG.live && frTestBuild && window.FClient.configured(window.FCONFIG); }
+  function frOn() { return !!FR && Friends.available({ native: frNative, test: frToggleShown() && FR.store().test === true }); }
   function frOffline() { return navigator.onLine === false; }
-  /* The card on Play, above Recent games (tech spec section 9). Rows: the nickname or "Friend", the state line, the record. */
+  var SPIN = '<span class="fg-spin" aria-hidden="true"></span>';
+  /* fix 4: a button whose call is running: disabled, aria-busy and a spinner (its label stays) */
+  function frBtn(cls, act, label, o) {
+    o = o || {};
+    return '<button class="' + cls + (o.busy ? ' is-busy' : '') + '" type="button" data-act="' + act + '"' + (o.g ? ' data-g="' + esc(o.g) + '"' : '') +
+      (o.busy ? ' aria-busy="true" disabled' : o.off ? ' disabled' : '') + (o.extra || '') + '>' + (o.busy ? SPIN : '') + esc(label) + '</button>';
+  }
+  /* The card on Play, above Recent games (tech spec section 9). Rows: the nickname or "Friend", the state line, the record.
+     Its frame (title, list, one persistent status line, button) is built once; a render changes only what changed (fix 7). */
   function renderFriends() {
     var card = $('friendCard'); if (!card) return;
     if (frPending && frOn() && !Placement.isOpen()) { var u = frPending; frPending = null; setTimeout(function () { frLink(u.url, u.cold); }, 0); }
-    if (!frOn()) { if (!card.hidden) { card.hidden = true; card.innerHTML = ''; card._h = ''; } return; }
-    var s = FR.store(), rows = Friends.rows(s, prof.friends, Date.now()), full = !Friends.canChallenge(s), C = Friends.COPY;
-    var h = '<p class="eyebrow" id="friendTitle">' + esc(C.card) + '</p>' +
-      (rows.length ? '<div class="fg-list">' + rows.map(function (r) {
-        return '<div class="fg-row" data-kind="' + r.kind + '" data-g="' + esc(r.id) + '"><div class="fg-tt"><b>' + esc(r.name) + '</b><span class="fg-state">' + esc(r.line) + '</span>' +
-          (r.record ? '<small class="fg-rec">' + esc(r.record) + '</small>' : '') + '</div>' +
-          (r.kind === 'invite' ? '<div class="fg-btns"><button class="btn sm" type="button" data-act="fshare" data-g="' + esc(r.id) + '">' + esc(C.share) + '</button>' +
-            '<button class="btn sm" type="button" data-act="fcancel" data-g="' + esc(r.id) + '">' + esc(C.cancel) + '</button></div>' : '') + '</div>';
-      }).join('') + '</div>' : '') +
-      (frLine ? '<p class="fg-msg" role="status">' + esc(frLine) + '</p>' : '') +
-      '<button class="btn primary fg-go" type="button" data-act="fchallenge"' + (full ? ' disabled aria-describedby="friendFull"' : '') + '>' + esc(C.challenge) + '</button>' +
-      (full ? '<p class="fg-full" id="friendFull">' + esc(C.full) + '</p>' : '');
-    if (card._h !== h) { var f = document.activeElement, keep = f && card.contains(f) ? (f.dataset.act || '') + '|' + (f.dataset.g || '') : null; card._h = h; card.innerHTML = h; frRefocus(card, keep); }
-    card.setAttribute('aria-labelledby', 'friendTitle');
+    if (!frOn()) { if (!card.hidden) card.hidden = true; return; }
+    var C = Friends.COPY;
+    if (!card._built) {
+      card._built = true;
+      card.setAttribute('aria-labelledby', 'friendTitle');
+      card.innerHTML = '<p class="eyebrow" id="friendTitle">' + esc(C.card) + '</p><div id="friendList"></div><p class="fg-msg" id="friendStatus" role="status"></p><div id="friendGo"></div>';
+    }
+    var s = FR.store(), rows = Friends.rows(s, Date.now()), full = !Friends.canChallenge(s), busy = Object.keys(frBusy).length > 0;
+    var h = rows.length ? '<div class="fg-list">' + rows.map(function (r) {
+      return '<div class="fg-row" data-kind="' + r.kind + '" data-g="' + esc(r.id) + '"><div class="fg-tt"><b>' + esc(r.name) + '</b><span class="fg-state">' + esc(r.line) + '</span>' +
+        (r.record ? '<small class="fg-rec">' + esc(r.record) + '</small>' : '') + '</div>' +
+        (r.kind === 'invite' ? '<div class="fg-btns">' + frBtn('btn sm', 'fshare', C.share, { g: r.id, off: !!frBusy[r.id] }) + frBtn('btn sm', 'fcancel', C.cancel, { g: r.id, busy: !!frBusy[r.id] }) + '</div>' : '') + '</div>';
+    }).join('') + '</div>' : '';
+    var go = frBtn('btn primary fg-go', 'fchallenge', C.challenge, { off: full, extra: full ? ' aria-describedby="friendFull"' : '' }) + (full ? '<p class="fg-full" id="friendFull">' + esc(C.full) + '</p>' : '');
+    var f = document.activeElement, keep = f && card.contains(f) ? (f.dataset.act || '') + '|' + (f.dataset.g || '') : null;
+    var list = $('friendList'), gobox = $('friendGo'), st2 = $('friendStatus'), msg = busy ? C.busy : frLine || '';
+    if (list._h !== h) { list._h = h; list.innerHTML = h; }
+    if (gobox._h !== go) { gobox._h = go; gobox.innerHTML = go; }
+    if (st2.textContent !== msg) st2.textContent = msg;
+    if (keep != null && !card.contains(document.activeElement)) frRefocus(card, keep);
     card.hidden = false;
   }
   /* A re-render keeps focus on the same button (or the Challenge button when that row went) */
   function frRefocus(box, keep) {
-    if (keep == null) return;
     var p = keep.split('|'), b = box.querySelector('[data-act="' + p[0] + '"]' + (p[1] ? '[data-g="' + p[1] + '"]' : '')) || box.querySelector('[data-act="fchallenge"]');
-    if (b) try { b.focus({ preventScroll: true }); } catch (e) {}
+    if (b && b.disabled) b = box.querySelector('[data-act="fchallenge"]:not([disabled])') || null;
+    if (b) try { b.focus({ preventScroll: true }); } catch (e) {} else { var t = $('friendTitle'); if (t) { t.tabIndex = -1; try { t.focus({ preventScroll: true }); } catch (e) {} } }
   }
   /* Play tab open (at most every 10 seconds) and App resume (always). Only with an ID: a sync never creates one. */
   function frSync(force) {
@@ -3373,19 +3391,25 @@
     if (!frShare || !code) return;
     pcall(function () { return frShare.share({ text: Friends.shareText(code) }); }).catch(rmNone);
   }
-  /* ----- the friend sheet: "Challenge a friend" or "A friend challenges you" (one at a time) ----- */
+  /* ----- the friend sheet: "Challenge a friend" or "A friend challenges you" (one at a time). Its frame, with one persistent
+     role="status" line, is built when it opens; a redraw changes the body and the status text only (fix 7). ----- */
   function frSheetOpen() { var sh = $('friendSheet'); return !!sh && !sh.hidden; }
   function frOpen(kind, o) {
     var sh = $('friendSheet'); if (!sh) return;
     closeSettings(true);
     if (!frSheetOpen()) frOpener = document.activeElement;
     frSheet = Object.assign({ kind: kind, msg: null, busy: false }, o || {});
+    sh.innerHTML = '<div class="sheet-panel" role="dialog" aria-modal="true" aria-labelledby="fgTitle" tabindex="-1"><div class="sheet-top"><h2 id="fgTitle"></h2>' +
+      '<button class="pl-x" type="button" data-act="fclose" aria-label="' + esc(Friends.COPY.close) + '"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6 L18 18 M18 6 L6 18"/></svg></button></div>' +
+      '<div class="card fg-sheet"><div id="fgBody"></div><p class="fg-msg" id="fgMsg" role="status"></p><div id="fgActs"></div></div></div>';
     drawFriendSheet();
     sh.hidden = false; document.documentElement.classList.add('sheet-open'); adSync(); /* A-D12: no banner under a sheet */
     var pn = sh.querySelector('.sheet-panel'); if (pn) pn.focus({ preventScroll: true });
   }
   function frClose(noFocus) {
     var sh = $('friendSheet'); if (!sh || sh.hidden) return;
+    var f = frSheet;
+    if (f && f.kind === 'accept' && f.col && !f.dead && f.cold) FR.setLaunch(f.url, Date.now()); /* fix 2: Not now counts for the replay window only */
     sh.hidden = true; frSheet = null; sh.innerHTML = '';
     var ss = $('settingsSheet'); if (!ss || ss.hidden) document.documentElement.classList.remove('sheet-open');
     adSync();
@@ -3393,34 +3417,40 @@
     if (!noFocus) { if (back) back.focus(); else focusTab(); }
   }
   function drawFriendSheet() {
-    var sh = $('friendSheet'), f = frSheet, C = Friends.COPY; if (!sh || !f) return;
-    var nick = $('fgNick'), typed = nick ? nick.value : '';
-    var top = '<div class="sheet-top"><h2 id="fgTitle">' + esc(f.kind === 'challenge' ? C.challenge : C.acceptTitle) + '</h2><button class="pl-x" type="button" data-act="fclose" aria-label="Close"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6 L18 18 M18 6 L6 18"/></svg></button></div>';
-    var msg = '<p class="fg-msg" id="fgMsg" role="status"' + (f.msg ? '' : ' hidden') + '>' + esc(f.msg || '') + '</p>', body;
+    var sh = $('friendSheet'), f = frSheet, C = Friends.COPY; if (!sh || !f || !$('fgBody')) return;
+    var title = f.kind === 'challenge' ? C.challenge : C.acceptTitle, body, acts;
+    if ($('fgTitle').textContent !== title) $('fgTitle').textContent = title;
     if (f.kind === 'challenge') {
       body = '<p class="fg-lbl" id="fgColLbl">' + esc(C.playAs) + '</p><div class="seg fg-seg" role="radiogroup" aria-labelledby="fgColLbl">' +
         [['w', C.white], ['b', C.black], ['r', C.random]].map(function (x) {
           var on = f.col === x[0];
-          return '<button class="segbtn' + (on ? ' on' : '') + '" type="button" role="radio" aria-checked="' + on + '" tabindex="' + (on ? 0 : -1) + '" data-fcol="' + x[0] + '">' + esc(x[1]) + '</button>';
-        }).join('') + '</div>' + msg +
-        '<button class="btn primary big fg-send" type="button" data-act="fsend"' + (f.busy ? ' disabled' : '') + '>' + esc(C.share) + '</button>';
+          return '<button class="segbtn' + (on ? ' on' : '') + '" type="button" role="radio" aria-checked="' + on + '" tabindex="' + (on ? 0 : -1) + '" data-fcol="' + x[0] + '"' + (f.busy ? ' disabled' : '') + '>' + esc(x[1]) + '</button>';
+        }).join('') + '</div>';
+      acts = frBtn('btn primary big fg-send', 'fsend', C.share, { busy: f.busy });
     } else {
-      body = '<p class="fg-col" id="fgCol">' + esc(Friends.youPlay(f.col)) + '</p>' +
+      /* fix 4: the sheet opens at once while peek runs (loading), then shows the colour; a dead link keeps only Not now */
+      body = f.dead ? '' : '<p class="fg-col" id="fgCol">' + (f.col ? esc(Friends.youPlay(f.col)) : '') + '</p>' +
         '<label class="fg-lbl" for="fgNick">' + esc(C.nameLabel) + ' <small>' + esc(C.nameHint) + '</small></label>' +
-        '<input id="fgNick" type="text" maxlength="' + Friends.NICK_MAX + '" autocomplete="off" autocapitalize="words" spellcheck="false" enterkeyhint="done">' + msg +
-        '<div class="fg-acts"><button class="btn primary big" type="button" data-act="faccept"' + (f.busy ? ' disabled' : '') + '>' + esc(C.accept) + '</button>' +
-        '<button class="btn big" type="button" data-act="fclose">' + esc(C.notNow) + '</button></div>';
+        '<input id="fgNick" type="text" maxlength="' + Friends.NICK_MAX + '" autocomplete="off" autocapitalize="words" spellcheck="false" enterkeyhint="done"' + (f.busy || f.loading ? ' disabled' : '') + '>';
+      acts = '<div class="fg-acts">' + (f.dead ? '' : frBtn('btn primary big', 'faccept', C.accept, { busy: f.busy || f.loading })) + frBtn('btn big', 'fclose', C.notNow) + '</div>';
     }
     var a = document.activeElement, keep = a && sh.contains(a) ? (a.id || a.dataset.act || a.dataset.fcol) : null;
-    sh.innerHTML = '<div class="sheet-panel" role="dialog" aria-modal="true" aria-labelledby="fgTitle" tabindex="-1">' + top + '<div class="card fg-sheet">' + body + '</div></div>';
-    var n2 = $('fgNick'); if (n2) n2.value = typed;
-    if (keep) { var b = $(keep) || sh.querySelector('[data-act="' + keep + '"], [data-fcol="' + keep + '"]'); if (b && !b.disabled) try { b.focus({ preventScroll: true }); } catch (e) {} else { var pn = sh.querySelector('.sheet-panel'); if (pn) pn.focus({ preventScroll: true }); } }
+    var nick = $('fgNick'), typed = nick ? nick.value : '';
+    var bd = $('fgBody'); if (bd._h !== body) { bd._h = body; bd.innerHTML = body; var n2 = $('fgNick'); if (n2) n2.value = typed; }
+    else { var n3 = $('fgNick'); if (n3) n3.disabled = !!(f.busy || f.loading); sh.querySelectorAll('[data-fcol]').forEach(function (b) { b.disabled = !!f.busy; }); }
+    var ac = $('fgActs'); if (ac._h !== acts) { ac._h = acts; ac.innerHTML = acts; }
+    var msg = f.msg || (f.busy || f.loading ? C.busy : ''), m = $('fgMsg'); if (m.textContent !== msg) m.textContent = msg;
+    if (keep && !sh.contains(document.activeElement)) {
+      var b = $(keep) || sh.querySelector('[data-act="' + keep + '"], [data-fcol="' + keep + '"]');
+      if (!b || b.disabled) b = sh.querySelector('.sheet-panel');
+      try { b.focus({ preventScroll: true }); } catch (e) {}
+    }
   }
   function frMsg(text) { if (!frSheet) return; frSheet.msg = text; frSheet.busy = false; drawFriendSheet(); }
   function frChallenge() {
     if (!frOn()) return;
     if (!Friends.canChallenge(FR.store())) { renderFriends(); return; }
-    frOpen('challenge', { col: 'r' });
+    frOpen('challenge', { col: FR.store().col }); /* FC-D27: the colour used last time, Random the first time */
   }
   /* Share link: the invite op (the first one signs up), then Android's share sheet. The sheet closes on success; the waiting
      row on Play can share the same link again. */
@@ -3429,67 +3459,88 @@
     if (frOffline()) { frMsg(Friends.COPY.offline); return; }
     f.busy = true; f.msg = null; drawFriendSheet();
     FR.op('invite', { col: f.col }).then(function (r) {
-      if (frSheet !== f) return;
+      FR.setCol(f.col);
+      if (frSheet !== f) { renderFriends(); return; }
       frClose(true); frLine = null; renderFriends();
       var b = document.querySelector('#friendCard [data-act="fchallenge"]'); if (b && !b.disabled) try { b.focus({ preventScroll: true }); } catch (e) {}
       frShareLink(r && r.code);
     }).catch(function (e) { if (frSheet === f) frMsg(Friends.errorText(e && e.code)); renderFriends(); });
   }
   /* A challenge link (cold start: App.getLaunchUrl; warm: appUrlOpen). Only a valid link to hnchennai.github.io/c/ is used.
-     Peek (which signs up on the first use) gives the colour for the Accept sheet. */
+     The Accept sheet opens at once and fills in when peek (which signs up on the first use) answers (fix 4). A code counts as
+     handled only once accepted; a launch link shown in the last 2 minutes is not shown again (an activity recreate), and a
+     failed or offline peek is not remembered, so the next tap tries again (fix 2). */
   function frLink(url, cold) {
     if (!FR) return;
     if (!frOn()) return; /* the feature is off on this phone: the link does nothing */
     if (Placement.isOpen()) { frPending = { url: url, cold: cold }; return; } /* after the level check */
-    var code = Friends.parseLink(url);
+    var code = Friends.parseLink(url), now = Date.now();
     if (!code) { showNote(Friends.COPY.invalid); return; }
-    if (cold && FR.store().links.indexOf(code) > -1) return; /* the same launch link again (the activity was recreated) */
-    if (frRecent.code === code && Date.now() - frRecent.t < 3000) return; /* one tap, delivered twice */
-    frRecent = { code: code, t: Date.now() }; FR.remember(code);
+    if (cold && (FR.store().links.indexOf(code) > -1 || Friends.replayed(FR.store(), url, now))) return;
+    if (frRecent.code === code && now - frRecent.t < 3000) return; /* one tap, delivered twice */
+    frRecent = { code: code, t: now };
     if (frOffline()) { showNote(Friends.COPY.offline); return; }
+    if (phone() && actOpen()) closeAct();
+    frLastSync = now; /* Play opening under the sheet needs no sync of its own */
+    switchTab('play'); render();
+    frOpen('accept', { code: code, url: url, cold: !!cold, col: null, loading: true });
+    var f = frSheet;
     FR.op('peek', { code: code }).then(function (r) {
       if (!r) return;
-      if (phone() && actOpen()) closeAct();
-      frLastSync = Date.now(); /* just signed in or refreshed: Play opening under the sheet needs no sync of its own */
-      switchTab('play'); render();
-      frOpen('accept', { code: code, col: r.col });
-    }).catch(function (e) { showNote(Friends.errorText(e && e.code)); });
+      if (r.accepted) { FR.remember(code); if (frSheet === f) frClose(true); renderFriends(); focusTab(); return; } /* already accepted on this phone (fix 6) */
+      if (frSheet !== f) return;
+      f.col = r.col; f.loading = false;
+      if (cold) FR.setLaunch(url, Date.now());
+      drawFriendSheet();
+      var n = $('fgNick'); if (n) try { n.focus({ preventScroll: true }); } catch (e) {}
+    }).catch(function (e) {
+      if (frSheet !== f) return;
+      f.loading = false; f.dead = true; frMsg(Friends.errorText(e && e.code));
+      var b = $('friendSheet').querySelector('[data-act="fclose"].big'); if (b) try { b.focus({ preventScroll: true }); } catch (x) {}
+    });
   }
-  /* Accept: the nickname (optional, trimmed, at most 20 characters) goes into the profile under the friend's key, never to the
-     server (FC-D5). */
+  /* Accept: the nickname (optional, trimmed, at most 20 characters) goes into the friend store under the friend's key, on this
+     phone only (FC-D5, FC-D29). A retry after a lost answer gets the same game back (fix 6). */
   function frAccept() {
-    var f = frSheet; if (!f || f.kind !== 'accept' || f.busy) return;
+    var f = frSheet; if (!f || f.kind !== 'accept' || f.busy || f.loading || f.dead) return;
     var n = Friends.nick(($('fgNick') || {}).value);
     if (frOffline()) { frMsg(Friends.COPY.offline); return; }
     f.busy = true; f.msg = null; drawFriendSheet();
     FR.op('accept', { code: f.code }).then(function (r) {
       var g = r && r.games && r.games[0];
-      if (n && g && g.opp) {
-        var old = prof.friends[g.opp];
-        prof.friends[g.opp] = { n: n, t: Date.now(), res: old && old.res ? old.res : {} };
-        saveProfile();
-      }
+      if (n && g && g.opp) FR.name(g.opp, n, Date.now());
+      FR.remember(f.code);
       if (frSheet === f) frClose(true);
       frLine = null; switchTab('play'); render(); focusTab();
-    }).catch(function (e) { if (frSheet === f) frMsg(Friends.errorText(e && e.code)); });
+    }).catch(function (e) {
+      if (frSheet !== f) return;
+      var c = e && e.code;
+      if (c === 'used' || c === 'expired' || c === 'not-found' || c === 'own') f.dead = true;
+      frMsg(Friends.errorText(c));
+    });
   }
-  /* FC-D18: Cancel invite frees its slot */
+  /* FC-D18: Cancel invite frees its slot. One call at a time per row (fix 5). "over" (it already ended) is done; "used" (the
+     friend accepted first) is no error either: the answer's game turns the row into the started game. */
   function frCancel(id) {
-    if (!frOn()) return;
+    if (!frOn() || frBusy[id]) return;
     if (frOffline()) { frLine = Friends.COPY.offline; renderFriends(); return; }
-    FR.op('cancel', { g: id }).then(function () { frLine = null; renderFriends(); }, function (e) { frLine = Friends.errorText(e && e.code); renderFriends(); });
+    frBusy[id] = true; frLine = null; renderFriends();
+    FR.op('cancel', { g: id }).then(function () { frLine = null; }, function (e) {
+      var c = e && e.code;
+      frLine = c === 'over' || c === 'used' ? null : Friends.errorText(c);
+    }).then(function () { delete frBusy[id]; renderFriends(); });
   }
-  function frAgain(id) { var g = FR && FR.store().games[id]; if (g && g.code) frShareLink(g.code); }
-  function frPick(c) { if (!frSheet || frSheet.kind !== 'challenge' || ['w', 'b', 'r'].indexOf(c) < 0) return; frSheet.col = c; frSheet.msg = null; drawFriendSheet(); var b = document.querySelector('[data-fcol="' + c + '"]'); if (b) b.focus(); }
-  /* Settings: "Friend games (test)", only in the app and only while the launch switch is off (tech spec section 9) */
+  function frAgain(id) { var g = FR && FR.store().games[id]; if (g && g.code && !frBusy[id]) frShareLink(g.code); }
+  function frPick(c) { if (!frSheet || frSheet.kind !== 'challenge' || frSheet.busy || ['w', 'b', 'r'].indexOf(c) < 0) return; frSheet.col = c; frSheet.msg = null; drawFriendSheet(); var b = document.querySelector('[data-fcol="' + c + '"]'); if (b) b.focus(); }
+  /* Settings: "Friend games (test)", only in a test build with a real config while the launch switch is off (fix 1) */
   function renderFriendSet() {
     var box = $('friendSet'); if (!box) return;
-    if (!FR || Friends.CONFIG.live) { box.hidden = true; return; }
+    if (!frToggleShown()) { box.hidden = true; box.innerHTML = ''; return; }
     var on = FR.store().test === true;
     box.innerHTML = '<button class="switchrow" type="button" role="switch" aria-checked="' + on + '" data-act="ftest" id="friendSw"><span><b>' + esc(Friends.COPY.setting) + '</b></span><i class="sw" aria-hidden="true"></i></button>';
     box.hidden = false;
   }
-  function frToggle() { if (!FR) return; FR.setTest(!FR.store().test); renderFriendSet(); var b = $('friendSw'); if (b) b.focus(); friendsBoot(true); render(); } /* later: no launch link (one from before the toggle is not read now) */
+  function frToggle() { if (!frToggleShown()) return; FR.setTest(!FR.store().test); renderFriendSet(); var b = $('friendSw'); if (b) b.focus(); friendsBoot(true); render(); } /* later: no launch link (one from before the toggle is not read now) */
   document.addEventListener('keydown', function (e) {
     if (!frSheetOpen()) return;
     var sh = $('friendSheet');
@@ -3520,6 +3571,6 @@
     note: function (t) { showNote(t); }, /* one of Rani's notes, as the app shows them (e2e) */
     reveals: function () { return revealN; },
     closeAct: closeAct, /* G2a: what the Close button does */ backPressed: backPressed, /* G2c: what the phone's back button does (true: used) */ /* how often an end card was scrolled into view (e2e) */
-    fr: function () { return FR ? JSON.parse(JSON.stringify(FR.store())) : null; }, /* FC3: the friend store (e2e) */
+    fr: function () { return FR ? Friends.safeCopy(FR.store()) : null; }, /* FC3: the friend store without the refresh token (e2e, fix 8) */
     nextLabel: function () { return nextAction(currentStage()).label; } /* today's Next step, for the e2e check that the Continue card follows it */ };
 })();

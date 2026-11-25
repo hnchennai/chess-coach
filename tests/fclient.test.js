@@ -226,3 +226,17 @@ test('setTest: the test toggle is kept in the device store', () => {
   assert.equal(F.read(st.m.raw).test, true);
   assert.equal(c.store().test, true);
 });
+
+test('FC-D27, FC-D29, fix 2: the colour, a nickname and the launch link are saved in the device store; a dead ID keeps the names', async () => {
+  const st = memStorage(JSON.stringify(Object.assign(F.blank(), { uid: 'u1', rt: 'rt-u1', games: { [GID]: gview() } })));
+  const c = client(fakeNet([['https://token.fc.test/v1/token', async () => ({ status: 400, body: { error: { message: 'USER_NOT_FOUND' } } })]]), st);
+  c.setCol('b');
+  assert.equal(c.name('aaaaaaaaaaaa', ' Priya ', T), true);
+  c.setLaunch('https://hnchennai.github.io/c/?c=7K3M9QH2XA', T);
+  let s = F.read(st.m.raw);
+  assert.equal(s.col, 'b'); assert.equal(s.friends.aaaaaaaaaaaa.n, 'Priya'); assert.equal(s.launch.t, T);
+  await c.sync();
+  s = F.read(st.m.raw);
+  assert.equal(s.uid, null, 'the dead ID is gone');
+  assert.equal(s.friends.aaaaaaaaaaaa.n, 'Priya', 'the names and records stay on the phone');
+});

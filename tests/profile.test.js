@@ -144,7 +144,7 @@ test('setLevel records provisional and placed', () => {
 test('migrate: null and empty', () => {
   assert.equal(P.migrate(null), null);
   const e = P.migrate({});
-  assert.equal(e.v, P.V);
+  assert.equal(e.v, 5);
   assert.equal(e.level, null, 'empty profile has no level, so it sees the check');
   assert.equal(e.rating, 800);
   assert.equal(e.rn, 0);
@@ -157,7 +157,7 @@ test('migrate: null and empty', () => {
 test('migrate: v4 with rating 820 and a game = derived Improver, all tabs, start rules', () => {
   const v4 = { v: 4, games: [{ id: 'g1', d: 1, r: 'W', sans: ['e4'] }], puz: {}, rating: 820, rn: 0, course: {}, days: { '2026-1-1': { games: 1 } }, reviewed: [], t: 50, theme: 'classic' };
   const p = P.migrate(v4);
-  assert.equal(p.v, P.V);
+  assert.equal(p.v, 5);
   assert.equal(p.level, 'improver');
   assert.equal(p.levelT, 0);
   assert.equal(p.placed, 'derived');
@@ -197,8 +197,7 @@ test('migrate: v4 with no progress is treated as new', () => {
 test('migrate: v5 keeps its fields, including unknown future ones', () => {
   const v5 = { v: 5, level: 'club', levelT: 9, placed: 'check', start: 'kq', showAll: true, unlockAll: false, provisional: true, pgsDeclined: true, levelOfferT: 3, rating: 1300, rn: 0, games: [], puz: {}, course: {}, days: {}, reviewed: [], t: 4, extra: 'keep me' };
   const p = P.migrate(v5);
-  for (const k of Object.keys(v5).filter((x) => x !== 'v')) assert.deepEqual(p[k], v5[k], k);
-  assert.equal(p.v, P.V, 'v goes up to the current version');
+  for (const k of Object.keys(v5)) assert.deepEqual(p[k], v5[k], k);
   assert.notEqual(p, v5, 'returns a copy');
 });
 
@@ -212,7 +211,7 @@ test('AC12: merge never removes a completed lesson, game or reviewed game', () =
     assert.deepEqual(m.course.fork, { learn: 1 });
     assert.deepEqual(m.reviewed.sort(), ['g1', 'g3']);
     assert.ok(m.puz.m1 && m.puz.m2);
-    assert.equal(m.v, P.V);
+    assert.equal(m.v, 5);
   }
   assert.equal(JSON.stringify(a.course.board), '{"learn":1}', 'inputs are not mutated');
 });
@@ -441,72 +440,4 @@ test('G1: merge keeps the local choice when the other copy never had the setting
 
 test('G1: merge takes a saved choice over a copy that never had the setting, whichever is newer', () => {
   assert.equal(P.merge({ v: 5, t: 20 }, { v: 5, pieceTags: false, t: 10 }).pieceTags, false);
-});
-
-// ---------- Profile v6 (FC3, friend challenges tech spec section 9): friends: { <opp>: { n, t, res: { <gameId>: 'w'|'l'|'d' } } } ----------
-test('v6: the version is 6, and a blank profile has no friends', () => {
-  assert.equal(P.V, 6);
-  assert.deepEqual(P.blank().friends, {});
-  assert.equal(P.migrate({}).v, 6);
-});
-
-test('v6: a v5 save upgrades and keeps everything; friends reads as {}', () => {
-  const v5 = { v: 5, level: 'club', levelT: 9, placed: 'check', start: 'kq', rating: 1300, rn: 2, games: [{ id: 'g1', d: 1 }], puz: {}, course: done('kq'), days: {}, reviewed: [], t: 4, extra: 'keep me' };
-  const p = P.migrate(v5);
-  assert.equal(p.v, 6);
-  assert.deepEqual(p.friends, {});
-  for (const k of Object.keys(v5).filter((k) => k !== 'v')) assert.deepEqual(p[k], v5[k], k);
-  assert.equal(p.placed, 'check', 'a v5 save is never derived again');
-});
-
-test('v6: a v5 save with progress and no level is not derived (only saves older than v5 are)', () => {
-  const p = P.migrate({ v: 5, games: [{ id: 'g1', d: 1, r: 'W', sans: ['e4'] }], rating: 900 });
-  assert.equal(p.level, null);
-  assert.equal(p.placed === 'derived', false);
-  assert.equal(P.DERIVE_V, 5);
-});
-
-test('v6 migrate: missing or broken friends read as {}; nicknames trimmed to 20; broken results dropped', () => {
-  [undefined, null, 'x', 7, [], [{ n: 'a' }]].forEach((f) => assert.deepEqual(P.migrate({ v: 6, friends: f }).friends, {}, JSON.stringify(f)));
-  const p = P.migrate({ v: 6, friends: {
-    aaaaaaaaaaaa: { n: '  ' + 'Priyadarshini Ramanathan' + '  ', t: 5, res: { g1: 'w', g2: 'l', g3: 'd', g4: 'x', g5: null } },
-    bbbbbbbbbbbb: 'broken',
-    cccccccccccc: { n: 42, t: 'x', res: 'x' },
-    dddddddddddd: { t: 3 }
-  } });
-  assert.deepEqual(Object.keys(p.friends).sort(), ['aaaaaaaaaaaa', 'cccccccccccc', 'dddddddddddd']);
-  assert.equal(p.friends.aaaaaaaaaaaa.n, 'Priyadarshini Ramana');
-  assert.equal(p.friends.aaaaaaaaaaaa.n.length, 20);
-  assert.equal(p.friends.aaaaaaaaaaaa.t, 5);
-  assert.deepEqual(p.friends.aaaaaaaaaaaa.res, { g1: 'w', g2: 'l', g3: 'd' });
-  assert.deepEqual(p.friends.cccccccccccc, { n: '', t: 0, res: {} });
-  assert.deepEqual(p.friends.dddddddddddd, { n: '', t: 3, res: {} });
-});
-
-test('v6 merge: a result is never lost (union of res per friend), whichever copy is newer', () => {
-  const a = { v: 6, t: 10, friends: { aaaaaaaaaaaa: { n: 'Priya', t: 1, res: { g1: 'w', g2: 'l' } }, bbbbbbbbbbbb: { n: 'Ravi', t: 1, res: { g5: 'd' } } } };
-  const b = { v: 6, t: 20, friends: { aaaaaaaaaaaa: { n: 'Priya', t: 1, res: { g2: 'l', g3: 'd' } }, cccccccccccc: { n: 'Meena', t: 2, res: { g9: 'w' } } } };
-  for (const m of [P.merge(a, b), P.merge(b, a)]) {
-    assert.deepEqual(m.friends.aaaaaaaaaaaa.res, { g1: 'w', g2: 'l', g3: 'd' });
-    assert.deepEqual(m.friends.bbbbbbbbbbbb.res, { g5: 'd' });
-    assert.deepEqual(m.friends.cccccccccccc.res, { g9: 'w' });
-    assert.equal(m.v, 6);
-  }
-  assert.deepEqual(a.friends.aaaaaaaaaaaa.res, { g1: 'w', g2: 'l' }, 'inputs are not changed');
-});
-
-test('v6 merge: the nickname comes from the newer t of that friend, not the newer profile', () => {
-  const a = { v: 6, t: 99, friends: { aaaaaaaaaaaa: { n: 'Old name', t: 1, res: {} } } };
-  const b = { v: 6, t: 1, friends: { aaaaaaaaaaaa: { n: 'New name', t: 5, res: {} } } };
-  assert.equal(P.merge(a, b).friends.aaaaaaaaaaaa.n, 'New name');
-  assert.equal(P.merge(b, a).friends.aaaaaaaaaaaa.n, 'New name');
-  assert.equal(P.merge(a, b).friends.aaaaaaaaaaaa.t, 5);
-});
-
-test('v6 merge: a v5 cloud copy (no friends) never removes the device’s friends, and the reverse', () => {
-  const dev = { v: 6, t: 1, friends: { aaaaaaaaaaaa: { n: 'Priya', t: 1, res: { g1: 'w' } } } };
-  const old = { v: 5, t: 50, level: 'club' };
-  assert.deepEqual(P.merge(dev, old).friends, dev.friends);
-  assert.deepEqual(P.merge(old, dev).friends, dev.friends);
-  assert.deepEqual(P.merge(dev, null).friends, dev.friends);
 });

@@ -37,6 +37,28 @@ function countWorker() {
   window.Worker.prototype = W.prototype;
 }
 const EXTRA = [[fakeAds, null], [countWorker, null]];
+// Fix round 1: a saved engine game in progress, a friend store, and a claude.ai cloud that answers only when released
+function seedGame(g) { if (sessionStorage.getItem('g-seeded')) return; localStorage.setItem('suresh-chess-coach.v1', JSON.stringify(g)); sessionStorage.setItem('g-seeded', '1'); }
+function seedStore(st) { if (sessionStorage.getItem('f-seeded')) return; localStorage.setItem('suresh-chess-coach.friends.v1', JSON.stringify(st)); sessionStorage.setItem('f-seeded', '1'); }
+function fakeCloud() {
+  let release; const held = new Promise((r) => { release = r; });
+  window.__releaseCloud = () => release();
+  const doc = () => ({ get: () => held.then(() => ({ exists: false, data: () => null })), set: () => Promise.resolve() });
+  window.claude = { use: (k) => Promise.resolve(k === 'db' ? { doc } : { id: () => Promise.resolve('cloud-user') }) };
+}
+const { over: endGame } = require('../../functions/src/ops');
+const { Chess } = require('../../functions/node_modules/chess.js');
+const dkeyOf = (ms) => { const d = new Date(ms); return d.getFullYear() + '-' + (d.getMonth() + 1) + '-' + d.getDate(); };
+// Plays SAN moves straight on the server for the two players (uids: [white, black])
+async function serverMoves(fb, gid, uids, sans) {
+  for (const san of sans) {
+    const g = fb.store.get('games', gid), c = new Chess(); g.moves.forEach((m) => c.move(m));
+    const m = c.move(san); assert.ok(m, 'legal: ' + san);
+    const data = { op: 'move', g: gid, ply: g.moves.length, from: m.from, to: m.to }; if (m.promotion) data.promo = m.promotion;
+    await fb.ops.handle({ uid: uids[g.moves.length % 2] }, data);
+  }
+}
+const live = (page) => page.evaluate(() => { const e = document.getElementById('fbLive'); return e ? e.textContent : null; });
 const who = (name, o) => Object.assign({ who: name, extra: EXTRA }, o || {});
 
 // The engine is settled (Stockfish ready or failed, the boot analysis done), then every engine call is counted
@@ -54,12 +76,13 @@ const engine = (page) => page.evaluate(() => ({ calls: window.__engN, posts: win
 
 // Invite (A plays col), accept by a warm link (B names A nameA, or not). Returns the game id.
 async function startGame(A, B, col, nameA) {
+  const before = Object.keys((await frStore(B)).games);
   const code = await challenge(A, col);
   await B.evaluate((u) => window.__fc.open(u), linkOf(code));
   await acceptSheet(B);
   await doAccept(B, nameA == null ? null : nameA);
   const st = await frStore(B);
-  return Object.keys(st.games).find((id) => st.games[id].st === 'active');
+  return Object.keys(st.games).find((id) => st.games[id].st === 'active' && !before.includes(id));
 }
 const refresh = (page) => page.evaluate(() => window.__fc.resume());
 const tick = (page) => page.evaluate(() => window.__coach.frTick());
@@ -122,7 +145,7 @@ const today = () => { const d = new Date(); return d.getFullYear() + '-' + (d.ge
 const W4 = {
   resign: 'Resign', resignAsk: 'Resign this game?', keep: 'Keep playing', offerDraw: 'Offer draw', accept: 'Accept', decline: 'Decline',
   drawOffered: 'Your friend offers a draw.', drawSent: 'You offered a draw.', name: 'Name your friend', save: 'Save', notNow: 'Not now', review: 'Review this game', home: 'Home',
-  offline: 'Friend games need the internet. Try again when you are online.', notSent: 'Not sent yet', theirMove: 'Their move', lossText: 'Your friend wins this one. Review it to find the turning point.'
+  offline: 'Friend games need the internet. Try again when you are online.', notSent: 'Not sent yet, 2 days left', theirMove: 'Their move', lossText: 'Your friend wins this one. Review it to find the turning point.'
 };
 const phone = (vp) => vp.width <= 860;
 // The history rows (Play's Recent games on phones, Progress on wide screens)
@@ -364,7 +387,7 @@ const cases = [
     const s = await sheet(A);
     assert.deepEqual([s.title, s.label, s.hint, s.max], [W4.name, W4.name, 'optional, stays on this phone', 20]);
     assert.deepEqual(s.buttons.slice(1), [W4.save, W4.notNow]);
-    assert.equal(await A.evaluate(() => document.activeElement.id), 'fgNick');
+    assert.equal(await A.evaluate(() => document.activeElement && document.activeElement.dataset.act), 'fsave', 'fix 7: focus on Save, not the field (no keyboard over the buttons)');
     await A.locator('#fgNick').fill('Ravi Kumar the Great Friend');
     await A.locator('#friendSheet [data-act="fsave"]').click();
     await A.waitForFunction(() => document.getElementById('friendSheet').hidden);
@@ -403,6 +426,148 @@ const cases = [
       assert.equal(await A.evaluate(() => document.getElementById('modeText').textContent.startsWith('New game')), true, 'the engine game is back');
     }
     return [A, B];
+  }],
+  ['Fix 1: an unfinished engine game and a waiting lesson survive the friend board, whichever way it is left; no Start new game beside it', async (vp, fb) => {
+    const sans0 = ['e4', 'e5', 'Nf3', 'Nc6'];
+    const A = await player(vp, fb, who('A', { prof: G.club(), extra: EXTRA.concat([[seedGame, G.game(sans0)]]) })), B = await player(vp, fb, who('B'));
+    const gid = await startGame(A, B, 'w', null);
+    assert.deepEqual(await A.evaluate(() => window.__coach.hist()), sans0);
+    // a lesson at step 2 waits (parked) while the friend board is open
+    await A.evaluate(() => window.__coach.startPart('kq', 'learn'));
+    await A.locator('#navNext').click();
+    if (phone(vp)) await A.locator('#actClose').click();
+    await refresh(A); await row(A, gid);
+    const intact = async (how) => {
+      assert.deepEqual(await A.evaluate(() => window.__coach.hist()), sans0, how + ': the engine game keeps its moves');
+      assert.deepEqual(await A.evaluate(() => [window.__coach.st.fid, window.__coach.st.fg]), [null, null], how + ': the friend board is cleared');
+      assert.deepEqual(await A.evaluate(() => { const e = window.__coach.st.park.learn; return e && [e.unit, e.i]; }), ['kq', 1], how + ': the lesson still waits at step 2');
+    };
+    await openBoard(A, gid);
+    assert.equal(await A.evaluate(() => { const n = document.getElementById('newCard'); return !!n && n.getClientRects().length > 0; }), false, 'no Start new game beside a friend game');
+    if (phone(vp)) {
+      await A.locator('#actClose').click(); await A.waitForFunction(() => window.__coach.st.mode === 'play'); await intact('Close');
+      await openBoard(A, gid); await A.evaluate(() => window.__coach.backPressed()); await A.waitForFunction(() => window.__coach.st.mode === 'play'); await intact('back');
+    } else {
+      await A.locator('#modeExit').click(); await A.waitForFunction(() => window.__coach.st.mode === 'play'); await intact('Close');
+      await openBoard(A, gid); await A.locator('#tab-train').click(); await A.evaluate(() => window.__coach.trainStart('rated'));
+      await A.waitForFunction(() => window.__coach.st.mode === 'puzzle');
+      assert.deepEqual(await A.evaluate(() => window.__coach.hist()), sans0, 'a puzzle set started beside it');
+      assert.deepEqual(await A.evaluate(() => [window.__coach.st.fid, window.__coach.st.fg]), [null, null], 'a puzzle set clears the friend board');
+    }
+    await openBoard(A, gid);
+    await A.evaluate(() => window.__coach.startPart('kq', 'learn'));
+    await A.waitForFunction(() => window.__coach.st.mode === 'lesson');
+    assert.deepEqual(await A.evaluate(() => [window.__coach.hist(), window.__coach.st.fid, window.__coach.st.fg]), [sans0, null, null], 'a lesson started from the friend board');
+    return [A, B];
+  }],
+  ['Fix 2, fix 3: crossed draw offers show the friend’s offer; no Accept or Decline while my move waits; a stale line goes when the game changes; my turn is read out', async (vp, fb) => {
+    const A = await player(vp, fb, who('A')), B = await player(vp, fb, who('B'));
+    const gid = await startGame(A, B, 'w', 'Asha');
+    await refresh(A); await row(A, gid, 'Your move, 2 days left');
+    await openBoard(A, gid);
+    await refresh(B); await openBoard(B, gid);
+    await fbClick(B, 'foffer');
+    await B.waitForFunction((t) => document.getElementById('fbMsg').textContent === t, W4.drawSent, { timeout: 10000 });
+    // A has not seen it and offers too: the server refuses, and A now sees the friend's offer
+    await fbClick(A, 'foffer');
+    await A.waitForFunction((t) => document.getElementById('fbMsg').textContent === t, W4.drawOffered, { timeout: 10000 });
+    assert.deepEqual((await fbar(A)).buttons, [W4.accept, W4.decline, W4.resign, W4.name]);
+    // A moves offline: the move waits, and the offer it will clear has no Accept or Decline
+    await A.context().setOffline(true);
+    await move(A, 'e2', 'e4');
+    await waitWords(A, W4.notSent);
+    const b1 = await fbar(A);
+    assert.ok(!b1.buttons.includes(W4.accept) && !b1.buttons.includes(W4.decline) && b1.msg !== W4.drawOffered, 'no answer to an offer my move clears: ' + JSON.stringify(b1));
+    await fbClick(A, 'fresign'); await fbClick(A, 'fresignyes');
+    await A.waitForFunction((t) => document.getElementById('fbMsg').textContent === t, W4.offline);
+    await A.context().setOffline(false);
+    await A.waitForFunction(() => window.__coach.fr().games[window.__coach.st.fid].moves.length === 1, null, { timeout: 15000 });
+    assert.equal(fb.store.get('games', gid).draw, null, 'my move cleared the offer');
+    await tickFor(B, () => window.__coach.st.fg.history().length === 1);
+    await move(B, 'e7', 'e5');
+    await B.waitForFunction(() => window.__coach.fr().games[window.__coach.st.fid].moves.length === 2, null, { timeout: 10000 });
+    await tickFor(A, () => window.__coach.st.fg.history().length === 2);
+    assert.equal((await fbar(A)).msg, '', 'the old no-internet line went when the game changed');
+    await A.waitForFunction(() => document.getElementById('fbLive').textContent === 'Your move, 2 days left', null, { timeout: 3000 }).catch(() => {});
+    assert.equal(await live(A), 'Your move, 2 days left', 'fix 3: the turn is read out');
+    return [A, B];
+  }],
+  ['Fix 5: a resign running on one game never writes onto another game’s board; one call only', async (vp, fb) => {
+    const A = await player(vp, fb, who('A')), B = await player(vp, fb, who('B'));
+    const g1 = await startGame(A, B, 'w', 'Asha'), g2 = await startGame(A, B, 'w', 'Asha');
+    await refresh(A); await row(A, g1); await row(A, g2);
+    await openBoard(A, g1);
+    fb.delay.resign = 2500; fb.lose = 'resign'; // the resign goes through, its answer is lost (offline)
+    await fbClick(A, 'fresign'); await fbClick(A, 'fresignyes');
+    await A.waitForFunction((t) => document.getElementById('fbMsg').textContent === t, 'One moment.');
+    if (phone(vp)) await A.locator('#actClose').click();
+    await openBoard(A, g2);
+    const b = await fbar(A);
+    assert.deepEqual([b.msg, b.buttons], ['', [W4.offerDraw, W4.resign, W4.name]], 'the other game is not busy');
+    await A.waitForTimeout(3500);
+    assert.equal(fb.store.get('games', g1).st, 'over');
+    const b2 = await fbar(A);
+    assert.deepEqual([b2.msg, b2.buttons, await A.evaluate(() => window.__coach.st.fid)], ['', [W4.offerDraw, W4.resign, W4.name], g2], 'nothing written onto this board');
+    assert.equal(fb.calls.filter((c) => /"op":"resign"/.test(c.body)).length, 1);
+    assert.equal(fb.store.get('games', g2).st, 'active');
+    return [A, B];
+  }],
+  ['Fix 6: a game counts on the local day it ended, and is recorded only after the first cloud pull', async (vp, fb) => {
+    const A = await player(vp, fb, who('A')), B = await player(vp, fb, who('B'));
+    const gid = await startGame(A, B, 'w', 'Asha');
+    await refresh(A); await row(A, gid);
+    const d0 = (await profOf(A)).days;
+    await fb.ops.handle({ uid: fb.uids[1] }, { op: 'resign', g: gid }); // the friend resigns while A's phone is away
+    const end = fb.store.get('games', gid).t;
+    // A opens the app the next day: its clock and the server's are a day on
+    fb.off = DAY;
+    await A.evaluate((off) => { const D = Date; function F(...a) { return a.length ? new D(...a) : new D(D.now() + off); } F.now = () => D.now() + off; F.UTC = D.UTC; F.parse = D.parse; F.prototype = D.prototype; window.Date = F; }, DAY);
+    await refresh(A);
+    await A.waitForFunction(() => window.__coach.getProf().games.length === 1, null, { timeout: 10000 });
+    const days = (await profOf(A)).days;
+    const n0 = (k) => (d0[k] ? d0[k].games : 0);
+    assert.equal(days[dkeyOf(end)].games, n0(dkeyOf(end)) + 1, 'counted on the day it ended');
+    const next = dkeyOf(end + DAY);
+    assert.equal(days[next] ? days[next].games : 0, n0(next), 'not on the day it was recorded');
+    // A phone whose friend store has a finished game not yet recorded, with a cloud save still loading
+    const st = await A.evaluate(() => JSON.parse(localStorage.getItem('suresh-chess-coach.friends.v1')));
+    Object.values(st.friends).forEach((f) => { f.res = {}; });
+    const C = await player(vp, fb, who('C', { extra: EXTRA.concat([[seedStore, st], [fakeCloud, null]]) }));
+    await C.waitForTimeout(1500);
+    assert.equal((await profOf(C)).games.length, 0, 'nothing recorded before the cloud pull');
+    await C.evaluate(() => window.__releaseCloud());
+    await C.waitForFunction(() => window.__coach.getProf().games.length === 1, null, { timeout: 10000 });
+    assert.equal((await profOf(C)).days[dkeyOf(end)].games, n0(dkeyOf(end)) + 1);
+    return [A, B, C];
+  }],
+  ['Fix 9: endings through the real server: stalemate, the friend left (abandoned), the move limit', async (vp, fb) => {
+    const A = await player(vp, fb, who('A')), B = await player(vp, fb, who('B'));
+    const gid = await startGame(A, B, 'w', 'Asha');
+    const [ua, ub] = fb.uids;
+    // Sam Loyd's stalemate in 10: all but White's last move on the server, the last one on A's board
+    await serverMoves(fb, gid, [ua, ub], ['e3', 'a5', 'Qh5', 'Ra6', 'Qxa5', 'h5', 'h4', 'Rah6', 'Qxc7', 'f6', 'Qxd7+', 'Kf7', 'Qxb7', 'Qd3', 'Qxb8', 'Qh7', 'Qxc8', 'Kg6']);
+    await refresh(A); await row(A, gid);
+    await openBoard(A, gid);
+    await move(A, 'c8', 'e6');
+    await waitEnd(A);
+    assert.deepEqual(await endCard(A), { title: 'Stalemate', text: 'No legal moves and no check, so it’s a draw.', buttons: [W4.review, W4.home] });
+    // The friend deletes their friend game data: an open game ends as a win (FC-D17)
+    const g2 = await startGame(A, B, 'b', 'Asha');
+    await refresh(A); await row(A, g2);
+    await openBoard(A, g2);
+    await fb.ops.handle({ uid: ub }, { op: 'deleteMe' });
+    await tickFor(A, () => { const e = document.getElementById('gameEnd'); return e && !e.hidden && !!e.querySelector('.ec-title'); });
+    assert.deepEqual(await endCard(A), { title: 'You win!', text: 'Your friend left the game.', buttons: [W4.review, W4.home] });
+    // The move limit (FC-D21): the server's own ending, written into its store (600 plies cannot be played here)
+    const C = await player(vp, fb, who('C'));
+    const g3 = await startGame(A, C, 'w', null);
+    await refresh(A); await row(A, g3);
+    await openBoard(A, g3);
+    fb.store.data.games.set(g3, endGame(fb.store.get('games', g3), { r: 'd', why: 'cap' }, Date.now() + fb.off));
+    await tickFor(A, () => { const e = document.getElementById('gameEnd'); return e && !e.hidden && !!e.querySelector('.ec-title'); });
+    assert.deepEqual(await endCard(A), { title: 'Draw', text: 'The game reached the move limit.', buttons: [W4.review, W4.home] });
+    assert.deepEqual((await profOf(A)).games.map((g) => g.r), ['D', 'W', 'D']);
+    return [A, B, C];
   }],
   ['Scenario 11, FC-D4: the web build has no friend board or controls and makes no friend request; a friend game synced into the history reads "vs a friend" and opens its review', async (vp, fb) => {
     const fg = { id: 'f-AbCdEfGhIjKlMnOpQrSt', d: Date.now() - 60000, r: 'W', user: 'b', level: null, fr: '0123456789ab', ann: {}, tags: {}, sans: ['f3', 'e5', 'g4', 'Qh4#'] };

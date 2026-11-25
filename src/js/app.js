@@ -165,7 +165,7 @@
   function flipFen(fen) { var p = fen.split(' '); p[1] = p[1] === 'w' ? 'b' : 'w'; p[3] = '-'; return p.join(' '); }
   function fullmove(g) { return +g.fen().split(' ')[5]; }
   function dkey(d) { return d.getFullYear() + '-' + (d.getMonth() + 1) + '-' + d.getDate(); }
-  function dayRec() { var k = dkey(new Date()); if (!prof.days[k]) prof.days[k] = { puz: 0, games: 0, course: 0, solved: 0 }; return prof.days[k]; }
+  function dayRec(at) { var k = dkey(at != null ? new Date(at) : new Date()); /* at: a time on this phone's clock (FC4: the day a friend game ended) */ if (!prof.days[k]) prof.days[k] = { puz: 0, games: 0, course: 0, solved: 0 }; return prof.days[k]; }
   function shuffle(a) { for (var i = a.length - 1; i > 0; i--) { var j = Math.floor(Math.random() * (i + 1)), t = a[i]; a[i] = a[j]; a[j] = t; } return a; }
   function pvSan(fen, pv, n) { var g = new Chess(fen), out = []; for (var i = 0; i < Math.min(n, pv.length); i++) { var m = findMove(g, pv[i]); if (!m) break; g.move(m); out.push(m.san); } return out.join(' '); }
   function wait(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
@@ -624,11 +624,10 @@
       if (ph || z === 'play' || pz === z) { el.hidden = true; return; }
       el.hidden = false; el.className = 'znote z-' + z;
       /* round 2, item 2: a finished game is never "paused", and is not resumed: "Your game ended." and "See the end" (G-D36) */
-      var over = G.game_over(), back = over ? esc(Flow.COPY.seeEnd) : '\u25B6 Resume game', fb = st.mode === 'friend'; /* FC4: back to the friend board */
-      if (fb) back = '\u25B6 ' + esc(Flow.COPY.resumeGame);
+      var over = G.game_over(), back = over ? esc(Flow.COPY.seeEnd) : '\u25B6 Resume game';
       el.innerHTML = '<p><span class="ztag">' + ZNAME[z] + '</span> The board is on <b>' + esc(zoneLabel()) + '</b>.' + (t === 'play' ? (over ? ' ' + Flow.COPY.ended + '.' : ' Your game is paused and saved.') : '') + '</p><div class="row2">' +
         (t === 'play' ? '<button class="btn primary" type="button" data-act="close">' + back + '</button><button class="btn" type="button" data-zgo="' + ZTAB[z] + '">Continue ' + ZNAME[z] + '</button>'
-          : '<button class="btn primary" type="button" data-zgo="' + ZTAB[z] + '">Continue ' + ZNAME[z] + '</button><button class="btn" type="button" data-act="' + (fb ? 'fback' : 'close') + '">' + back + '</button>') + '</div>';
+          : '<button class="btn primary" type="button" data-zgo="' + ZTAB[z] + '">Continue ' + ZNAME[z] + '</button><button class="btn" type="button" data-act="close">' + back + '</button>') + '</div>';
     });
   }
   function renderMode() {
@@ -697,7 +696,7 @@
     var think = $('thinkCard'), pl = plain();
     renderGoal();
     $('coach').hidden = st.mode === 'friend';
-    if (st.mode === 'friend') { think.hidden = true; setOpp(null); $('newCard').hidden = false; return; } /* FC4, criterion 6: no coach, no engine during a friend game */
+    if (st.mode === 'friend') { think.hidden = true; setOpp(null); $('newCard').hidden = true; return; } /* FC4, criterion 6: no coach, no engine during a friend game; fix round 1, fix 1: no Start new game beside it (as a review) */
     if (st.mode === 'review') {
       var rv = st.rv, n = rv.notes[rv.ply - 1], mv = rv.sans[rv.ply - 1], lm = rv.ply ? lastMove(rv.g) : null, sw = pl && lm ? Words.say(lm, lm.color === rv.user) : '';
       think.hidden = true; $('newCard').hidden = true;
@@ -1493,7 +1492,7 @@
   function newGame(force, opts) {
     opts = opts || {};
     /* Fix round 1: on a phone the question comes whatever is on the board (a closed lesson or set may be waiting over the game) */
-    if (!force && (st.mode === 'play' || phone()) && G.history().length > 2 && !G.game_over() && !st.confirmNew) { st.confirmNew = true; $('newConfirm').hidden = false; st.scr = 'tabs'; switchTab('play'); return; } /* G2a: the question is on Play's start page */
+    if (!force && (st.mode === 'play' || st.mode === 'friend' || phone()) && G.history().length > 2 && !G.game_over() && !st.confirmNew) { st.confirmNew = true; $('newConfirm').hidden = false; st.scr = 'tabs'; switchTab('play'); return; } /* G2a: the question is on Play's start page */
     $('newConfirm').hidden = true; st.confirmNew = false; st.nm = null; /* G1: a new game clears the name line */
     rateReset(); /* D2 (fix 3) */
     stow('play'); /* G2b, G-D35: a lesson or set that is open waits on its own tab, at every width */
@@ -1631,7 +1630,7 @@
   }
 
   /* ---------- sessions ---------- */
-  function clearSession() { st.nm = null; st.end = null; st.ses = null; st.pz = null; st.qz = null; st.sq = null; st.dr = null; st.bk = null; st.ls = null; st.rc = null; st.flash = null; st.ab = false; boardId++; }
+  function clearSession() { frLeave(); /* FC4 fix round 1, fix 1: whatever takes the board ends the friend board's state too */ st.nm = null; st.end = null; st.ses = null; st.pz = null; st.qz = null; st.sq = null; st.dr = null; st.bk = null; st.ls = null; st.rc = null; st.flash = null; st.ab = false; boardId++; }
   function exitMode(toGame) {
     if (st.mode === 'friend') frLeave(); /* FC4 */
     var from = st.mode, unit = st.ses && st.ses.unit;
@@ -2514,6 +2513,7 @@
   function settleCloud(state) {
     if (cloudSettled() || cloudState === 'failed') return;
     cloudState = state; if (!cloudSettled()) return;
+    try { frSettle(); } catch (e) {} /* FC4 fix 6: friend games are recorded once the profile has settled */
     if (pendingLesson) { heldOffer.lesson = pendingLesson; pendingLesson = null; }
     startOfferCheck(); releaseOffer();
   }
@@ -2865,6 +2865,7 @@
       syncNote('Synced to your Claude account. Open it on any device to continue.', true);
     }).catch(function () {
       syncNote('Couldn’t reach your account. Saved on this device.', false);
+      if (!frPulled) { frPulled = true; try { frSettle(); } catch (e) {} } /* FC4 fix 6: the first pull failed: record on this phone now */
       if (!cloud.ready) { var ms = RETRY[Math.min(cloud.tries++, RETRY.length - 1)]; cloud.retry = setTimeout(pullCloud, ms); }
     }).then(function () { cloud.busy = null; });
     return cloud.busy;
@@ -3058,7 +3059,6 @@
     if (d.act === 'fdaccept') { frDraw('accept'); return; }
     if (d.act === 'fdecline') { frDraw('decline'); return; }
     if (d.act === 'freview') { frReview(d.g); return; }
-    if (d.act === 'fback') { openAct(); switchTab('play'); render(); return; }
     if (d.act === 'rvnew') { st.mode = 'play'; st.rv = null; resetHints(); newGame(false); render(); return; }
     if (d.act === 'recgame') { newGame(false, { level: plain() ? Profile.LEVELS.beginner.opp : recLevel() }); return; }
     if (d.act === 'review') { enterReview(null); return; }
@@ -3595,7 +3595,10 @@
      Stockfish all key off 'play', so none of them runs here (criterion 6); the engine game G waits as during a review. The
      friend store is the truth: the board is the server's moves plus the move waiting to be sent (pend), saved before any call
      (FC-D13). The clock is the server's deadline with the server's skew, and never stops offline (FC-D6). ---------- */
-  var FR_TICK = 60000, frTimer = null, frSending = {}, frBarMsg = null, frConfirm = false, frActing = null, frFgKey = '';
+  /* Fix round 1, fix 5: a call running (frActing), the Resign confirm (frConfirm) and the bar's line (frBarMsg) belong to one game
+     id, so a call on one game never writes onto another game's board. frBarMsg: { g, v, text }; it goes when the game's v changes
+     (fix 2). frSay: the line read out when the turn passes to me (fix 3). */
+  var FR_TICK = 60000, frTimer = null, frSending = {}, frBarMsg = null, frConfirm = null, frActing = {}, frFgKey = '', frMine = false, frSay = '';
   function frGame() { return FR && st.fid ? FR.store().games[st.fid] || null : null; }
   function frMe() { var g = frGame(); return g && (g.me === 'w' || g.me === 'b') ? g.me : 'w'; }
   /* a friend game in progress is on the board: the board is in use (no banner, no tip slot, no offers; FC-D15) */
@@ -3610,6 +3613,10 @@
     if (!g || g.st === 'invited') { frLeave(); return; } /* gone (a dead ID clears the store) */
     var p = g.pend, key = g.id + '|' + g.moves.join(' ') + '|' + (p ? p.from + p.to + (p.promo || '') : '');
     if (st.fg && frFgKey === key) return;
+    /* fix 3: the turn passes to me while the board is open: the row's line is read out ("Your move, 2 days left") */
+    var mine = g.st === 'active' && !p && Friends.turnOf(g) === g.me, same = !!st.fg && frFgKey.split('|')[0] === g.id;
+    if (same && mine && !frMine) frSay = Friends.stateLine(g, Date.now(), FR.store().skew);
+    frMine = mine;
     var c = new Chess();
     for (var i = 0; i < g.moves.length; i++) if (!c.move(g.moves[i])) break;
     if (p) c.move({ from: p.from, to: p.to, promotion: p.promo || 'q' });
@@ -3623,7 +3630,7 @@
     var g = FR.store().games[id]; if (!g || g.st !== 'active') return;
     rateReset(); stow('play'); clearSession(); hideTip(); if (st.pv) endPreview();
     st.mode = 'friend'; st.fid = id; st.fg = null; frFgKey = ''; st.rv = null; st.af = false; st.sel = null; resetHints();
-    frConfirm = false; frBarMsg = null; frActing = null;
+    frConfirm = null; frBarMsg = null; frSay = '';
     openAct(); switchTab('play'); render();
     frSync(true); /* the friend's latest move, and a waiting move of mine goes first */
   }
@@ -3633,7 +3640,7 @@
       st.mode = 'play'; st.sel = null; resetHints();
       var last = G.history({ verbose: true }).slice(-1)[0]; if (last && last.color !== st.user) st.arrows = [{ from: last.from, to: last.to, color: 'var(--c-blund)' }];
     }
-    st.fid = null; st.fg = null; frFgKey = ''; frConfirm = false; frBarMsg = null; frActing = null;
+    st.fid = null; st.fg = null; frFgKey = ''; frConfirm = null; frBarMsg = null; frSay = ''; /* a call still running on that game keeps frActing for it */
   }
   /* A move: checked by chess.js here, shown at once, saved as pend, then sent (FC-D13). No undo, no takebacks. */
   function friendMove(from, to) {
@@ -3641,7 +3648,7 @@
     var m = st.fg.move({ from: from, to: to, promotion: 'q' }); if (!m) return;
     st.fg.undo();
     var mv = { from: from, to: to }; if (m.flags.indexOf('p') > -1) mv.promo = 'q'; /* the app promotes to a queen, as in every game */
-    st.sel = null; st.nm = null; frConfirm = false; frBarMsg = null;
+    st.sel = null; st.nm = null; frConfirm = null; frBarMsg = null;
     if (!FR.queue(g.id, mv, Date.now())) { render(); return; }
     render(); /* "Not sent yet" until the server has it */
     frFlush(g.id);
@@ -3657,12 +3664,15 @@
   function frFlushAll() { if (!frOn() || !FR.signedIn()) return; Friends.toSend(FR.store()).forEach(frFlush); }
   /* After every answer: a finished game goes into the history (prof.games) and the record per friend (the friend store, FC-D29),
      once each, never for a cancelled or expired invite; it counts as a game played today. Then the screen follows. */
+  /* Fix round 1, fix 6: nothing is recorded before the first cloud pull has merged or failed (a phone whose friend store came back
+     from a backup finds its games already in the cloud copy), and a game counts on the local day it ended, not the day it is seen. */
+  var frPulled = false;
   function frSettle() {
     if (!FR) return;
     var s = FR.store(), add = false;
-    Friends.toRecord(s).forEach(function (id) {
-      var e = Friends.entry(s.games[id]); if (!e) return;
-      if (!prof.games.some(function (x) { return x && x.id === e.id; })) { prof.games.unshift(e); prof.games = prof.games.slice(0, 30); dayRec().games++; add = true; }
+    if (cloudSettled() || frPulled) Friends.toRecord(s).forEach(function (id) {
+      var e = Friends.entry(s.games[id], s.skew); if (!e) return;
+      if (!prof.games.some(function (x) { return x && x.id === e.id; })) { prof.games.unshift(e); prof.games = prof.games.slice(0, 30); dayRec(e.d).games++; add = true; }
       FR.record(id);
     });
     if (add) saveProfile();
@@ -3678,26 +3688,40 @@
   }
   /* Resign (after its confirm step) and draws need the internet (the approved line); one call at a time, "One moment." meanwhile */
   function frAsk(on) {
-    if (!frLive() || frActing) return;
-    frConfirm = !!on; frBarMsg = null; render();
+    var g = frGame(); if (!frLive() || frActing[g.id]) return;
+    frConfirm = on ? g.id : null; frBarMsg = null; render();
     var b = document.querySelector('#friendBar [data-act="' + (on ? 'fresignno' : 'fresign') + '"]'); if (b) try { b.focus({ preventScroll: true }); } catch (e) {}
   }
   function frErr(e) { var c = e && e.code; return c === 'offline' ? Friends.COPY.offline : c === 'late' || c === 'over' ? null : Friends.COPY.error; }
+  /* The bar's line for one game, until that game changes (its v) */
+  function frMsgFor(id, text) { var g = FR.store().games[id]; frBarMsg = text && g ? { g: id, v: g.v, text: text } : null; }
+  /* One call for one game at a time. after(err, here): store work always; here is true while that game is still on the board. */
   function frAct(act, op, data, after) {
-    var g = frGame(); if (!g || frActing) return;
-    if (frOffline()) { frConfirm = false; frBarMsg = Friends.COPY.offline; render(); return; } /* nothing is queued: the approved line */
-    frActing = act; frBarMsg = null; render();
-    FR.op(op, data, { signUp: false }).then(function (r) { frActing = null; after(r ? null : { code: 'offline' }); }, function (e) { frActing = null; after(e); }).then(frSettle);
+    var g = frGame(); if (!g || frActing[g.id]) return;
+    var id = g.id;
+    if (frOffline()) { frConfirm = null; frMsgFor(id, Friends.COPY.offline); render(); return; } /* nothing is queued: the approved line */
+    frActing[id] = act; frBarMsg = null; render();
+    function done(e) { delete frActing[id]; var here = st.mode === 'friend' && st.fid === id; after(e, here); }
+    FR.op(op, data, { signUp: false }).then(function (r) { done(r ? null : { code: 'offline' }); }, function (e) { done(e); }).then(frSettle);
   }
-  function frResign() { var g = frGame(); if (!g || !frConfirm) return; frAct('fresignyes', 'resign', { g: g.id }, function (e) { frConfirm = false; frBarMsg = e ? frErr(e) : null; }); }
+  function frResign() {
+    var g = frGame(); if (!g || frConfirm !== g.id) return;
+    frAct('fresignyes', 'resign', { g: g.id }, function (e, here) { if (!here) return; frConfirm = null; frMsgFor(g.id, e ? frErr(e) : null); });
+  }
   function frDraw(a) {
     var g = frGame(); if (!g || g.st !== 'active') return;
     if (a === 'offer' && !Friends.canOffer(g)) return;
     var id = g.id, act = { offer: 'foffer', accept: 'fdaccept', decline: 'fdecline' }[a];
-    frAct(act, 'draw', { g: id, a: a }, function (e) {
-      if (!e) { if (a === 'offer') FR.offered(id); frBarMsg = null; return; }
-      if (e.code === 'draw') { if (a === 'offer') { FR.offered(id); frBarMsg = Friends.COPY.drawLater; } else frBarMsg = null; frSync(true); return; } /* not possible now: the server's state wins */
-      frBarMsg = frErr(e);
+    frAct(act, 'draw', { g: id, a: a }, function (e, here) {
+      if (!e) { if (a === 'offer') FR.offered(id); if (here) frBarMsg = null; return; }
+      if (e.code === 'draw') { /* not possible now: the server's state (its answer carries the game) wins */
+        /* fix 2: refused because the friend's offer is open (crossed offers): that offer shows, with Accept and Decline */
+        var crossed = a === 'offer' && Friends.offerFrom(FR.store().games[id]) === 'friend';
+        if (a === 'offer' && !crossed) FR.offered(id);
+        if (here) frMsgFor(id, a === 'offer' && !crossed ? Friends.COPY.drawLater : null);
+        frSync(true); return;
+      }
+      if (here) frMsgFor(id, frErr(e));
     });
   }
   /* "Review this game": the review has everything, engine included (FC-D10) */
@@ -3712,7 +3736,7 @@
     if (!frOn()) return;
     var s = FR.store(), g = s.games[id]; if (!g || !Friends.needsName(s, g)) return;
     frOpen('name', { opp: g.opp, g: id });
-    var n = $('fgNick'); if (n) try { n.focus({ preventScroll: true }); } catch (e) {}
+    var b = $('friendSheet').querySelector('[data-act="fsave"]'); if (b) try { b.focus({ preventScroll: true }); } catch (e) {} /* fix 7: Save, not the field (the keyboard would cover the buttons) */
   }
   function frSaveName() {
     var f = frSheet; if (!f || f.kind !== 'name') return;
@@ -3729,20 +3753,23 @@
     var bar = $('friendBar'); if (!bar) return;
     var g = st.mode === 'friend' ? frGame() : null;
     if (!g) { if (!bar.hidden) bar.hidden = true; return; }
-    var C = Friends.COPY, open = g.st === 'active', from = Friends.offerFrom(g), s = FR.store(), h = '', A = frActing;
-    if (!bar._built) { bar._built = true; bar.innerHTML = '<p class="fg-msg" id="fbMsg" role="status"></p><div class="controls fg-ctl" id="fbBtns"></div>'; }
-    if (open && frConfirm) h = '<p class="fg-ask" id="fbAsk">' + esc(C.resignAsk) + '</p>' + frBtn('btn danger', 'fresignyes', C.resign, { busy: A === 'fresignyes', off: !!A, extra: ' aria-describedby="fbAsk"' }) + frBtn('btn', 'fresignno', C.keep, { off: !!A });
+    var C = Friends.COPY, open = g.st === 'active', from = Friends.offerFrom(g), s = FR.store(), h = '', A = frActing[g.id] || null;
+    if (!bar._built) { bar._built = true; bar.innerHTML = '<p class="fg-msg" id="fbMsg" role="status"></p><div class="controls fg-ctl" id="fbBtns"></div><p class="sr" id="fbLive" role="status"></p>'; }
+    if (frBarMsg && (frBarMsg.g !== g.id || frBarMsg.v !== g.v)) frBarMsg = null; /* fix 2: a line about an older state of the game goes */
+    if (open && frConfirm === g.id) h = '<p class="fg-ask" id="fbAsk">' + esc(C.resignAsk) + '</p>' + frBtn('btn danger', 'fresignyes', C.resign, { busy: A === 'fresignyes', off: !!A, extra: ' aria-describedby="fbAsk"' }) + frBtn('btn', 'fresignno', C.keep, { off: !!A });
     else if (open) {
+      /* fix 2: no Accept or Decline while my move waits (it clears the offer on the server); Friends.offerFrom says so */
       if (from === 'friend') h = frBtn('btn primary', 'fdaccept', C.accept, { busy: A === 'fdaccept', off: !!A, extra: ' aria-describedby="fbMsg"' }) + frBtn('btn', 'fdecline', C.decline, { busy: A === 'fdecline', off: !!A, extra: ' aria-describedby="fbMsg"' });
       else h = frBtn('btn', 'foffer', C.offerDraw, { busy: A === 'foffer', off: !!A || !Friends.canOffer(g) });
       h += frBtn('btn', 'fresign', C.resign, { off: !!A });
     }
     if (Friends.needsName(s, g)) h += frBtn('btn', 'fname', C.nameLabel, { g: g.id });
-    var msg = A ? C.busy : frBarMsg || (open ? Friends.drawLine(g) : '') || '';
+    var msg = A ? C.busy : (frBarMsg && frBarMsg.text) || (open ? Friends.drawLine(g) : '') || '';
     var a = document.activeElement, keep = a && bar.contains(a) ? a.dataset.act || '' : null;
     var bx = $('fbBtns'), m = $('fbMsg');
     if (bx._h !== h) { bx._h = h; bx.innerHTML = h; }
     if (m.textContent !== msg) m.textContent = msg;
+    if (frSay) { var say = frSay, lv = $('fbLive'); frSay = ''; lv.textContent = ''; setTimeout(function () { if (lv.isConnected) lv.textContent = say; }, 60); } /* fix 3 */
     if (keep != null && !bar.contains(document.activeElement)) { var b = bar.querySelector('[data-act="' + keep + '"]:not([disabled])') || bar.querySelector('button:not([disabled])'); if (b) try { b.focus({ preventScroll: true }); } catch (e) {} }
     bar.hidden = !h && !msg;
   }

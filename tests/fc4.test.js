@@ -162,7 +162,7 @@ test('boardLine: whose move and time left (FC-D26), Not sent yet, then the resul
   assert.equal(F.boardLine(s.games[GID], T, 0), 'Your move, 3 days left');
   assert.equal(F.boardLine(s.games[GID], T + 2 * DAY, 0), 'Your move, 24 hours left', 'the clock never stops (FC-D6)');
   F.queue(s, GID, { from: 'e2', to: 'e4' }, T);
-  assert.equal(F.boardLine(s.games[GID], T, 0), 'Not sent yet');
+  assert.equal(F.boardLine(s.games[GID], T, 0), 'Not sent yet, 3 days left', 'FC-D35');
   assert.equal(F.boardLine(view({ moves: ['e4'] }), T, 0), 'Their move');
   assert.equal(F.boardLine(over({}, { r: 'b', why: 'time' }), T, 0), 'Out of time');
 });
@@ -225,4 +225,41 @@ test('Data rule: a friend game in prof.games survives migrate() and merge() (uni
   assert.equal(m.games[0].fr, OPP);
   assert.equal(m.games[0].level, null);
   assert.ok(!('n' in m.games[0]) && !JSON.stringify(m).includes('Priya'), 'no nickname in the profile (FC-D29)');
+});
+
+// ---------- FC4 fix round 1 ----------
+test('Fix 4, FC-D35: a waiting move reads "Not sent yet, <time left>" on the row and the board; the clock goes on', () => {
+  const s = store([view()]);
+  F.queue(s, GID, { from: 'e2', to: 'e4' }, T);
+  assert.equal(F.stateLine(s.games[GID], T, 0), 'Not sent yet, 3 days left');
+  assert.equal(F.boardLine(s.games[GID], T + 2 * DAY + 3600000, 0), 'Not sent yet, 23 hours left');
+  assert.equal(F.boardLine(s.games[GID], T + 4 * DAY, 0), 'Not sent yet, no time left');
+  assert.equal(F.rows(s, T)[0].line, 'Not sent yet, 3 days left');
+  const n = view({ dl: null }); n.pend = { ply: 0, from: 'e2', to: 'e4', t: T };
+  assert.equal(F.stateLine(n, T, 0), 'Not sent yet', 'no deadline known: the line alone');
+});
+
+test('Fix 2: while my move waits, a friend’s offer has no Accept or Decline (my move clears it on the server); my own offer still shows', () => {
+  const s = store([view({ me: 'b', moves: ['e4'], draw: 'w' })]);
+  assert.equal(F.offerFrom(s.games[GID]), 'friend');
+  F.queue(s, GID, { from: 'e7', to: 'e5' }, T);
+  assert.equal(F.offerFrom(s.games[GID]), null);
+  assert.equal(F.drawLine(s.games[GID]), null);
+  const m = store([view({ me: 'b', moves: ['e4'], draw: 'b' })]);
+  F.queue(m, GID, { from: 'e7', to: 'e5' }, T);
+  assert.equal(F.offerFrom(m.games[GID]), 'me');
+});
+
+test('Fix 6: the local time a game ended (server end time less the skew), for the day it counts on', () => {
+  const g = over({ t: T + 5000 }, { r: 'w', why: 'mate' });
+  assert.equal(F.endedAt(g, 0), T + 5000);
+  assert.equal(F.endedAt(g, 2000), T + 3000, 'server ahead by 2 s');
+  assert.equal(F.endedAt(g, -DAY), T + 5000 + DAY);
+  assert.equal(F.endedAt(g, undefined), T + 5000);
+});
+
+test('Fix 6: the history entry carries the local end time (server end less the skew)', () => {
+  const g = over({ t: T + 5000 }, { r: 'w', why: 'mate' });
+  assert.equal(F.entry(g, 2000).d, T + 3000);
+  assert.equal(F.entry(g).d, T + 5000);
 });

@@ -240,3 +240,33 @@ test('FC-D27, FC-D29, fix 2: the colour, a nickname and the launch link are save
   assert.equal(s.uid, null, 'the dead ID is gone');
   assert.equal(s.friends.aaaaaaaaaaaa.n, 'Priya', 'the names and records stay on the phone');
 });
+
+// FC4 (tech spec section 9, offline queue): a move is saved as pend before any call; the answer settles it.
+test('FC4: queue() saves the pending move at once; a late answer ends the game on time and drops it; offline keeps it', async () => {
+  const active = (o) => gview(Object.assign({ st: 'active', opp: '0123456789ab', code: null, exp: null, dl: T + 3 * 86400000, v: 2 }, o));
+  let answer = null;
+  const net = fakeNet([
+    ['https://token.fc.test/v1/token?key=test-key', refreshOk('u1')],
+    [fnUrl, async () => answer]
+  ]);
+  const st = memStorage(JSON.stringify({ v: 1, uid: 'u1', rt: 'rt-u1', games: { [GID]: active() } }));
+  const c = client(net, st);
+  assert.equal(c.queue(GID, { from: 'e2', to: 'e4' }, T), true);
+  assert.equal(net.calls.length, 0, 'no call yet');
+  assert.deepEqual(JSON.parse(st.m.raw).games[GID].pend, { ply: 0, from: 'e2', to: 'e4', t: T }, 'saved before any call');
+  answer = new TypeError('Failed to fetch');
+  const e1 = await c.op('move', F.moveReq(c.store().games[GID])).catch((e) => e);
+  assert.equal(e1.code, 'offline');
+  assert.equal(c.settleSend(GID, e1), 'keep');
+  assert.ok(JSON.parse(st.m.raw).games[GID].pend, 'still waiting');
+  answer = { status: 400, body: { error: { status: 'FAILED_PRECONDITION', message: 'late', details: { games: [active({ st: 'over', dl: null, res: { r: 'b', why: 'time' }, v: 3 })] } } } };
+  const e2 = await c.op('move', F.moveReq(c.store().games[GID])).catch((e) => e);
+  assert.equal(e2.code, 'late');
+  assert.equal(c.settleSend(GID, e2), 'done');
+  const saved = JSON.parse(st.m.raw).games[GID];
+  assert.deepEqual([saved.st, saved.res.why, saved.pend], ['over', 'time', null]);
+  assert.equal(c.record(GID), true, 'the record per friend');
+  assert.deepEqual(JSON.parse(st.m.raw).friends['0123456789ab'].res, { [GID]: 'l' });
+  c.offered(GID);
+  assert.equal(JSON.parse(st.m.raw).games[GID].dp, 0);
+});

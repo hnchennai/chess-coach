@@ -84,6 +84,24 @@ Approved on 2026-11-25 (FC-D31), proposed in fix round 1:
 |---|---|
 | While a call runs (Share link, Accept, Cancel invite, the Accept sheet loading): the status line under the buttons, also read by screen readers, next to a spinner on the button | One moment. |
 
+Proposed in FC4 (used until Suresh approves or changes them, FC-D23); the app's own lines are reused where they fit:
+| Where | Text |
+|---|---|
+| Friend board, mode bar (wide) and Close bar (phones), first line | Friend game vs Priya (no nickname: Friend game); second line: the row's line (Your move, 2 days left / Their move / Not sent yet), then the end card's title |
+| Friend board, the opponent above the board | the nickname, or Friend |
+| Friend board, buttons | Offer draw; Resign |
+| Resign, the confirm step | Resign this game?; buttons Resign and Keep playing (the app's own) |
+| A draw offer from the friend | Your friend offers a draw.; buttons Accept (approved) and Decline |
+| A draw offer I made | You offered a draw. |
+| Offer refused by the server (one offer per own move) | You can offer a draw again after your next move. |
+| Name your friend (row and board button, sheet title and field) | Name your friend (approved), optional, stays on this phone (approved), buttons Save and Not now (approved) |
+| End card, a win | Checkmate. You win! (the app's own) with Great finish. Review it. (the app's own); You win! with Your friend resigned. / Your friend ran out of time. / Your friend left the game. |
+| End card, a loss | Checkmate (the app's own) / You resigned / Out of time, each with Your friend wins this one. Review it to find the turning point. |
+| End card, a draw | Draw with You both agreed to a draw. / The same position came up three times. / 50 moves without a capture or pawn move. / Not enough pieces left to checkmate. / The game reached the move limit.; Stalemate with No legal moves and no check, so it's a draw. (the app's own lines) |
+| End card buttons | Review this game; Home (the app's own) |
+| History row | 25 Nov · vs Priya (friend) · White; no nickname: vs a friend |
+| Review of a friend game, the friend's moves | Your friend's move; Your friend played e5; Here is what the move does. |
+
 ## Scenarios
 1. **Invite.** Priya taps Challenge a friend on Play, picks Random, and shares the link to Ravi on WhatsApp. Her Play tab shows the game as "Waiting for your friend", with an expiry date 7 days ahead.
 2. **Accept.** Ravi has the app. He sees Priya's WhatsApp message with the link (the message text is written on Priya's phone and never stored on the server). He taps the link, the app opens on "A friend challenges you", he taps Accept and names the opponent "Priya". Colours are set; White moves first.

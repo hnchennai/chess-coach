@@ -38,7 +38,8 @@
     recorded: false, t: 0, goal: null, rv: null, pz: null, ses: null, ls: null, dr: null, bk: null, sq: null, qz: null, unitOpen: null, confirmNew: false, nm: null,
     scr: 'tabs', rvFrom: null, /* G2a: 'tabs' (a tab page) or 'act' (the board screen); memory only, never stored. Wide screens ignore it. */
     park: { learn: null, train: null }, /* G2b: what waits on Learn and on Train while something else is on the board (Flow entries) */
-    unseen: false, fbPre: null /* fix round 1: the game ended while it was not on screen (G-D36, saved with the game); the game's coach line before its first hint */
+    unseen: false, fbPre: null, /* fix round 1: the game ended while it was not on screen (G-D36, saved with the game); the game's coach line before its first hint */
+    fid: null, fg: null /* FC4: the friend game on the board (its id in the friend store) and its own Chess instance; memory only */
   };
   /* G2b: two things can be waiting for the engine at once: the game (st.gb: its move check and the engine's reply go on while
      the game is closed) and the lesson, set or drill on the board (st.ab). st.busy is the one the board on screen cares about,
@@ -405,6 +406,7 @@
     switch (st.mode) {
       case 'puzzle': return st.pz.g; case 'review': return st.rv.g; case 'lesson': return st.ls.g;
       case 'drill': return st.dr.g; case 'book': return st.bk.g; case 'squares': return EMPTY; case 'quiz': return st.qz.g; case 'reach': return st.rc.g; case 'placement': return st.pl.g;
+      case 'friend': return st.fg || EMPTY; /* FC4 */
       default: return G;
     }
   }
@@ -412,6 +414,7 @@
     switch (st.mode) {
       case 'puzzle': return st.pz.side; case 'review': return st.rv.user; case 'lesson': return st.ls.side;
       case 'drill': return st.dr.side; case 'book': return st.bk.side; case 'squares': return st.sq.side; case 'quiz': return st.qz.side; case 'reach': return 'w'; case 'placement': return st.pl.side;
+      case 'friend': return frMe(); /* FC4 */
       default: return st.user;
     }
   }
@@ -425,6 +428,7 @@
       case 'drill': return !st.dr.done && g.turn() === st.dr.side;
       case 'book': return !st.bk.done && !st.bk.wait && g.turn() === st.bk.side;
       case 'placement': return !st.pl.done && g.turn() === st.pl.side;
+      case 'friend': return frCanMove(); /* FC4: my turn in an open friend game, with no move waiting to be sent */
       default: return false;
     }
   }
@@ -446,6 +450,7 @@
 
   function render() {
     scrHold = false; fixScreen();
+    if (st.mode === 'friend') frBoardSync(); /* FC4: the friend board follows the friend store */
     /* Fix round 1: the game's hint count goes back to 0 when another activity takes the board (or at a restart); its words on
        the coach line go back with it, to what they were before the first hint */
     if (st.mode === 'play' && !st.hintLvl && st.fb && /^Hint [123]:/.test(st.fb.title || '')) { st.fb = st.fbPre || null; st.fbPre = null; }
@@ -480,7 +485,7 @@
     if (st.tab === 'coach') { if (plain()) renderBHome(); else renderCont(); } /* AC8: a game that starts or ends next to Home (desktop) shows at once */
     var u = viewUser(), pl = plain();
     $('oppLevel').textContent = pl ? '' : st.mode === 'play' ? OPP[st.level].name + ' · ' + (st.level === 8 ? 'max' : '~' + OPP[st.level].elo) : st.mode === 'review' && OPP[st.rv.level] ? OPP[st.rv.level].name : '';
-    $('oppName').textContent = pl && (st.mode === 'play' || st.mode === 'review' || st.mode === 'drill') ? partnerName() : { play: 'Engine', review: 'Engine', puzzle: 'Puzzle', lesson: 'Lesson', drill: 'Stockfish', book: 'Opening book', squares: 'Board drill', quiz: 'Safe or blunder?', reach: 'Piece drill', placement: 'Level check' }[st.mode] || '';
+    $('oppName').textContent = st.mode === 'friend' || (st.mode === 'review' && st.rv && st.rv.fr) ? frOppName() : pl && (st.mode === 'play' || st.mode === 'review' || st.mode === 'drill') ? partnerName() : { play: 'Engine', review: 'Engine', puzzle: 'Puzzle', lesson: 'Lesson', drill: 'Stockfish', book: 'Opening book', squares: 'Board drill', quiz: 'Safe or blunder?', reach: 'Piece drill', placement: 'Level check' }[st.mode] || '';
     $('youSwatch').style.background = u === 'w' ? '#FBF8F1' : '#1E1915';
     $('oppSwatch').style.background = u === 'w' ? '#1E1915' : '#FBF8F1';
     $('thinking').hidden = !st.busy;
@@ -494,6 +499,7 @@
     $('playControls').hidden = !canHint;
     $('navControls').hidden = st.mode !== 'review' && st.mode !== 'lesson';
     $('quizControls').hidden = !(st.mode === 'quiz' && st.qz && !st.qz.answered);
+    renderFriendBar(); /* FC4: Resign, Offer draw, a draw offer to answer */
     if (st.mode === 'lesson') { $('navFirst').hidden = $('navLast').hidden = true; $('navPrev').disabled = st.ls.i === 0; $('navNext').textContent = st.ls.i === st.ls.unit.lesson.length - 1 ? 'Finish ✓' : 'Next ›'; $('navPos').textContent = (st.ls.i + 1) + ' / ' + st.ls.unit.lesson.length; }
     else { $('navFirst').hidden = $('navLast').hidden = false; $('navPrev').disabled = false; $('navNext').textContent = 'Next ›'; }
   }
@@ -584,7 +590,7 @@
     bar.title = Math.abs(ev) < 40 ? 'About equal' : (ev > 0 ? 'White is better' : 'Black is better');
   }
   function renderCaps(g) {
-    var show = st.mode === 'play' || st.mode === 'review';
+    var show = st.mode === 'play' || st.mode === 'review' || st.mode === 'friend';
     if (!show) { $('youCaps').innerHTML = ''; $('oppCaps').innerHTML = ''; return; }
     var init = { p: 8, n: 2, b: 2, r: 2, q: 1 }, cnt = { w: { p: 0, n: 0, b: 0, r: 0, q: 0 }, b: { p: 0, n: 0, b: 0, r: 0, q: 0 } }, mat = { w: 0, b: 0 };
     g.board().forEach(function (row) { row.forEach(function (p) { if (p && p.type !== 'k') { cnt[p.color][p.type]++; mat[p.color] += VAL[p.type]; } }); });
@@ -595,7 +601,7 @@
   }
   var ZTAB = { learn: 'path', train: 'train', play: 'play' }, ZNAME = { learn: 'Learn', train: 'Train', play: 'Play' };
   function zoneOf() {
-    if (st.mode === 'play' || st.mode === 'review') return 'play';
+    if (st.mode === 'play' || st.mode === 'review' || st.mode === 'friend') return 'play';
     if (st.ses && st.ses.zone) return st.ses.zone; /* Fix round 1: on a phone a drill started from Train belongs to Train */
     if (st.mode === 'lesson' || st.mode === 'squares' || st.mode === 'reach' || (st.ses && st.ses.unit)) return 'learn';
     return 'train';
@@ -605,6 +611,7 @@
     if (st.mode === 'lesson' && st.ls) return 'Lesson: ' + st.ls.unit.title;
     if (s) return s.title + (s.finished ? ' (finished)' : s.kind === 'drill' ? '' : ', ' + Math.min(s.i + 1, s.count) + ' of ' + s.count);
     if (st.mode === 'review') return 'Reviewing a game';
+    if (st.mode === 'friend') return Friends.COPY.board; /* FC4 */
     return 'Your game';
   }
   function renderZones() {
@@ -617,10 +624,11 @@
       if (ph || z === 'play' || pz === z) { el.hidden = true; return; }
       el.hidden = false; el.className = 'znote z-' + z;
       /* round 2, item 2: a finished game is never "paused", and is not resumed: "Your game ended." and "See the end" (G-D36) */
-      var over = G.game_over(), back = over ? esc(Flow.COPY.seeEnd) : '\u25B6 Resume game';
+      var over = G.game_over(), back = over ? esc(Flow.COPY.seeEnd) : '\u25B6 Resume game', fb = st.mode === 'friend'; /* FC4: back to the friend board */
+      if (fb) back = '\u25B6 ' + esc(Flow.COPY.resumeGame);
       el.innerHTML = '<p><span class="ztag">' + ZNAME[z] + '</span> The board is on <b>' + esc(zoneLabel()) + '</b>.' + (t === 'play' ? (over ? ' ' + Flow.COPY.ended + '.' : ' Your game is paused and saved.') : '') + '</p><div class="row2">' +
         (t === 'play' ? '<button class="btn primary" type="button" data-act="close">' + back + '</button><button class="btn" type="button" data-zgo="' + ZTAB[z] + '">Continue ' + ZNAME[z] + '</button>'
-          : '<button class="btn primary" type="button" data-zgo="' + ZTAB[z] + '">Continue ' + ZNAME[z] + '</button><button class="btn" type="button" data-act="close">' + back + '</button>') + '</div>';
+          : '<button class="btn primary" type="button" data-zgo="' + ZTAB[z] + '">Continue ' + ZNAME[z] + '</button><button class="btn" type="button" data-act="' + (fb ? 'fback' : 'close') + '">' + back + '</button>') + '</div>';
     });
   }
   function renderMode() {
@@ -633,6 +641,11 @@
       $('modeText').textContent = (G.history().length ? 'Your game' : 'New game') + ' vs ' + (plain() ? partnerName() : OPP[st.level].name + ' (~' + (st.level === 8 ? 'max' : OPP[st.level].elo) + ')') + ', you play ' + (st.user === 'w' ? 'White' : 'Black');
       $('modeExit').textContent = 'Train instead'; $('modeExit').dataset.zone = 'play';
       $('modeExit').hidden = !tabOpen('train'); /* a Beginner's Train tab is still locked */
+      return;
+    }
+    if (st.mode === 'friend') { /* FC4: whose move and the time left, or the result */
+      $('modeTag').textContent = ZNAME.play; $('modeText').textContent = frWords().join(': ');
+      $('modeExit').textContent = Flow.COPY.close; $('modeExit').dataset.zone = 'play';
       return;
     }
     var tag = '', text = '';
@@ -683,6 +696,8 @@
   function renderPlayPanel() {
     var think = $('thinkCard'), pl = plain();
     renderGoal();
+    $('coach').hidden = st.mode === 'friend';
+    if (st.mode === 'friend') { think.hidden = true; setOpp(null); $('newCard').hidden = false; return; } /* FC4, criterion 6: no coach, no engine during a friend game */
     if (st.mode === 'review') {
       var rv = st.rv, n = rv.notes[rv.ply - 1], mv = rv.sans[rv.ply - 1], lm = rv.ply ? lastMove(rv.g) : null, sw = pl && lm ? Words.say(lm, lm.color === rv.user) : '';
       think.hidden = true; $('newCard').hidden = true;
@@ -690,6 +705,7 @@
       var isUser = (rv.ply - 1) % 2 === (rv.user === 'w' ? 0 : 1);
       if (!n) { setVerdict({ cls: 'info', sym: '♙', title: 'Analyzing…', eyebrow: 'Review', mv: mv, words: sw }); setOpp(null); return; }
       if (isUser) { setVerdict({ cls: n.cls, sym: CLS[n.cls].sym, title: CLS[n.cls].title, eyebrow: 'Your move ' + Math.ceil(rv.ply / 2), mv: 'You played ' + mv, words: sw, text: n.text, tip: n.tip }); setOpp(null); }
+      else if (rv.fr) { setVerdict({ cls: 'info', sym: '♟', title: pl ? sw : Friends.COPY.rvTitle, eyebrow: 'Move ' + Math.ceil(rv.ply / 2), mv: Friends.COPY.rvPlayed + mv, words: '', text: Friends.COPY.rvText }); setOpp({ san: mv, why: n.why || [], label: pl ? '' : Friends.COPY.rvPlayed + mv }); } /* FC4: a friend game's review */
       else { setVerdict({ cls: 'info', sym: '♟', title: pl ? sw : 'Engine’s move', eyebrow: 'Move ' + Math.ceil(rv.ply / 2), mv: 'Engine played ' + mv, words: '', text: 'Here is what it was up to.' }); setOpp({ san: mv, why: n.why || [], label: pl ? '' : null }); }
       return;
     }
@@ -738,6 +754,7 @@
     var el = $('moves'), sans, ann, cur = -1;
     if (st.mode === 'review') { sans = st.rv.sans; ann = st.rv.ann || {}; cur = st.rv.ply - 1; }
     else if (st.mode === 'play') { sans = G.history(); ann = st.ann; }
+    else if (st.mode === 'friend' && st.fg) { sans = st.fg.history(); ann = {}; } /* FC4: no grades during a friend game */
     else { el.innerHTML = '<p class="empty">Moves of your current game show here.</p>'; return; }
     if (!sans.length) { el.innerHTML = '<p class="empty">No moves yet.</p>'; return; }
     var rows = '';
@@ -745,7 +762,7 @@
     for (var i = 0; i < sans.length; i += 2) rows += '<tr><td class="n">' + (i / 2 + 1) + '.</td>' + cell(i) + cell(i + 1) + '</tr>';
     el.innerHTML = '<table>' + rows + '</table>';
     var c = el.querySelector('.cur');
-    if (c) el.scrollTop = Math.max(0, c.offsetTop - el.clientHeight / 2); else if (st.mode === 'play') el.scrollTop = el.scrollHeight;
+    if (c) el.scrollTop = Math.max(0, c.offsetTop - el.clientHeight / 2); else if (st.mode === 'play' || st.mode === 'friend') el.scrollTop = el.scrollHeight;
   }
   function result(g, userColor) {
     if (!g.game_over()) return null;
@@ -760,7 +777,7 @@
      No network, no ads code, nothing collected. ---------- */
   var slotTips = {}, visits = { coach: 0, progress: 0 };
   /* F-D4: a lesson, game, puzzle set, drill, review or the level check is in progress */
-  function boardBusy() { return st.mode === 'lesson' || st.mode === 'review' || !!(st.ses && !st.ses.finished && !st.ses.end) || gameOn(); }
+  function boardBusy() { return st.mode === 'lesson' || st.mode === 'review' || !!(st.ses && !st.ses.finished && !st.ses.end) || gameOn() || frLive(); } /* FC4 (FC-D15): a friend game in progress */
   /* G2a (G-D11): the rule itself is Flow.inUse. Wide: as above. Phones: only while the board screen is open with no end card. */
   function activityOn() { return Flow.inUse({ wide: !phone(), open: st.scr === 'act', end: endUp(), busy: boardBusy(), check: Placement.isOpen() }); }
   /* F-D5: no slot anywhere on the player's first calendar day (and none before a level is set). Home and Progress also
@@ -801,6 +818,7 @@
     if (Flow.keepsScreen({ tab: st.tab, zoneTab: ZTAB[zoneOf()], learnEnd: !!st.end })) return;
     st.scr = 'tabs';
     if (phone() && st.mode === 'review') { st.rv = null; st.mode = 'play'; st.sel = null; resetHints(); } /* a review has no Resume card: it ends */
+    if (phone() && st.mode === 'friend') frLeave(); /* FC4: nor has a friend board (its row on Play opens it again) */
   }
   /* Writes the two root attributes the CSS reads, in the same step as the state change (criterion 2: within one frame). */
   function syncScreen() {
@@ -827,6 +845,7 @@
   function actWords() {
     var n = G.history().length, bar = $('modeText').textContent; /* the mode bar's own words (renderMode), so a phone loses nothing it said */
     if (st.mode === 'review' && st.rv) return [bar, $('navPos').textContent];
+    if (st.mode === 'friend') return frWords(); /* FC4: the friend's name, whose move and the time left */
     if (st.mode === 'lesson' && st.ls) return [st.ls.unit.title, lessonPlace(st.ls)];
     if (st.ses && st.mode !== 'play') return [bar, setPlace(st.ses)];
     return [n ? 'Your game' : 'New game', G.game_over() ? Math.ceil(n / 2) + ' moves' : turnLine()];
@@ -987,10 +1006,11 @@
     if (!actOpen()) return false;
     save(); /* nothing is ever lost by Close: the game is written once more as it stands */
     if (st.mode === 'review' && st.rv && !st.rv.past && !G.game_over()) { exitMode(true); return true; }
-    var to = Flow.closeTab({ mode: st.mode, zoneTab: ZTAB[zoneOf()], learnEnd: !!st.end, past: !!(st.rv && st.rv.past), from: st.rvFrom });
+    var to = Flow.closeTab({ mode: st.mode, zoneTab: ZTAB[zoneOf()], learnEnd: !!st.end, past: !!(st.rv && st.rv.past), from: st.rvFrom }), fid = st.mode === 'friend' ? st.fid : null;
     leaveEnd(true);
     st.scr = 'tabs'; switchTab(to); render(); syncResume(); /* G-D19: the place is written on Close (render already did; said here on purpose) */
-    var b = document.querySelector('#panel-' + to + ' .rs-go');
+    var b = fid ? document.querySelector('#friendCard [data-act="fopen"][data-g="' + fid + '"]') : null; /* FC4: back to the friend game's row */
+    if (!b || b.offsetParent === null) b = document.querySelector('#panel-' + to + ' .rs-go');
     if (b && b.offsetParent !== null) try { b.focus({ preventScroll: true }); } catch (e) {} else focusTab();
     return true;
   }
@@ -998,6 +1018,7 @@
   function leaveEnd(closing) {
     if (st.mode === 'review' && (closing || reviewDone())) { st.rv = null; st.mode = 'play'; st.sel = null; resetHints(); var last = G.history({ verbose: true }).slice(-1)[0]; if (last && last.color !== st.user) st.arrows = [{ from: last.from, to: last.to, color: 'var(--c-blund)' }]; }
     if (sesEnded()) { clearSession(); st.mode = 'play'; st.sel = null; resetHints(); }
+    if (st.mode === 'friend') frLeave(); /* FC4: the friend game waits in its row on Play */
     st.end = null;
   }
   /* THE SLOT SEAM. renderSlot is the only code that fills a slot. Today it always shows the coach's tip. A later slice (F3)
@@ -1249,6 +1270,20 @@
   var endFull = null; /* the finished game whose full result card (with buttons) is on screen, for the desktop slot strip */
   function renderEnd() {
     var el = $('gameEnd'), html = '', key = '', full = false;
+    if (st.mode === 'friend') { /* FC4: the friend game's end card, the normal pattern: Review this game (FC-D10), Home, and the slot (FC-D15) */
+      var fgm = frGame(), fe = fgm ? Friends.endCopy(fgm) : null;
+      if (fe && phone() && st.scr !== 'act') fe = null;
+      if (fe) {
+        key = 'f' + fgm.id + '|' + fgm.v;
+        var FT = 'class="ec-title" tabindex="-1">' + esc(fe.title);
+        if (st.tab !== 'play') html = '<p ' + FT + '</p>';
+        else {
+          full = true; endFull = key;
+          html = '<h3 ' + FT + '</h3><p class="ec-text">' + esc(fe.text) + '</p>' +
+            ecButtons({ line: null, main: { label: Flow.COPY.review, go: 'review' }, small: [{ label: Flow.COPY.home, go: 'home' }] }, { review: 'data-act="freview" data-g="' + esc(fgm.id) + '"', home: 'data-act="home"' }) + slotHost('game', key);
+        }
+      }
+    }
     if (st.mode === 'play') {
       var r = result(G, st.user); st.over = !!r;
       if (r && phone() && st.scr !== 'act') r = null; /* G2a: on a phone the result card is on the board screen only */
@@ -1367,6 +1402,7 @@
     if (st.mode === 'drill') return drillMove(from, to);
     if (st.mode === 'book') return bookMove(from, to);
     if (st.mode === 'placement') return placementMove(from, to);
+    if (st.mode === 'friend') return friendMove(from, to); /* FC4 */
     var fenBefore = G.fen(), mv = G.move({ from: from, to: to, promotion: 'q' }), gid = st.gid;
     if (!mv) return;
     /* Fix round 1: a move on the board under a Learn end card (phones) is a move in the game: the end card is over in the same
@@ -1497,7 +1533,7 @@
 
   /* ---------- hints ---------- */
   function hint() {
-    if (!interactive()) return;
+    if (!interactive() || st.mode === 'friend') return; /* FC4, criterion 6: no hints in a friend game */
     var g = viewGame();
     var getBest = st.mode === 'play' && st.think && st.think.best ? Promise.resolve(st.think)
       : st.mode === 'puzzle' ? Promise.resolve(puzzleHintData())
@@ -1571,7 +1607,7 @@
     var past = !!src, sans = past ? src.sans : G.history(), notes = past ? {} : JSON.parse(JSON.stringify(st.notes));
     var ann = past ? JSON.parse(JSON.stringify(src.ann || {})) : JSON.parse(JSON.stringify(st.ann)), user = past ? src.user : st.user, s = summarize(ann, {}, user);
     st.mode = 'review'; st.sel = null; resetHints();
-    st.rv = { id: past ? src.id : null, sans: sans, notes: notes, ann: ann, user: user, level: past ? src.level : st.level, past: past, ply: past ? 0 : sans.length, acc: s.acc, counts: s.counts, g: null };
+    st.rv = { id: past ? src.id : null, sans: sans, notes: notes, ann: ann, user: user, level: past ? src.level : st.level, past: past, ply: past ? 0 : sans.length, acc: s.acc, counts: s.counts, g: null, fr: past && src.fr ? src.fr : null };
     openAct(); switchTab('play'); gotoPly(st.rv.ply);
   }
   function gotoPly(p) {
@@ -1597,6 +1633,7 @@
   /* ---------- sessions ---------- */
   function clearSession() { st.nm = null; st.end = null; st.ses = null; st.pz = null; st.qz = null; st.sq = null; st.dr = null; st.bk = null; st.ls = null; st.rc = null; st.flash = null; st.ab = false; boardId++; }
   function exitMode(toGame) {
+    if (st.mode === 'friend') frLeave(); /* FC4 */
     var from = st.mode, unit = st.ses && st.ses.unit;
     if (toGame === true) stow('play'); /* G2b (G-D20, G-D35): "Resume game" keeps the open lesson or set for its Resume card, at every width */
     clearSession(); st.mode = 'play'; st.rv = null; st.sel = null; resetHints();
@@ -2168,7 +2205,7 @@
     else if (st.mode === 'review' && st.rv) {
       var n = st.rv.notes[st.rv.ply - 1], lm = pl && st.rv.ply ? lastMove(st.rv.g) : null, sw = lm ? Words.say(lm, lm.color === st.rv.user) : '';
       if (n && n.side === 'u') { t = sw ? sw + ' ' + CLS[n.cls].title + '.' : CLS[n.cls].title; x = n.text; mood = Avatar.moodFor(n.cls); }
-      else if (n && n.why) { t = sw || 'Engine played ' + st.rv.sans[st.rv.ply - 1]; x = n.why.length ? n.why[n.why.length - 1].h : ''; }
+      else if (n && n.why) { t = sw || (st.rv.fr ? Friends.COPY.rvPlayed : 'Engine played ') + st.rv.sans[st.rv.ply - 1]; x = n.why.length ? n.why[n.why.length - 1].h : ''; }
       else if (sw) { t = sw; x = ''; }
       else { t = 'Review'; x = 'Step through with Next.'; }
     }
@@ -2494,7 +2531,7 @@
   function inActivity() {
     if (phone()) return actOpen() && !endUp(); /* G2a: on phones, while the board screen is open without an end card */
     if (st.tab === 'coach') return false;
-    return st.mode === 'lesson' || st.mode === 'review' || !!(st.ses && !st.ses.finished) || (st.mode === 'play' && st.tab === 'play' && G.history().length > 0 && !G.game_over());
+    return st.mode === 'lesson' || st.mode === 'review' || !!(st.ses && !st.ses.finished) || frLive() || (st.mode === 'play' && st.tab === 'play' && G.history().length > 0 && !G.game_over());
   }
   function releaseOffer() {
     if (!heldOffer.start && !heldOffer.lesson) return;
@@ -2731,7 +2768,8 @@
   /* One finished game's row: Progress, and on phones the first three on Play (G-D6). i: its place in prof.games. */
   function gameRow(g, i, pl) {
     var ds = new Date(g.d).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
-    return '<div class="hrow"><span class="res ' + g.r + '">' + { W: 'Won', L: 'Lost', D: 'Draw' }[g.r] + '</span><div>' + ds + ' · ' + (pl ? partnerName() : OPP[g.level] ? OPP[g.level].name : '') + ' · ' + (g.user === 'w' ? 'White' : 'Black') + '<small>' + Math.ceil(g.sans.length / 2) + ' moves' + (g.acc != null && !pl ? ' · accuracy ' + g.acc + '%' : '') + '</small></div><button class="btn sm" type="button" data-review="' + i + '" data-gid="' + esc(String(g.id)) + '">Review</button></div>';
+    var who = g.fr ? Friends.histName(FR ? FR.store() : null, g.fr) : pl ? partnerName() : OPP[g.level] ? OPP[g.level].name : ''; /* FC4: "vs Priya (friend)", the nickname from this phone only */
+    return '<div class="hrow"' + (g.fr ? ' data-friend="1"' : '') + '><span class="res ' + g.r + '">' + { W: 'Won', L: 'Lost', D: 'Draw' }[g.r] + '</span><div>' + ds + ' · ' + esc(who) + ' · ' + (g.user === 'w' ? 'White' : 'Black') + '<small>' + Math.ceil(g.sans.length / 2) + ' moves' + (g.acc != null && !pl ? ' · accuracy ' + g.acc + '%' : '') + '</small></div><button class="btn sm" type="button" data-review="' + i + '" data-gid="' + esc(String(g.id)) + '">Review</button></div>';
   }
   function themeStats() {
     var out = {};
@@ -2964,7 +3002,7 @@
   $('flipBtn').addEventListener('click', function () { st.flipped = !st.flipped; render(); if (st.mode === 'play') save(); });
   $('newBtn').addEventListener('click', function () { newGame(false); });
   $('reviewBtn').addEventListener('click', function () { if (G.history().length) enterReview(null); });
-  $('modeExit').addEventListener('click', function () { if (st.mode === 'play') switchTab('train'); else exitMode(st.mode !== 'review' || !st.rv.past); });
+  $('modeExit').addEventListener('click', function () { if (st.mode === 'play') switchTab('train'); else if (st.mode === 'friend') { frLeave(); exitMode(true); } else exitMode(st.mode !== 'review' || !st.rv.past); });
   $('navFirst').addEventListener('click', function () { if (st.mode === 'review') navTo(0); });
   $('navPrev').addEventListener('click', function () { if (st.mode === 'review') navTo(st.rv.ply - 1); else if (st.mode === 'lesson') lessonNav(-1); });
   $('navNext').addEventListener('click', function () { if (st.mode === 'review') navTo(st.rv.ply + 1); else if (st.mode === 'lesson') lessonNav(1); });
@@ -2972,7 +3010,7 @@
   $('qSafe').addEventListener('click', function () { answerQuiz(false); });
   $('qBlunder').addEventListener('click', function () { answerQuiz(true); });
   $('moves').addEventListener('click', function (e) {
-    var td = e.target.closest('td[data-ply]'); if (!td) return;
+    var td = e.target.closest('td[data-ply]'); if (!td || st.mode === 'friend') return; /* FC4: a friend game is reviewed only once it ends */
     if (st.mode !== 'review') enterReview(null);
     navTo(+td.dataset.ply);
   });
@@ -3009,6 +3047,18 @@
     if (d.act === 'fshare') { frAgain(d.g); return; }
     if (d.act === 'ftest') { frToggle(); return; }
     if (d.fcol) { frPick(d.fcol); return; }
+    /* FC4: the friend board */
+    if (d.act === 'fopen') { frOpenBoard(d.g); return; }
+    if (d.act === 'fname') { frNameOpen(d.g); return; }
+    if (d.act === 'fsave') { frSaveName(); return; }
+    if (d.act === 'fresign') { frAsk(true); return; }
+    if (d.act === 'fresignno') { frAsk(false); return; }
+    if (d.act === 'fresignyes') { frResign(); return; }
+    if (d.act === 'foffer') { frDraw('offer'); return; }
+    if (d.act === 'fdaccept') { frDraw('accept'); return; }
+    if (d.act === 'fdecline') { frDraw('decline'); return; }
+    if (d.act === 'freview') { frReview(d.g); return; }
+    if (d.act === 'fback') { openAct(); switchTab('play'); render(); return; }
     if (d.act === 'rvnew') { st.mode = 'play'; st.rv = null; resetHints(); newGame(false); render(); return; }
     if (d.act === 'recgame') { newGame(false, { level: plain() ? Profile.LEVELS.beginner.opp : recLevel() }); return; }
     if (d.act === 'review') { enterReview(null); return; }
@@ -3302,7 +3352,7 @@
   }
   /* A lesson, a review not yet at its end card or a set in progress, or a game on the board that is not over. A game that waits while a set's end card
      shows (G2b) is not in play. */
-  function rateBusy() { return st.mode === 'lesson' || (st.mode === 'review' && !reviewDone()) || !!(st.ses && !st.ses.finished && !st.ses.end) || (st.mode === 'play' && !st.ses && gameOn()); }
+  function rateBusy() { return st.mode === 'lesson' || (st.mode === 'review' && !reviewDone()) || !!(st.ses && !st.ses.finished && !st.ses.end) || (st.mode === 'play' && !st.ses && gameOn()) || frLive(); }
   function rateNow(el) {
     if (!IAR || !el || !el.isConnected || el.hidden || !el.getClientRects().length) return;
     var sh = $('settingsSheet');
@@ -3358,9 +3408,11 @@
     }
     var s = FR.store(), rows = Friends.rows(s, Date.now()), full = !Friends.canChallenge(s), busy = Object.keys(frBusy).length > 0;
     var h = rows.length ? '<div class="fg-list">' + rows.map(function (r) {
-      return '<div class="fg-row" data-kind="' + r.kind + '" data-g="' + esc(r.id) + '"><div class="fg-tt"><b>' + esc(r.name) + '</b><span class="fg-state">' + esc(r.line) + '</span>' +
-        (r.record ? '<small class="fg-rec">' + esc(r.record) + '</small>' : '') + '</div>' +
-        (r.kind === 'invite' ? '<div class="fg-btns">' + frBtn('btn sm', 'fshare', C.share, { g: r.id, off: !!frBusy[r.id] }) + frBtn('btn sm', 'fcancel', C.cancel, { g: r.id, busy: !!frBusy[r.id] }) + '</div>' : '') + '</div>';
+      /* FC4: an active game's row opens its board (the whole text is one button); FC-D28: "Name your friend" while unnamed */
+      var inner = '<b>' + esc(r.name) + '</b><span class="fg-state">' + esc(r.line) + '</span>' + (r.record ? '<small class="fg-rec">' + esc(r.record) + '</small>' : '');
+      return '<div class="fg-row" data-kind="' + r.kind + '" data-g="' + esc(r.id) + '">' +
+        (r.kind === 'invite' ? '<div class="fg-tt">' + inner + '</div><div class="fg-btns">' + frBtn('btn sm', 'fshare', C.share, { g: r.id, off: !!frBusy[r.id] }) + frBtn('btn sm', 'fcancel', C.cancel, { g: r.id, busy: !!frBusy[r.id] }) + '</div>'
+          : '<button class="fg-tt fg-open" type="button" data-act="fopen" data-g="' + esc(r.id) + '">' + inner + '</button>' + (r.needsName ? '<div class="fg-btns">' + frBtn('btn sm', 'fname', C.nameLabel, { g: r.id }) + '</div>' : '')) + '</div>';
     }).join('') + '</div>' : '';
     var go = frBtn('btn primary fg-go', 'fchallenge', C.challenge, { off: full, extra: full ? ' aria-describedby="friendFull"' : '' }) + (full ? '<p class="fg-full" id="friendFull">' + esc(C.full) + '</p>' : '');
     var f = document.activeElement, keep = f && card.contains(f) ? (f.dataset.act || '') + '|' + (f.dataset.g || '') : null;
@@ -3380,11 +3432,12 @@
   /* Play tab open (at most every 10 seconds) and App resume (always). Only with an ID: a sync never creates one. */
   function frSync(force) {
     if (!frOn() || !FR.signedIn()) return;
+    frFlushAll(); /* FC4: a move waiting to be sent goes first (Play open, App resume, back online) */
     if (!force && Date.now() - frLastSync < 10000) return;
     frLastSync = Date.now();
-    if (frOffline()) { frLine = Friends.COPY.offline; renderFriends(); return; }
+    if (frOffline()) { frLine = Friends.COPY.offline; frSettle(); return; }
     var p = FR.sync(); if (!p) return;
-    p.then(function () { frLine = null; renderFriends(); }, function (e) { frLine = e && e.code === 'offline' ? Friends.COPY.offline : null; renderFriends(); });
+    p.then(function () { frLine = null; frSettle(); }, function (e) { frLine = e && e.code === 'offline' ? Friends.COPY.offline : null; frSettle(); });
   }
   /* The share sheet with the approved text: "Play chess with me in Chess Coach: <link>". A cancelled share is not an error. */
   function frShareLink(code) {
@@ -3418,7 +3471,7 @@
   }
   function drawFriendSheet() {
     var sh = $('friendSheet'), f = frSheet, C = Friends.COPY; if (!sh || !f || !$('fgBody')) return;
-    var title = f.kind === 'challenge' ? C.challenge : C.acceptTitle, body, acts;
+    var title = f.kind === 'challenge' ? C.challenge : f.kind === 'name' ? C.nameLabel : C.acceptTitle, body, acts;
     if ($('fgTitle').textContent !== title) $('fgTitle').textContent = title;
     if (f.kind === 'challenge') {
       body = '<p class="fg-lbl" id="fgColLbl">' + esc(C.playAs) + '</p><div class="seg fg-seg" role="radiogroup" aria-labelledby="fgColLbl">' +
@@ -3427,6 +3480,10 @@
           return '<button class="segbtn' + (on ? ' on' : '') + '" type="button" role="radio" aria-checked="' + on + '" tabindex="' + (on ? 0 : -1) + '" data-fcol="' + x[0] + '"' + (f.busy ? ' disabled' : '') + '>' + esc(x[1]) + '</button>';
         }).join('') + '</div>';
       acts = frBtn('btn primary big fg-send', 'fsend', C.share, { busy: f.busy });
+    } else if (f.kind === 'name') { /* FC4, FC-D28: the challenger names the friend once the friend has accepted (same rules as the Accept sheet) */
+      body = '<label class="fg-lbl" for="fgNick">' + esc(C.nameLabel) + ' <small>' + esc(C.nameHint) + '</small></label>' +
+        '<input id="fgNick" type="text" maxlength="' + Friends.NICK_MAX + '" autocomplete="off" autocapitalize="words" spellcheck="false" enterkeyhint="done">';
+      acts = '<div class="fg-acts">' + frBtn('btn primary big', 'fsave', C.save) + frBtn('btn big', 'fclose', C.notNow) + '</div>';
     } else {
       /* fix 4: the sheet opens at once while peek runs (loading), then shows the colour; a dead link keeps only Not now */
       body = f.dead ? '' : '<p class="fg-col" id="fgCol">' + (f.col ? esc(Friends.youPlay(f.col)) : '') + '</p>' +
@@ -3528,10 +3585,167 @@
     FR.op('cancel', { g: id }).then(function () { frLine = null; }, function (e) {
       var c = e && e.code;
       frLine = c === 'over' || c === 'used' ? null : Friends.errorText(c);
-    }).then(function () { delete frBusy[id]; renderFriends(); });
+    }).then(function () { delete frBusy[id]; frSettle(); });
   }
   function frAgain(id) { var g = FR && FR.store().games[id]; if (g && g.code && !frBusy[id]) frShareLink(g.code); }
   function frPick(c) { if (!frSheet || frSheet.kind !== 'challenge' || frSheet.busy || ['w', 'b', 'r'].indexOf(c) < 0) return; frSheet.col = c; frSheet.msg = null; drawFriendSheet(); var b = document.querySelector('[data-fcol="' + c + '"]'); if (b) b.focus(); }
+  /* ---------- FC4: the friend board (tech spec section 9; product spec FC-D6, FC-D10, FC-D11, FC-D13, FC-D15, FC-D21, FC-D28,
+     FC-D29, scenarios 4, 5, 7, 8, criteria 3, 6, 7, 8). st.mode 'friend' with its own Chess instance (st.fg), drawn by the same
+     board, piece sets, 3D and layout code as every other mode (viewGame). Hints, the eval bar, the think card, coach lines and
+     Stockfish all key off 'play', so none of them runs here (criterion 6); the engine game G waits as during a review. The
+     friend store is the truth: the board is the server's moves plus the move waiting to be sent (pend), saved before any call
+     (FC-D13). The clock is the server's deadline with the server's skew, and never stops offline (FC-D6). ---------- */
+  var FR_TICK = 60000, frTimer = null, frSending = {}, frBarMsg = null, frConfirm = false, frActing = null, frFgKey = '';
+  function frGame() { return FR && st.fid ? FR.store().games[st.fid] || null : null; }
+  function frMe() { var g = frGame(); return g && (g.me === 'w' || g.me === 'b') ? g.me : 'w'; }
+  /* a friend game in progress is on the board: the board is in use (no banner, no tip slot, no offers; FC-D15) */
+  function frLive() { var g = st.mode === 'friend' ? frGame() : null; return !!g && g.st === 'active'; }
+  function frCanMove() { var g = frGame(); return !!g && g.st === 'active' && !g.pend && Friends.turnOf(g) === g.me && !!st.fg && !st.fg.game_over(); }
+  function frOppName() { var s = FR ? FR.store() : null; return st.mode === 'review' && st.rv && st.rv.fr ? Friends.oppName(s, { opp: st.rv.fr }) : Friends.oppName(s, frGame()); }
+  /* The mode bar's and the Close bar's words: "Friend game vs Priya", and "Your move, 2 days left" / "Their move" / "Not sent yet" / the result */
+  function frWords() { var g = frGame(), s = FR ? FR.store() : null; return g ? [Friends.boardTitle(s, g), Friends.boardLine(g, Date.now(), s.skew)] : [Friends.COPY.board, '']; }
+  /* The board follows the store; rebuilt only when its moves or the waiting move change. No render here (render calls it). */
+  function frBoardSync() {
+    var g = frGame();
+    if (!g || g.st === 'invited') { frLeave(); return; } /* gone (a dead ID clears the store) */
+    var p = g.pend, key = g.id + '|' + g.moves.join(' ') + '|' + (p ? p.from + p.to + (p.promo || '') : '');
+    if (st.fg && frFgKey === key) return;
+    var c = new Chess();
+    for (var i = 0; i < g.moves.length; i++) if (!c.move(g.moves[i])) break;
+    if (p) c.move({ from: p.from, to: p.to, promotion: p.promo || 'q' });
+    st.fg = c; frFgKey = key; st.sel = null; st.hls = [];
+    var last = c.history({ verbose: true }).slice(-1)[0];
+    st.arrows = last && last.color !== g.me ? [{ from: last.from, to: last.to, color: 'var(--c-blund)' }] : [];
+  }
+  /* A row on Play opens its game. What is on the board waits, as for a review (stow: a lesson or set keeps its Resume card). */
+  function frOpenBoard(id) {
+    if (!frOn()) return;
+    var g = FR.store().games[id]; if (!g || g.st !== 'active') return;
+    rateReset(); stow('play'); clearSession(); hideTip(); if (st.pv) endPreview();
+    st.mode = 'friend'; st.fid = id; st.fg = null; frFgKey = ''; st.rv = null; st.af = false; st.sel = null; resetHints();
+    frConfirm = false; frBarMsg = null; frActing = null;
+    openAct(); switchTab('play'); render();
+    frSync(true); /* the friend's latest move, and a waiting move of mine goes first */
+  }
+  /* The friend board closes (Close, a tab, another activity): the game waits in its row on Play. No render here. */
+  function frLeave() {
+    if (st.mode === 'friend') {
+      st.mode = 'play'; st.sel = null; resetHints();
+      var last = G.history({ verbose: true }).slice(-1)[0]; if (last && last.color !== st.user) st.arrows = [{ from: last.from, to: last.to, color: 'var(--c-blund)' }];
+    }
+    st.fid = null; st.fg = null; frFgKey = ''; frConfirm = false; frBarMsg = null; frActing = null;
+  }
+  /* A move: checked by chess.js here, shown at once, saved as pend, then sent (FC-D13). No undo, no takebacks. */
+  function friendMove(from, to) {
+    var g = frGame(); if (!g || !frCanMove()) return;
+    var m = st.fg.move({ from: from, to: to, promotion: 'q' }); if (!m) return;
+    st.fg.undo();
+    var mv = { from: from, to: to }; if (m.flags.indexOf('p') > -1) mv.promo = 'q'; /* the app promotes to a queen, as in every game */
+    st.sel = null; st.nm = null; frConfirm = false; frBarMsg = null;
+    if (!FR.queue(g.id, mv, Date.now())) { render(); return; }
+    render(); /* "Not sent yet" until the server has it */
+    frFlush(g.id);
+  }
+  /* Sends a game's waiting move (one call at a time per game). Offline it waits: it goes on online, App resume, Play, every 60 s. */
+  function frFlush(id) {
+    if (!frOn() || frSending[id]) return;
+    var g = FR.store().games[id]; if (!Friends.sendable(g) || frOffline()) return;
+    frSending[id] = true;
+    FR.op('move', Friends.moveReq(g), { signUp: false }).then(function (r) { return FR.settleSend(id, r ? null : { code: 'offline' }); }, function (e) { return FR.settleSend(id, e); })
+      .then(function (r) { delete frSending[id]; if (r === 'sync') { frLastSync = 0; frSync(true); } frSettle(); }, function () { delete frSending[id]; });
+  }
+  function frFlushAll() { if (!frOn() || !FR.signedIn()) return; Friends.toSend(FR.store()).forEach(frFlush); }
+  /* After every answer: a finished game goes into the history (prof.games) and the record per friend (the friend store, FC-D29),
+     once each, never for a cancelled or expired invite; it counts as a game played today. Then the screen follows. */
+  function frSettle() {
+    if (!FR) return;
+    var s = FR.store(), add = false;
+    Friends.toRecord(s).forEach(function (id) {
+      var e = Friends.entry(s.games[id]); if (!e) return;
+      if (!prof.games.some(function (x) { return x && x.id === e.id; })) { prof.games.unshift(e); prof.games = prof.games.slice(0, 30); dayRec().games++; add = true; }
+      FR.record(id);
+    });
+    if (add) saveProfile();
+    if (st.mode === 'friend' || add) render(); else renderFriends();
+    if (add && st.tab === 'progress') renderProgress();
+  }
+  /* Every 60 s: a waiting move is sent again; with the board open the friend's move comes in (push is FC5); the time lines move on */
+  function frTick() {
+    if (!frOn() || !FR.signedIn()) return;
+    if (st.mode === 'friend') { frSync(true); return; }
+    frFlushAll();
+    if (st.tab === 'play') renderFriends();
+  }
+  /* Resign (after its confirm step) and draws need the internet (the approved line); one call at a time, "One moment." meanwhile */
+  function frAsk(on) {
+    if (!frLive() || frActing) return;
+    frConfirm = !!on; frBarMsg = null; render();
+    var b = document.querySelector('#friendBar [data-act="' + (on ? 'fresignno' : 'fresign') + '"]'); if (b) try { b.focus({ preventScroll: true }); } catch (e) {}
+  }
+  function frErr(e) { var c = e && e.code; return c === 'offline' ? Friends.COPY.offline : c === 'late' || c === 'over' ? null : Friends.COPY.error; }
+  function frAct(act, op, data, after) {
+    var g = frGame(); if (!g || frActing) return;
+    if (frOffline()) { frConfirm = false; frBarMsg = Friends.COPY.offline; render(); return; } /* nothing is queued: the approved line */
+    frActing = act; frBarMsg = null; render();
+    FR.op(op, data, { signUp: false }).then(function (r) { frActing = null; after(r ? null : { code: 'offline' }); }, function (e) { frActing = null; after(e); }).then(frSettle);
+  }
+  function frResign() { var g = frGame(); if (!g || !frConfirm) return; frAct('fresignyes', 'resign', { g: g.id }, function (e) { frConfirm = false; frBarMsg = e ? frErr(e) : null; }); }
+  function frDraw(a) {
+    var g = frGame(); if (!g || g.st !== 'active') return;
+    if (a === 'offer' && !Friends.canOffer(g)) return;
+    var id = g.id, act = { offer: 'foffer', accept: 'fdaccept', decline: 'fdecline' }[a];
+    frAct(act, 'draw', { g: id, a: a }, function (e) {
+      if (!e) { if (a === 'offer') FR.offered(id); frBarMsg = null; return; }
+      if (e.code === 'draw') { if (a === 'offer') { FR.offered(id); frBarMsg = Friends.COPY.drawLater; } else frBarMsg = null; frSync(true); return; } /* not possible now: the server's state wins */
+      frBarMsg = frErr(e);
+    });
+  }
+  /* "Review this game": the review has everything, engine included (FC-D10) */
+  function frReview(id) {
+    var e = null; prof.games.forEach(function (x) { if (!e && x && x.id === 'f-' + id) e = x; });
+    if (!e) { var g = FR && FR.store().games[id]; e = g ? Friends.entry(g) : null; }
+    if (!e) return;
+    frLeave(); enterReview(e);
+  }
+  /* FC-D28: "Name your friend" from the row or the board, once the friend has accepted; on this phone only (FC-D29) */
+  function frNameOpen(id) {
+    if (!frOn()) return;
+    var s = FR.store(), g = s.games[id]; if (!g || !Friends.needsName(s, g)) return;
+    frOpen('name', { opp: g.opp, g: id });
+    var n = $('fgNick'); if (n) try { n.focus({ preventScroll: true }); } catch (e) {}
+  }
+  function frSaveName() {
+    var f = frSheet; if (!f || f.kind !== 'name') return;
+    var n = Friends.nick(($('fgNick') || {}).value);
+    if (n) FR.name(f.opp, n, Date.now());
+    frClose(true); render();
+    var b = document.querySelector('#friendCard [data-act="fopen"][data-g="' + f.g + '"]');
+    if (!b || !b.getClientRects().length) b = document.querySelector('#friendBar button:not([disabled])');
+    if (b && b.getClientRects().length) try { b.focus({ preventScroll: true }); } catch (e) {} else focusTab();
+  }
+  /* The controls under the board: Offer draw and Resign (Resign asks first), Accept and Decline for the friend's offer, Name your
+     friend, and one persistent status line (the draw offer, offline, "One moment."). Its frame is built once. */
+  function renderFriendBar() {
+    var bar = $('friendBar'); if (!bar) return;
+    var g = st.mode === 'friend' ? frGame() : null;
+    if (!g) { if (!bar.hidden) bar.hidden = true; return; }
+    var C = Friends.COPY, open = g.st === 'active', from = Friends.offerFrom(g), s = FR.store(), h = '', A = frActing;
+    if (!bar._built) { bar._built = true; bar.innerHTML = '<p class="fg-msg" id="fbMsg" role="status"></p><div class="controls fg-ctl" id="fbBtns"></div>'; }
+    if (open && frConfirm) h = '<p class="fg-ask" id="fbAsk">' + esc(C.resignAsk) + '</p>' + frBtn('btn danger', 'fresignyes', C.resign, { busy: A === 'fresignyes', off: !!A, extra: ' aria-describedby="fbAsk"' }) + frBtn('btn', 'fresignno', C.keep, { off: !!A });
+    else if (open) {
+      if (from === 'friend') h = frBtn('btn primary', 'fdaccept', C.accept, { busy: A === 'fdaccept', off: !!A, extra: ' aria-describedby="fbMsg"' }) + frBtn('btn', 'fdecline', C.decline, { busy: A === 'fdecline', off: !!A, extra: ' aria-describedby="fbMsg"' });
+      else h = frBtn('btn', 'foffer', C.offerDraw, { busy: A === 'foffer', off: !!A || !Friends.canOffer(g) });
+      h += frBtn('btn', 'fresign', C.resign, { off: !!A });
+    }
+    if (Friends.needsName(s, g)) h += frBtn('btn', 'fname', C.nameLabel, { g: g.id });
+    var msg = A ? C.busy : frBarMsg || (open ? Friends.drawLine(g) : '') || '';
+    var a = document.activeElement, keep = a && bar.contains(a) ? a.dataset.act || '' : null;
+    var bx = $('fbBtns'), m = $('fbMsg');
+    if (bx._h !== h) { bx._h = h; bx.innerHTML = h; }
+    if (m.textContent !== msg) m.textContent = msg;
+    if (keep != null && !bar.contains(document.activeElement)) { var b = bar.querySelector('[data-act="' + keep + '"]:not([disabled])') || bar.querySelector('button:not([disabled])'); if (b) try { b.focus({ preventScroll: true }); } catch (e) {} }
+    bar.hidden = !h && !msg;
+  }
   /* Settings: "Friend games (test)", only in a test build with a real config while the launch switch is off (fix 1) */
   function renderFriendSet() {
     var box = $('friendSet'); if (!box) return;
@@ -3546,7 +3760,7 @@
     var sh = $('friendSheet');
     if (e.key === 'Escape') { if (!e.defaultPrevented) { e.preventDefault(); frClose(); } return; } /* a note on top closes first */
     if (e.key === 'Tab') { trapTab(sh.querySelector('.sheet-panel'), e); return; }
-    if (e.key === 'Enter' && e.target && e.target.id === 'fgNick') { e.preventDefault(); frAccept(); return; }
+    if (e.key === 'Enter' && e.target && e.target.id === 'fgNick') { e.preventDefault(); if (frSheet && frSheet.kind === 'name') frSaveName(); else frAccept(); return; }
     var t = e.target; if (!t || !t.dataset || !t.dataset.fcol) return;
     var d = { ArrowLeft: -1, ArrowUp: -1, ArrowRight: 1, ArrowDown: 1 }[e.key]; if (!d) return;
     e.preventDefault(); var o = ['w', 'b', 'r'], i = o.indexOf(t.dataset.fcol); frPick(o[(i + d + 3) % 3]);
@@ -3561,7 +3775,9 @@
     frBooted = true;
     try { var a = frApp.addListener('appUrlOpen', function (d) { try { frLink(d && d.url, false); } catch (e) {} }); if (a && typeof a.catch === 'function') a.catch(rmNone); } catch (e) {}
     try { var b = frApp.addListener('resume', function () { try { frSync(true); } catch (e) {} }); if (b && typeof b.catch === 'function') b.catch(rmNone); } catch (e) {}
-    window.addEventListener('online', function () { if (frLine === Friends.COPY.offline) frSync(true); }); /* back online: the no-internet line goes once a sync works */
+    window.addEventListener('online', function () { frFlushAll(); if (frLine === Friends.COPY.offline || st.mode === 'friend') frSync(true); }); /* back online: a waiting move goes (FC4); the no-internet line goes once a sync works */
+    frTimer = setInterval(frTick, FR_TICK); /* FC4: every 60 s */
+    frSettle(); /* FC4: a game that ended before the app closed is recorded now */
     if (!later && typeof frApp.getLaunchUrl === 'function') pcall(function () { return frApp.getLaunchUrl(); }).then(function (r) { if (r && r.url) frLink(r.url, true); }).catch(rmNone);
   }
   if (window.claude && window.claude.hot && window.claude.hot.snapshot) { try { window.claude.hot.snapshot(snapshot); } catch (e) {} }
@@ -3572,5 +3788,6 @@
     reveals: function () { return revealN; },
     closeAct: closeAct, /* G2a: what the Close button does */ backPressed: backPressed, /* G2c: what the phone's back button does (true: used) */ /* how often an end card was scrolled into view (e2e) */
     fr: function () { return FR ? Friends.safeCopy(FR.store()) : null; }, /* FC3: the friend store without the refresh token (e2e, fix 8) */
+    frTick: function () { frTick(); }, /* FC4: the 60 s timer's work, at once (e2e) */
     nextLabel: function () { return nextAction(currentStage()).label; } /* today's Next step, for the e2e check that the Continue card follows it */ };
 })();

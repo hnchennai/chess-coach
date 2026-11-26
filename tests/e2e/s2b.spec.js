@@ -700,13 +700,33 @@ const cases = [
     assert.equal(await page.evaluate(() => window.__coach.st.goal && window.__coach.st.goal.unit), 'opening');
     assert.equal(await page.locator('#raniNote').isHidden(), true, 'no question without a game going');
     await page.context().close();
-    // Learn's Start button does not change (D49).
+    // D52 (amends D49): Learn's Start button asks first too; Esc keeps the game, Start the lesson game starts it.
     page = await seeded(vp, p, { game: GAME_OPEN });
     await goTab(page, 'path');
     await page.locator('#levels [data-unit="opening"]').click();
-    await page.locator('#unitView [data-part="apply"]').click();
-    assert.equal(await page.evaluate(() => window.__coach.st.goal && window.__coach.st.goal.unit), 'opening', 'Learn starts the game task directly');
-    assert.equal(await page.locator('#raniNote').isHidden(), true);
+    const learnAsk = async () => {
+      await page.locator('#unitView [data-part="apply"]').click();
+      await page.waitForSelector('#raniNote:not([hidden])');
+      assert.equal(await noteText(page), ASK);
+      assert.equal(await st(page, 'goal'), null, 'Learn does not start the lesson game before the answer');
+      assert.deepEqual(await page.evaluate(() => window.__coach.hist()), hist, 'the old game is still there');
+    };
+    await learnAsk();
+    await page.keyboard.press('Escape');
+    assert.equal(await page.locator('#raniNote').isHidden(), true, 'Esc closes the question');
+    assert.deepEqual(await page.evaluate(() => window.__coach.hist()), hist, 'Esc keeps the old game');
+    if (await page.locator('#unitView [data-part="apply"]').isHidden()) { await goTab(page, 'path'); await page.locator('#levels [data-unit="opening"]').click(); }
+    await learnAsk();
+    await page.locator('#raniNote [data-act="askgo"]').click();
+    assert.equal(await page.evaluate(() => window.__coach.st.goal && window.__coach.st.goal.unit), 'opening', 'Start the lesson game starts it');
+    // Learn's Learn and Practice buttons never ask.
+    await page.context().close();
+    page = await seeded(vp, p, { game: GAME_OPEN });
+    await goTab(page, 'path');
+    await page.locator('#levels [data-unit="opening"]').click();
+    await page.locator('#unitView [data-part="learn"]').click();
+    assert.equal(await page.locator('#raniNote').isHidden(), true, 'Learn opens the lesson without a question');
+    assert.equal(await st(page, 'mode'), 'lesson');
     return page;
   }],
   ['S2b-4b / D50: Resume game ends an open puzzle set (G-D20 on phones, G-D35 on wide: it waits on Train instead); the puzzles already answered are kept', async (vp) => {

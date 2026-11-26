@@ -3031,7 +3031,7 @@
     var t = e.target.closest('button'); if (!t || t.closest('.tabs')) return;
     var d = t.dataset;
     if (d.unit) { if (!phone() && st.mode !== 'play' && st.mode !== 'review') { stow('play'); clearSession(); st.mode = 'play'; resetHints(); } /* phones: looking at a lesson's page keeps what is waiting; only starting something ends it. Wide (G-D35): the lesson or set on the board waits */ st.end = null; st.unitOpen = d.unit; switchTab('path'); render(); return; }
-    if (d.part) { st.unitOpen = d.u; startPart(d.u, d.part); return; }
+    if (d.part) { goPart(d.u, d.part); return; } /* D52 (amends D49): Learn's Start buttons ask first too, so an unfinished game is never dropped without a tap */
     if (d.zgo) { switchTab(d.zgo); return; }
     if (d.coach) { Coach3D.set(d.coach); $('coachAv').dataset.k = ''; $('coachStrip').dataset.k = ''; var sc = $('sessionCard'); if (sc) sc._h = ''; renderLook(); renderCoach(); render(); return; }
     if (d.act === 'units') { st.unitOpen = null; st.end = null; renderPath(); return; }

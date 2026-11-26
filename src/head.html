@@ -58,7 +58,9 @@ h1 { font-family: var(--f-display); font-weight: 700; font-size: clamp(26px, 4vw
 header p { margin: 0; color: var(--muted); }
 
 .app { display: grid; grid-template-columns: minmax(0, 600px) minmax(0, 1fr); gap: 28px; align-items: start; }
-@media (max-width: 860px) { .app { grid-template-columns: minmax(0, 1fr); gap: 18px; } }
+/* G-D41: THE phone layout (one column): up to 860px wide, or under 500px high whatever the width (a big phone held sideways,
+   915x412). Every phone rule below uses this same query, and app.js phone() reads it too, so CSS and JS never disagree. */
+@media (max-width: 860px), (max-height: 499.98px) { .app { grid-template-columns: minmax(0, 1fr); gap: 18px; } }
 
 /* board column */
 .boardcol { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
@@ -358,7 +360,7 @@ header { justify-content: space-between; align-items: center; }
 .coach > .avwrap { grid-row: 1 / span 6; padding-top: 2px; }
 .coach > *:not(.avwrap) { grid-column: 2; min-width: 0; }
 .coachstrip { display: none; }
-@media (max-width: 860px) {
+@media (max-width: 860px), (max-height: 499.98px) {
   .coachstrip:not(:empty) { display: grid; grid-template-columns: 46px minmax(0, 1fr); gap: 10px; align-items: center; }
   .coachstrip .bub { position: relative; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 8px 12px; font-size: 14px; line-height: 1.4; }
   .coachstrip .bub::before { content: ""; position: absolute; left: -7px; top: 50%; margin-top: -6px; border: 6px solid transparent; border-right-color: var(--line); border-left: 0; }
@@ -578,7 +580,7 @@ html.sheet-open, html.sheet-open body { overflow: hidden; }
 .sheet-top h2 { margin: 0; font-family: var(--f-display); font-size: 24px; }
 .sheet-top .pl-x { margin: 0 -10px 0 0; }
 @keyframes sheetUp { from { transform: translateY(24px); opacity: 0; } to { transform: none; opacity: 1; } }
-@media (min-width: 861px) { .sheet { align-items: center; } .sheet-panel { border-radius: 16px; } }
+@media (min-width: 861px) and (min-height: 500px) { .sheet { align-items: center; } .sheet-panel { border-radius: 16px; } }
 @media (prefers-reduced-motion: reduce) { .sheet-panel { animation: none; } }
 .pl-live { position: relative; }
 /* Landscape phones: board left, Rani and buttons right, board capped to the screen height */
@@ -644,7 +646,7 @@ header h1 { margin-right: auto; } /* the gear stays right when the engine pill i
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --streak-ink: #F2C46B; --streak-bg: #3A2E14; } }
 :root[data-theme="dark"] { --streak-ink: #F2C46B; --streak-bg: #3A2E14; }
 /* D38: one-column layouts hide the board on Beginner Home so Rani, the card and both buttons fit the first screen */
-@media (max-width: 860px) { html[data-bhome] .boardcol { display: none; } }
+@media (max-width: 860px), (max-height: 499.98px) { html[data-bhome] .boardcol { display: none; } }
 .bhome { display: flex; flex-direction: column; gap: 14px; }
 .bh-hero { position: relative; display: flex; flex-direction: column; align-items: center; gap: 12px; padding-top: 2px; }
 .bh-av { width: 112px; height: 112px; display: grid; place-items: center; }
@@ -744,10 +746,11 @@ header h1 { margin-right: auto; } /* the gear stays right when the engine pill i
 .rowlink { display: flex; align-items: center; width: 100%; box-sizing: border-box; text-align: left; text-decoration: none; }
 .rowlink[hidden] { display: none; }
 .rowlink + .rowlink { border-top: 1px solid var(--line); border-radius: 0 0 6px 6px; }
-/* ---------- G2a: board screens on phones (docs/specs/board-screens.product.md, board-screens.tech.md). Up to 860px wide (the
-   one-column layout) the five tabs are full pages with no board, and a game, lesson, set, drill or review opens the board
+/* ---------- G2a: board screens on phones (docs/specs/board-screens.product.md, board-screens.tech.md). In the phone layout
+   (G-D41: up to 860px wide, or under 500px high; the one-column layout) the five tabs are full pages with no board, and a game, lesson, set, drill or review opens the board
    screen: html[data-scr] (app.js syncScreen). html[data-scrend]: an end card is on it, so the tabs are back (G-D8).
-   Every rule that changes the layout is inside the 860px query, so wide screens cannot change (G-D10). Nothing moves in the DOM. ---------- */
+   Every rule that changes the layout is inside the phone-layout query, so wide screens cannot change (G-D10). Nothing moves in
+   the DOM (but for the tab bar's place, G-D45, app.js placeTabs). ---------- */
 .actbar { display: none; position: sticky; top: 0; z-index: 40; box-sizing: border-box; align-items: center; gap: 8px; margin: calc(-10px - env(safe-area-inset-top)) calc(-1 * max(16px, env(safe-area-inset-right))) 8px calc(-1 * max(16px, env(safe-area-inset-left))); padding: calc(6px + env(safe-area-inset-top)) max(8px, env(safe-area-inset-right)) 6px max(8px, env(safe-area-inset-left)); background: var(--bg); border-bottom: 1px solid var(--line); }
 .acttext { flex: 1; min-width: 0; display: flex; flex-direction: column; line-height: 1.25; border-radius: 6px; }
 .acttext b, .acttext span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -800,9 +803,9 @@ header h1 { margin-right: auto; } /* the gear stays right when the engine pill i
 .fg-acts { display: flex; gap: 8px; }
 .fg-acts .btn { min-height: 48px; }
 .fgset .switchrow { border-top: 0; margin: 0; padding: 0; min-height: 44px; }
-/* 601 to 860px: the page has the body's 8px margin and a 20px top padding there: the bar is flush with the top and the sides all the same */
-@media (min-width: 601px) and (max-width: 860px) { .actbar { margin: calc(-28px - env(safe-area-inset-top)) calc(-8px - max(16px, env(safe-area-inset-right))) 8px calc(-8px - max(16px, env(safe-area-inset-left))); } }
-@media (max-width: 860px) {
+/* Phone layout from 601px wide (601 to 860px, or wider and under 500px high): the page has the body's 8px margin and a 20px top padding there: the bar is flush with the top and the sides all the same */
+@media (min-width: 601px) and (max-width: 860px), (min-width: 601px) and (max-height: 499.98px) { .actbar { margin: calc(-28px - env(safe-area-inset-top)) calc(-8px - max(16px, env(safe-area-inset-right))) 8px calc(-8px - max(16px, env(safe-area-inset-left))); } }
+@media (max-width: 860px), (max-height: 499.98px) {
   /* a tab page: no board, and none of the cards that belong to an open activity */
   html:not([data-scr]) .boardcol { display: none; }
   html:not([data-scr]) #goalCard, html:not([data-scr]) #coach, html:not([data-scr]) #oppCard, html:not([data-scr]) #thinkCard, html:not([data-scr]) #movesCard, html:not([data-scr]) #sessionCard { display: none; }
@@ -819,15 +822,16 @@ header h1 { margin-right: auto; } /* the gear stays right when the engine pill i
   html[data-scr]:not([data-scrend]) .wrap { padding-bottom: calc(28px + env(safe-area-inset-bottom)); }
   html[data-scr]:not([data-scrend]) .raninote { bottom: calc(16px + env(safe-area-inset-bottom)); }
 }
-/* ---------- G2d (G-D32): a phone held sideways on the board screen (up to 860px wide, under 500px high). The board is pinned
+/* ---------- G2d (G-D32, widened by G-D41): a phone held sideways on the board screen (under 500px high, whatever the width:
+   every such screen is the phone layout). The board is pinned
    on the left and fills the height under the Close bar (--bs: the screen's height less the bar, 8px above and below and the
    safe areas; never more than 60 percent of the width). Everything else (the opponent line, the eval strip, the You line, the
    buttons, the end cards, then the panel with Rani's card, the moves, a lesson's step or a puzzle card) is the one column on
    its right. That column is the page itself, so it scrolls under the sticky bar while the board stays put, and every scroll
    the app does (end cards, Next) works as it does upright. Nothing moves in the DOM. .app stays a one-column grid: app.js
-   wide() reads its columns. Upright phones and wide screens (over 860px) match none of this. Under 500px only (499.98px):
+   wide() reads its columns. Upright phones and wide screens (over 860px and 500px high or more) match none of this. Under 500px only (499.98px):
    from 500px a banner is allowed (A-D4), and a banner must never sit over a pinned board. ---------- */
-@media (max-width: 860px) and (max-height: 499.98px) {
+@media (max-height: 499.98px) {
   html[data-scr] { --bs: min(calc(100dvh - 65px - env(safe-area-inset-top) - env(safe-area-inset-bottom)), 60vw); }
   html[data-scr] .actbar { padding-top: calc(2px + env(safe-area-inset-top)); padding-bottom: 2px; } /* a thinner bar (49px); Close stays 44px */
   html[data-scr] .app { padding-left: calc(var(--bs) + 12px); }
@@ -847,4 +851,12 @@ header h1 { margin-right: auto; } /* the gear stays right when the engine pill i
   html[data-scr] .tabs { left: calc(var(--bs) + 12px + max(16px, env(safe-area-inset-left))); border-left-width: 1px; border-top-left-radius: 10px; }
 }
 .adpad { height: 0; }
+/* ---------- G3 (G-D43, G-D44): on a touch screen every button, chip, row, picker, switch and tab is at least 44px high, and an
+   icon-only button 44px wide too. Mouse screens (pointer: fine) keep today's sizes: nothing here applies to them. Last in the
+   file on purpose, so no later rule of the same weight can undo it (lesson L24). The move list (.san) and the moves and links
+   written inside a sentence (.mvc, .mvplay, a link in a line of text) keep their size (G-D44). ---------- */
+@media (pointer: coarse) {
+  .btn, select, .tab, .chip, .puz, .unitrow, .v3d, .roadrow, .setbtn, .back, .segbtn, .linkbtn, .pl-link, .fg-open, .lesson summary, .lvl > summary, .askform input { min-height: 44px; }
+  #navFirst, #navLast { min-width: 44px; }
+}
 </style>

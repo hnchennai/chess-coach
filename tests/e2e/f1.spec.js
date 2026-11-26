@@ -84,7 +84,7 @@ const seeded = async (vp, p, o) => {
 };
 // G2a: up to 860px wide (one column) the tabs are pages with no board, and the app always opens on Home. A test that
 // starts "on Play, in the game" opens the game as a player does: the Play tab, then "Resume game" (when a game is unfinished).
-const col1 = (vp) => vp.width <= 860;
+const col1 = (vp) => vp.width <= 860 || vp.height < 500; // G-D41: the phone layout (915x412 too)
 const openGame = (page) => page.evaluate(() => {
   document.getElementById('tab-play').click();
   const r = document.querySelector('#resumePlay .rs-go');
@@ -1139,11 +1139,12 @@ const cases = [
       await one(page, who + ' Home without a finished game');
       await page.context().close();
     }
-    // a puzzle in progress: Hint is filled on its own tab
+    // a puzzle in progress: Hint is filled on its own board screen (phones); G3 (G-D42): on a wide screen Hint is green only
+    // while the Play tab is open, so on Train it is a plain button (it was filled there)
     const page = await seeded(vp, improver({ course: done('fork') }), { tab: 'train' });
     await one(page, 'Train');
     await page.locator('#ratedBtn').click(); await page.waitForFunction(() => window.__coach.st.mode === 'puzzle' && !window.__coach.st.pz.wait);
-    assert.equal(await hint(page), true, 'Hint is filled during a puzzle');
+    assert.equal(await hint(page), col1(vp), col1(vp) ? 'Hint is filled during a puzzle' : 'G-D42: wide, Hint is plain during a puzzle on Train');
     return page;
   }],
   ['FR-E / F-D25: a Beginner with Show everything on: Home, a passed set’s end card and the review card name the same step', async (vp) => {

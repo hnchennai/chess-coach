@@ -5,7 +5,7 @@
 // ended while closed gets a result card), G-D37 (Home and Today resume what waits), and the review's items 4 to 8.
 // Built on the helpers of g2.spec.js.
 // Run: G2B_VP=412 node tests/e2e/g2b.spec.js   (serves www/ itself; needs Playwright with Chromium). One viewport per process.
-// G2B_VP: 360 | 412 | 915 (a big phone held sideways: the wide layout) | 1280. G2B_SHOTS=<dir> saves screenshots (412 and
+// G2B_VP: 360 | 412 | 915 (a big phone held sideways: the phone layout since G-D41) | 1280. G2B_SHOTS=<dir> saves screenshots (412 and
 // 915 only). G2B_ONLY=<regex> runs matching cases.
 const assert = require('assert/strict');
 const path = require('path');
@@ -955,7 +955,7 @@ const cases = [
     return page;
   }],
   // ---------- wide screens (G-D35) ----------
-  ['Wide (1280, 915): G-D35. A saved key shows its Resume cards on Learn and Train; Home resumes the lesson; the game opened over one parks it; the rest as before', async (vp) => {
+  ['Wide (1280): G-D35. A saved key shows its Resume cards on Learn and Train; Home resumes the lesson; the game opened over one parks it; the rest as before', async (vp) => {
     if (PH(vp)) return newPage(vp, club(), {});
     let page = await newPage(vp, club(), {});
     const quiz = await page.evaluate(() => window.__coach.PZ.filter((p) => p.pre && p.last && p.preBest).slice(0, 2).map((p) => p.id));

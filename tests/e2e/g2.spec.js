@@ -20,7 +20,7 @@ const PKEY = 'suresh-chess-coach.profile.v1', GKEY = 'suresh-chess-coach.v1', TK
 const VIEWPORTS = [{ width: 360, height: 800 }, { width: 412, height: 915 }, { width: 1280, height: 900 }].filter((v) => !process.env.G2_VP || String(v.width) === process.env.G2_VP);
 const ONLY = process.env.G2_ONLY ? new RegExp(process.env.G2_ONLY) : null;
 const NOW = Date.now(), DAY = 86400000;
-const PH = (vp) => vp.width <= 860; // the one-column layout: G2 applies
+const PH = (vp) => vp.width <= 860 || vp.height < 500; // the one-column layout: G2 applies (G-D41: under 500px high too)
 const TABS = ['coach', 'path', 'train', 'play', 'progress'];
 const HOME_ORDER = ['contCard', 'stageHero', 'today', 'stageCard', 'roadCard', 'lookCard', 'methodsCard'];
 // The spec's "New wording", letter for letter.

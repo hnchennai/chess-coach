@@ -85,7 +85,7 @@ const seeded = async (vp, p, o) => {
 };
 // G2a: up to 860px wide (one column) the tabs are pages with no board, and the app always opens on Home. A test that
 // starts "on Play, in the game" opens the game as a player does: the Play tab, then "Resume game" (when a game is unfinished).
-const col1 = (vp) => vp.width <= 860;
+const col1 = (vp) => vp.width <= 860 || vp.height < 500; // G-D41: the phone layout (915x412 too)
 const openGame = (page) => page.evaluate(() => {
   document.getElementById('tab-play').click();
   const r = document.querySelector('#resumePlay .rs-go');
@@ -186,11 +186,14 @@ async function fullHome(page, vp, why, look) {
   assert.equal(await vis(page, '.boardcol'), !col1(vp), why + ': board ' + (col1(vp) ? 'not on a phone’s Home' : 'shown'));
 }
 // AC10: on phones every part of the block, both buttons included, is on the first screen above the fixed nav.
+// G3 (G-D41): a sideways phone (915x412) is the phone layout too; there the tab bar is not fixed (it is at the top, as it
+// was there before), so the limit is the bottom of the screen, and D51's rule applies: Rani and the Continue card (with its
+// button) on the first screen; the "Resume game" card under it may need a scroll on a 412px high screen (G3 report question).
 async function fitsFirstScreen(page, vp, why) {
   await page.evaluate(() => window.scrollTo(0, 0));
   const r = await page.evaluate(() => {
-    const nav = document.querySelector('.tabs').getBoundingClientRect(), out = [];
-    document.querySelectorAll('#bhome .bh-av, #bhome .bh-bub, #bhome .bh-streak, #bhome .bh-card, #bhome .bh-go, #bhome .bh-alt').forEach((e) => {
+    const t = document.querySelector('.tabs'), fixed = getComputedStyle(t).position === 'fixed', nav = fixed ? t.getBoundingClientRect() : { top: window.innerHeight }, out = [];
+    document.querySelectorAll('#bhome .bh-av, #bhome .bh-bub, #bhome .bh-streak, #bhome .bh-card' + (fixed ? '' : ':not(.rs-card)') + ', #bhome .bh-go, #bhome .bh-alt').forEach((e) => {
       if (e.offsetParent === null) return; const b = e.getBoundingClientRect(); out.push({ c: e.className, top: b.top, bottom: b.bottom, left: b.left, right: b.right });
     });
     return { nav: nav.top, items: out, w: window.innerWidth, scrollY: window.scrollY };
@@ -775,10 +778,11 @@ const cases = [
       assert.ok(r.hero.bottom <= r.card.top && r.card.bottom <= r.h + 60, why + ': Rani above the card');
       if (k === 'midlesson') await shot(page, v, 'beginner_home_sideways');
       if (v.width === 915 && k === 'new') {
+        // G3 (G-D41): a screen under 500px high is the phone layout, so its tab pages have no board (it was the wide layout)
         await goTab(page, 'play');
-        assert.equal(await vis(page, '.boardcol'), true, 'Play keeps the board sideways');
+        assert.equal(await vis(page, '.boardcol'), false, 'G-D41: Play is a tab page with no board sideways');
         await goTab(page, 'path');
-        assert.equal(await vis(page, '.boardcol'), true, 'Learn keeps the board sideways');
+        assert.equal(await vis(page, '.boardcol'), false, 'G-D41: Learn is a tab page with no board sideways');
         await goTab(page, 'coach');
         assert.equal(await vis(page, '.boardcol'), false);
       }

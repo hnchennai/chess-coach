@@ -506,6 +506,7 @@
   /* F-D28: Hint is the filled (main) button only while a game, puzzle or drill is in progress on its own tab. On Home, and
      when an end card or a decided lesson goal holds the screen's main button, it is a plain button. */
   function hintMain() {
+    if (!phone() && st.tab !== 'play') return false; /* G-D42: wide, Hint is green only while the Play tab is open */
     if (st.mode === 'play') return st.tab === 'play' && !G.game_over() && !goalMain(); /* F-D30: a goal card with only "Keep playing" leaves Hint filled */
     return !!st.ses && !sesEnded() && st.tab === ZTAB[zoneOf()];
   }
@@ -798,8 +799,10 @@
   /* F-D27: desktop = the board and the panel sit side by side. There the slot is one strip under both columns. */
   function wide() { var a = document.querySelector('.app'); return !!a && getComputedStyle(a).gridTemplateColumns.split(' ').length > 1; }
   /* ---------- G2a: board screens on phones (docs/specs/board-screens.tech.md). "Phone" is the one-column layout, the same
-     media query as every G2 rule in the CSS, so the two can never disagree. Wide screens are untouched by all of this. ---------- */
-  function phone() { return !!window.matchMedia && matchMedia('(max-width: 860px)').matches; }
+     media query as every G2 rule in the CSS, so the two can never disagree. Wide screens are untouched by all of this.
+     G-D41: the phone layout is up to 860px wide, or under 500px high whatever the width (a big phone held sideways). ---------- */
+  var PHONE_MQ = '(max-width: 860px), (max-height: 499.98px)';
+  function phone() { return !!window.matchMedia && matchMedia(PHONE_MQ).matches; }
   function actOpen() { return Flow.actOpen({ wide: !phone(), scr: st.scr }); }
   /* an end card is on screen: a finished game, the last move of a finished game's review, a finished set, the Learn end card */
   function endUp() { return !!(endFull || reviewDone() || sesEnded() || st.end); }
@@ -2314,6 +2317,21 @@
     if (key && !a.isConnected) { var b = document.querySelector(key); if (b && b.offsetParent !== null) try { b.focus({ preventScroll: true }); } catch (e) {} }
     if (window.scrollX !== x || window.scrollY !== y) window.scrollTo(x, y);
   }
+  /* G-D45: reading and Tab order follow the screen. Where the tab bar is fixed at the bottom (up to 600px wide, the query of its
+     CSS rule) it is the last child of the side panel, so a screen reader and the Tab key reach the page first and the tabs last;
+     elsewhere it is the first child, as before. It only moves when the query flips (a turn or a resize), and a focused tab keeps
+     the focus. The tablist, its tabs and every id stay as they are. */
+  var NAV_BOTTOM = window.matchMedia ? matchMedia('(max-width: 600px)') : null;
+  function placeTabs() {
+    var nav = document.querySelector('.tabs'), side = nav && nav.parentNode; if (!side) return;
+    var last = !!NAV_BOTTOM && NAV_BOTTOM.matches, at = last ? null : side.firstElementChild;
+    if (last ? side.lastElementChild === nav : at === nav) return;
+    var a = document.activeElement, keep = !!a && nav.contains(a);
+    side.insertBefore(nav, at);
+    if (keep && document.activeElement !== a) try { a.focus({ preventScroll: true }); } catch (e) {}
+  }
+  if (NAV_BOTTOM) { if (NAV_BOTTOM.addEventListener) NAV_BOTTOM.addEventListener('change', placeTabs); else if (NAV_BOTTOM.addListener) NAV_BOTTOM.addListener(placeTabs); }
+  placeTabs();
   function focusTab() {
     var b = $('tab-' + st.tab); if (!b || b.offsetParent === null) b = actOpen() ? $('actText') : null; /* G2a: the tabs are hidden on the board screen */
     if (b) try { b.focus({ preventScroll: true }); } catch (e) {}

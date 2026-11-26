@@ -915,9 +915,11 @@ const cases = [
     if (vp.width !== 360) return newPage(vp);
     const long = Object.assign({}, GAME_CHECK, { fb: Object.assign({}, GAME_CHECK.fb, { text: 'This gives away material or position. Your bishop on d2 had no defender, so the queen took it for free. Before every move, look at the square your piece stands on and ask what can take it.' }) });
     const page = await seeded({ width: 360, height: 640 }, prof({ course: done('rules', 'special') }), long, 'play');
-    await page.waitForFunction(() => { const s = document.querySelector('#coachStrip .bub'), n = document.querySelector('.tabs'); return s && n && s.getBoundingClientRect().bottom <= n.getBoundingClientRect().top; }, null, { timeout: 3000 }).catch(() => {});
-    const r = await page.evaluate(() => ({ strip: document.querySelector('#coachStrip').getBoundingClientRect().bottom, nav: document.querySelector('.tabs').getBoundingClientRect().top, board: document.getElementById('board').getBoundingClientRect().top }));
-    assert.ok(r.strip <= r.nav, 'strip bottom above the nav top: ' + JSON.stringify(r));
+    // G2a: phones hide the tab bar on the board screen, so the strip must end above the bar when it shows, else above the screen's bottom
+    const fits = () => { const s = document.querySelector('#coachStrip .bub'), n = document.querySelector('.tabs'), low = n && n.offsetParent !== null ? n.getBoundingClientRect().top : window.innerHeight; return { ok: !!s && s.getBoundingClientRect().bottom <= low, strip: document.querySelector('#coachStrip').getBoundingClientRect().bottom, low, navShown: !!n && n.offsetParent !== null, board: document.getElementById('board').getBoundingClientRect().top }; };
+    await page.waitForFunction(`(${fits})().ok`, null, { timeout: 3000 }).catch(() => {});
+    const r = await page.evaluate(fits);
+    assert.ok(r.strip <= r.low, 'strip bottom above the nav top, or the screen bottom when the nav is hidden: ' + JSON.stringify(r));
     assert.ok(r.board >= 0, 'board top still on screen');
     assert.ok((await page.locator('#coachStrip').innerText()).includes('Rani’s partner took your bishop. Check!'));
     return page;

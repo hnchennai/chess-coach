@@ -551,7 +551,7 @@ const cases = [
   // ---------- scenario 11, criterion 11, G-D15: the switch ----------
   ['S11 switch: "Piece tags" is in Coach and pieces, on by default; off removes the tags in both views and keeps the name line', async (vp) => {
     const page = await newPage(vp, club(), { set: 'heroes' });
-    assert.equal((await savedProf(page)).pieceTags, undefined, 'the seeded save is from before the setting');
+    assert.equal(club().pieceTags, undefined, 'the seeded save is from before the setting'); /* the app may write the save back at start-up (it reads as on, G-D15), so check the seed itself */
     await page.locator(GEAR).click();
     const sw = page.locator('#lookSet [data-act="tags"]');
     await sw.scrollIntoViewIfNeeded();

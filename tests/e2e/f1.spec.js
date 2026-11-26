@@ -951,6 +951,9 @@ const cases = [
   }],
   ['F2-13 / Scenario 13 / AC10: offline, the slot still shows a tip and nothing reaches for the network', async (vp) => {
     const page = await seeded(vp, improver({ course: done('fork') }), { tab: 'coach', game: LOST });
+    // the app's fonts are bundled files that load on first use; on a phone they are always on the device, but the
+    // browser's offline mode also cuts off the local test server, so load every font face before going offline
+    await page.evaluate(() => Promise.all(Array.from(document.fonts).map((f) => f.load().catch(() => null))));
     await page.context().setOffline(true);
     await goTab(page, 'progress');
     slotRules(await slot(page, '#progSlot'), OTHER, 'Rani', 'offline Progress');

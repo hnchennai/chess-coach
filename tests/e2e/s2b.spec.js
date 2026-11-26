@@ -188,7 +188,8 @@ async function fullHome(page, vp, why, look) {
 // AC10: on phones every part of the block, both buttons included, is on the first screen above the fixed nav.
 // G3 (G-D41): a sideways phone (915x412) is the phone layout too; there the tab bar is not fixed (it is at the top, as it
 // was there before), so the limit is the bottom of the screen, and D51's rule applies: Rani and the Continue card (with its
-// button) on the first screen; the "Resume game" card under it may need a scroll on a 412px high screen (G3 report question).
+// button) on the first screen; the "Resume game" card under it may need a scroll on a 412px high screen (G-D46, confirmed by
+// Suresh 2026-11-26: D51 only promises Continue).
 async function fitsFirstScreen(page, vp, why) {
   await page.evaluate(() => window.scrollTo(0, 0));
   const r = await page.evaluate(() => {

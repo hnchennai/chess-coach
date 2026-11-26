@@ -5,6 +5,7 @@
 //   G-D43  touch screens (pointer: coarse): every button, chip, row, picker, switch and tab is at least 44px high, icon-only
 //          buttons 44px wide too. Mouse screens (pointer: fine) keep today's sizes.
 //   G-D44  the move list and text links inside sentences keep their size.
+//   G-D47  move chips inside Rani's sentences keep their size; the "Watch" pill is a control and gets 44px (fix round 1).
 //   G-D45  reading and Tab order follow the screen: the tab bar at the bottom (up to 600px wide) comes last, else first.
 // Run: G3_VP=915x412 node tests/e2e/g3.spec.js   (serves www/ itself; needs Playwright with Chromium).
 // G3_VP: a size (915x412) or a width (915). G3_ONLY=<regex> runs matching cases. G3_SHOTS=<dir> saves screenshots.
@@ -22,7 +23,7 @@ const URL = ORIGIN + '/index.html';
 const SHOTS = process.env.G3_SHOTS || '';
 const RECORD = !!process.env.G3_RECORD;
 const PKEY = 'suresh-chess-coach.profile.v1', GKEY = 'suresh-chess-coach.v1', TKEY = 'suresh-chess-coach.tab';
-const SIZES = ['360x800', '412x915', '768x1024', '915x412', '932x430', '844x390', '1280x800', '1280x900'];
+const SIZES = ['360x800', '412x915', '768x1024', '915x412', '932x430', '844x390', '1280x450', '1920x480', '1280x800', '1280x900'];
 const VIEWPORTS = SIZES.filter((s) => !process.env.G3_VP || s === process.env.G3_VP || s.split('x')[0] === process.env.G3_VP)
   .map((s) => ({ width: +s.split('x')[0], height: +s.split('x')[1] }));
 const ONLY = process.env.G3_ONLY ? new RegExp(process.env.G3_ONLY) : null;
@@ -32,11 +33,11 @@ const PHONE = (vp) => vp.width <= 860 || vp.height < 500; // G-D41: the phone la
 const SIDE = (vp) => vp.height < 500;                    // G-D32 / G-D41: the sideways board screen
 const TABS = ['coach', 'path', 'train', 'play', 'progress'];
 
-// Measured on the build before G3 (8f2726b) with G3_RECORD=1 at 1280x900 with a mouse: [height, width] of the first visible
+// Measured on the build before G3 (8f2726b) with G3_RECORD=1 at 1280x900 with a mouse (a Club player with one finished game): [height, width] of the first visible
 // control of each kind, on the screen named. "With a mouse at 1280x900 the sizes are as before."
 const BEFORE_MOUSE = { 'home #settingsBtn': [44, 44], 'home .tab': [53.8, 74.8], 'home .zb': [35.5, 83], 'home #contCard .btn': [52, 366], 'home .roadrow': [61, 366],
   'home #hintBtn': [39, 96.2], 'home #undoBtn': [39, 94], 'home #v3dBtn': [32, 68.4], 'home #flipBtn': [39, 54], 'play #colorSel': [38, 178], 'play #levelSel': [38, 178], 'play #newBtn': [39, 366],
-  'path .lvl > summary': [74.5, 398], 'path .unitrow': [41, 366], 'train #ratedBtn': [39, 171.1], 'train #reviewDueBtn': [39, 146.6], 'train .puz': [33.5, 114.4], 'progress #history .btn': null,
+  'path .lvl > summary': [74.5, 398], 'path .unitrow': [41, 366], 'train #ratedBtn': [39, 171.1], 'train #reviewDueBtn': [39, 146.6], 'train .puz': [33.5, 114.4], 'progress #history .btn': [31.5, 65],
   'settings .segbtn': [44, 132], 'settings .setbtn': [83, 203], 'settings .switchrow': [55, 414], 'settings .linkbtn': [44, 173.9], 'settings .pl-x': [44, 44] };
 // The wide layout's geometry before G3 (8f2726b), a Club player's game open from Play: [left, top, width, height].
 const BEFORE_WIDE = {
@@ -59,6 +60,8 @@ const game = (sans, o) => Object.assign({ sans, user: 'w', level: 1, ann: {}, no
 const GAME = game(['e4', 'e5', 'Nf3', 'Nc6', 'Bc4', 'Bc5']);
 // 1. e4 e5 2. Bc4 Nc6 3. Qh5 Nf6: White mates with Qxf7.
 const MATE1 = game(['e4', 'e5', 'Bc4', 'Nc6', 'Qh5', 'Nf6']);
+// A finished game in the history, so Progress has its Review buttons to measure.
+const PAST = { id: 'gp', d: NOW - DAY, r: 'W', user: 'w', level: 3, acc: 80, counts: {}, tags: {}, sans: ['e4', 'e5', 'Qh5', 'Nc6', 'Bc4', 'Nf6', 'Qxf7#'], ann: {} };
 const SEEDS = () => [['club', club()], ['beginner', beginner()], ['v4', V4()]];
 
 function seedFn([pk, p, gk, g, tk, tab]) {
@@ -109,12 +112,13 @@ const look = (page) => page.evaluate(() => {
 });
 const overlap = (a, b) => !!a && !!b && a.l < b.r - 0.5 && b.l < a.r - 0.5 && a.t < b.b - 0.5 && b.t < a.b - 0.5;
 
-// G-D43: every visible control on the page that is under 44px high (icon-only: or narrower). G-D44's exceptions: the move list
-// (#moves and its .san items), the board's squares, moves written inside a sentence (.mvc, .mline) and links inside a sentence.
+// G-D43: every visible control on the page that is under 44px high (icon-only: or narrower). G-D44 and G-D47's exceptions: the
+// move list (#moves and its .san items), the move chips inside Rani's sentences (.mvc) and links inside a sentence. The board's
+// squares are the board. The "Watch" pill (.mvplay) after a line of moves is a control and is checked (G-D47).
 const audit = (page, where) => page.evaluate((w) => {
   const SEL = 'button, select, input:not([type="hidden"]), a[href], summary, [role="tab"], [role="switch"], [role="radio"], [role="button"], [tabindex="0"]';
   const vis = (e) => { if (!e.getClientRects().length) return false; if (getComputedStyle(e).visibility === 'hidden') return false; const r = e.getBoundingClientRect(); return r.width > 0 && r.height > 0; };
-  const exempt = (e) => !!e.closest('#moves, .mline') || e.matches('.san, .sq, .mvc, .mvplay') || (e.matches('a') && getComputedStyle(e).display === 'inline' && !!e.closest('p, li'));
+  const exempt = (e) => !!e.closest('#moves') || e.matches('.san, .sq, .mvc') || (e.matches('a') && getComputedStyle(e).display === 'inline' && !!e.closest('p, li'));
   const name = (e) => (e.id ? '#' + e.id : e.tagName.toLowerCase() + (e.className && typeof e.className === 'string' ? '.' + e.className.trim().split(/\s+/).join('.') : '')) + ' "' + (e.getAttribute('aria-label') || e.textContent).replace(/\s+/g, ' ').trim().slice(0, 24) + '"';
   const bad = [], seen = []; let n = 0;
   for (const e of document.querySelectorAll(SEL)) {
@@ -180,7 +184,7 @@ async function wideGeo(page) {
 
 const cases = [
   // ---------- criterion 14, G-D41: every screen under 500px high is the phone layout, with the sideways board screen ----------
-  ['C14 sideways: the tab pages have no board; a game from Play shows the whole board under the Close bar, the rest in a column on its right', ['915x412', '932x430', '844x390'], async (vp) => {
+  ['C14 sideways: the tab pages have no board; a game from Play shows the whole board under the Close bar, the rest in a column on its right', ['915x412', '932x430', '844x390', '1280x450', '1920x480'], async (vp) => {
     let page;
     for (const [who, p] of SEEDS()) {
       if (page) await page.context().close();
@@ -206,6 +210,9 @@ const cases = [
       assert.ok(B.l <= 40, who + ': the board is on the left (' + B.l + ')');
       assert.ok(L.ctl && L.ctl.l >= B.r, who + ': the buttons sit in the column on its right (' + JSON.stringify(L.ctl) + ')');
       assert.ok(L.side.l >= B.r, who + ': the panel (Rani, the moves) is in the column too');
+      // fix round 1: on any width the column starts right beside the board, and the Close bar spans the screen (as at 915x412)
+      assert.ok(L.ctl.l - B.r <= 16 && L.side.l - B.r <= 16, who + ': no gap between the board and the column: ' + (L.ctl.l - B.r).toFixed(1) + 'px');
+      assert.ok(bar.l <= 0.5 && bar.r >= L.vw - 0.5, who + ': the Close bar spans the screen: ' + JSON.stringify(bar));
       assert.ok(L.scrollW <= L.vw, who + ': no sideways scroll on the board screen');
       await shot(page, who + '_board');
     }
@@ -229,11 +236,13 @@ const cases = [
     const page = await newPage(vp, club(), { game: GAME, tab: 'play' });
     await openGame(page);
     const before = await page.evaluate(() => window.__coach.hist().length);
-    await page.setViewportSize({ width: 915, height: 412 }); await page.waitForTimeout(200);
+    await page.setViewportSize({ width: 915, height: 412 });
+    await page.waitForFunction(() => getComputedStyle(document.getElementById('board')).position === 'fixed');
     let L = await look(page);
     assert.deepEqual([L.scr, L.board, L.bar, L.tabs, L.boardPos], ['act', true, true, false, 'fixed'], 'sideways: the sideways board screen');
     assert.ok(L.boardBox.b <= L.vh + 0.5 && L.boardBox.t >= L.barBox.b - 1, 'the whole board on screen');
-    await page.setViewportSize(vp); await page.waitForTimeout(200);
+    await page.setViewportSize(vp);
+    await page.waitForFunction(() => getComputedStyle(document.getElementById('board')).position !== 'fixed');
     L = await look(page);
     assert.deepEqual([L.scr, L.board, L.bar, L.tabs, L.boardPos], ['act', true, true, false, 'relative'], 'upright again');
     assert.equal(await page.evaluate(() => window.__coach.hist().length), before, 'nothing lost');
@@ -293,7 +302,7 @@ const cases = [
   }],
 
   // ---------- criterion 16, G-D43, G-D44: 44px on touch screens, today's sizes with a mouse ----------
-  ['C16 touch: every visible control on the five tabs, the board screens, Settings and the end cards is at least 44px', ['360x800', '412x915', '768x1024', '915x412'], async (vp) => {
+  ['C16 touch: every visible control on the five tabs, the board screens, Settings and the end cards is at least 44px', ['360x800', '412x915', '768x1024', '915x412', '1280x800'], async (vp) => {
     const bad = [];
     const tabsOf = async (page, who) => {
       for (const t of TABS) {
@@ -314,6 +323,14 @@ const cases = [
       await openGame(page);
       bad.push(...await audit(page, who + ' game'));
     }
+    // the "Watch" pill: a mistake gets "Better was ... The line: ..." with the pill after the line (Club, Rani's card)
+    await page.context().close();
+    page = await newPage(vp, club(), { game: GAME, tab: 'play', touch: true });
+    await openGame(page);
+    await page.locator('#board .sq[data-sq="c4"]').click(); await page.locator('#board .sq[data-sq="f7"]').click();
+    await page.waitForFunction(() => [...document.querySelectorAll('.mvplay')].some((e) => e.getClientRects().length), null, { timeout: 60000 });
+    bad.push(...await audit(page, 'game after a mistake (Watch pill)'));
+    if (!PHONE(vp)) { assert.deepEqual([...new Set(bad)], [], 'controls under 44px on a touch screen'); return page; } // wide: the tabs, Settings and the game
     await page.context().close();
     // Club: a lesson, its end card, a puzzle set, a game's end card
     page = await newPage(vp, club(), { game: MATE1, tab: 'play', touch: true });
@@ -335,7 +352,7 @@ const cases = [
     return page;
   }],
   ['C16 mouse: with a mouse at 1280x900 the sizes are as before', ['1280x900'], async (vp) => {
-    const page = await newPage(vp, club(), { game: GAME, tab: 'play' });
+    const page = await newPage(vp, club({ games: [PAST] }), { game: GAME, tab: 'play' });
     const s = await mouseSizes(page);
     if (RECORD) { console.log('BEFORE_MOUSE', JSON.stringify(s)); return page; }
     assert.deepEqual(s, BEFORE_MOUSE, 'mouse sizes as before');
@@ -373,17 +390,50 @@ const cases = [
     const state = () => page.evaluate(() => { const t = document.querySelector('.tabs'), p = document.getElementById('panel-coach'); return { focus: document.activeElement && document.activeElement.id, first: t.compareDocumentPosition(p) & Node.DOCUMENT_POSITION_FOLLOWING ? 'tabs' : 'page' }; });
     await page.focus('#tab-train'); await page.keyboard.press('Enter');
     assert.equal((await state()).focus, 'tab-train');
+    const order = (v) => page.waitForFunction((last) => { const t = document.querySelector('.tabs'); return (t.parentNode.lastElementChild === t) === last; }, v.width <= 600);
     for (const [v, n] of [[other, 1], [vp, 2], [other, 3]]) {
-      await page.setViewportSize(v); await page.waitForTimeout(150);
+      await page.setViewportSize(v); await order(v);
       const s = await state();
       assert.equal(s.focus, 'tab-train', 'resize ' + n + ' (' + key(v) + '): focus stays on the Train tab');
       assert.equal(s.first, v.width <= 600 ? 'page' : 'tabs', 'resize ' + n + ' (' + key(v) + '): the order follows the screen');
     }
     // and focus inside the page is never touched by the move
-    await page.setViewportSize(vp); await page.waitForTimeout(150);
+    await page.setViewportSize(vp); await order(vp);
     await page.focus('#ratedBtn');
-    await page.setViewportSize(other); await page.waitForTimeout(150);
+    await page.setViewportSize(other); await order(other);
     assert.equal((await state()).focus, 'ratedBtn');
+    return page;
+  }],
+  ['C17 switch (fix round 1): a wide screen that drops under 500px high (and back) never drops focus to the page body', ['1280x800'], async (vp) => {
+    const page = await newPage(vp, club(), { game: GAME, tab: 'play' });
+    const short = { width: 1280, height: 450 };
+    const settle = async (scr) => { await page.waitForFunction((s) => (document.documentElement.dataset.scr || null) === s, scr); await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))); };
+    const focus = () => page.evaluate(() => { const a = document.activeElement; return { id: a && a !== document.body ? a.id : 'BODY', shown: !!a && a.getClientRects().length > 0 }; });
+    // the game beside the Play tab, focus on Hint. 1280x450 is the phone layout, where Play is a start page with no board:
+    // Hint is hidden, so the focus goes to the selected tab (Play), never the body; back on the wide screen it stays there
+    await goTab(page, 'play'); await idle(page);
+    await page.focus('#hintBtn');
+    await page.setViewportSize(short); await settle(null);
+    assert.deepEqual(await focus(), { id: 'tab-play', shown: true }, '1280x450 Play: Hint is hidden, so the selected tab');
+    await page.setViewportSize(vp); await settle(null);
+    assert.deepEqual(await focus(), { id: 'tab-play', shown: true }, '1280x800 Play again: the tab keeps it');
+    // the game opened on the short screen (the board screen), focus on Hint: Hint is on screen in both layouts, so it keeps it
+    await page.setViewportSize(short); await settle(null);
+    await openGame(page); await settle('act');
+    await page.focus('#hintBtn');
+    await page.setViewportSize(vp); await settle(null);
+    assert.deepEqual(await focus(), { id: 'hintBtn', shown: true }, '1280x800: still on Hint');
+    await page.setViewportSize(short); await settle('act');
+    assert.deepEqual(await focus(), { id: 'hintBtn', shown: true }, '1280x450 board screen again: still on Hint');
+    await page.setViewportSize(vp); await settle(null);
+    // Home with the game beside it, focus on Hint: the short screen's Home has no board, so focus goes to the Home tab (the
+    // selected tab), never the body; back on the wide screen it stays there
+    await goTab(page, 'coach'); await settle(null);
+    await page.focus('#hintBtn');
+    await page.setViewportSize(short); await settle(null);
+    assert.deepEqual(await focus(), { id: 'tab-coach', shown: true }, '1280x450 Home: Hint is hidden, so the selected tab');
+    await page.setViewportSize(vp); await settle(null);
+    assert.deepEqual(await focus(), { id: 'tab-coach', shown: true }, '1280x800 Home again: the tab keeps it');
     return page;
   }]
 ];

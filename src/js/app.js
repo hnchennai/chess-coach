@@ -808,8 +808,8 @@
   function endUp() { return !!(endFull || reviewDone() || sesEnded() || st.end); }
   /* Every start (a game, a lesson, a set, a drill, a review) and every Resume calls openAct() before it switches tab; the
      start's own render() then draws the screen. scrHold keeps the safety rule quiet in between (the mode is still changing). */
-  var scrHold = false, scrOn = false, scrY = 0, scrTab = null, scrTop = false;
-  function openAct() { if (st.scr !== 'act') { scrY = window.scrollY || 0; scrTab = st.tab; } st.scr = 'act'; scrHold = true; scrTop = true; unask(); }
+  var scrHold = false, scrOn = false, scrY = 0, scrTab = null, scrTop = false, scrFocus = false;
+  function openAct() { if (st.scr !== 'act') { scrY = window.scrollY || 0; scrTab = st.tab; } st.scr = 'act'; scrHold = true; scrTop = true; scrFocus = true; unask(); }
   /* Fix round 2: the "Tap again to abandon it" question is only good for the next tap on the same page. Leaving Play, closing
      Settings or opening anything takes it back, so a much later single tap cannot wipe the game. Phones only. */
   function unask() { if (st.confirmNew && phone()) { st.confirmNew = false; $('newConfirm').hidden = true; } }
@@ -831,13 +831,18 @@
     wasPinned = pinned(); /* G2d fix round 1: what the resize handler compares with */
     /* Fix round 2: whatever opens on the board screen starts at the top of the page (an end card's scroll is not kept) */
     if (scrTop && !scrHold) { scrTop = false; if (on && on === scrOn && window.scrollY > 0) window.scrollTo(0, 0); }
+    var opened = scrFocus && !scrHold; if (!scrHold) scrFocus = false; /* G-D45 fix round 1: the player opened it (not a layout switch) */
     if (on === scrOn) return;
     scrOn = on;
     if (st.tab === 'path') renderPath(); /* the lesson's step card belongs to the board screen; the course to the tab page */
     if (on) {
       window.scrollTo(0, 0);
       if (st.v3d && window.Board3D && Board3D.isOn()) Board3D.resize(); /* the first frame shown is already the right position */
-      if (booted) try { $('actText').focus({ preventScroll: true }); } catch (e) {}
+      /* the player opened it: the bar's text is read. A layout switch (a resize to the phone layout) keeps the control that had
+         the focus when it is on screen again (the browser may have dropped it for a moment: lostFocus); else the bar's text. */
+      var fa = document.activeElement; if (!fa || fa === document.body) fa = lostFocus;
+      var kept = !opened && !!fa && fa.isConnected && fa.getClientRects().length > 0;
+      if (booted) try { (kept ? fa : $('actText')).focus({ preventScroll: true }); } catch (e) {}
     } else window.scrollTo(0, st.tab === scrTab ? scrY : 0);
   }
   /* The Close bar's two lines: the activity's name, and where the player is in it. Words the app already uses. */
@@ -1061,7 +1066,21 @@
   var wasPinned = false;
   function pinned() { var b = $('board'); return !!b && b.getClientRects().length > 0 && getComputedStyle(b).position === 'fixed'; }
   window.addEventListener('resize', function () { var p = pinned(); if (wasPinned && !p && actOpen() && window.scrollY > 0) window.scrollTo(0, 0); wasPinned = p; });
-  window.addEventListener('resize', function () { var w = wide(); if (w === wasWide) return; wasWide = w; if (!booted) return; render(); if (st.end) renderPath(); });
+  window.addEventListener('resize', function () { var w = wide(); if (w === wasWide) return; wasWide = w; if (!booted) return; holdFocus(function () { render(); if (st.end) renderPath(); }); });
+  /* G-D45, fix round 1: switching between the wide and the phone layout (a turn, a window or split-screen resize, also across
+     the 500px height line) never leaves the focus on the page body. The control that had it keeps it when it is still on
+     screen after the switch; else the selected tab (on the board screen: the Close bar's text), as focusTab() does.
+     lostFocus: a control that lost the focus by being hidden (no other control took it), so it can be given back. */
+  var lostFocus = null;
+  document.addEventListener('focusin', function () { lostFocus = null; });
+  document.addEventListener('focusout', function (e) { var t = e.target; lostFocus = !e.relatedTarget && t && t.getClientRects && !t.getClientRects().length ? t : null; });
+  function holdFocus(fn) {
+    var a = document.activeElement; if (!a || a === document.body) a = lostFocus;
+    fn();
+    if (!a) return;
+    if (a.isConnected && a.getClientRects().length) { if (document.activeElement !== a) try { a.focus({ preventScroll: true }); } catch (e) {} }
+    else focusTab();
+  }
 
   /* ---------- ADS GLUE (F3b, docs/specs/ads.product.md). The only code that talks to the native ads plugin. The rules are in
      ads.js (pure); this reads the screen's facts, asks Ads.mayShow, and shows or hides one native banner strip.
@@ -2625,7 +2644,7 @@
   function gameOn() { return !!(G.history().length && !G.game_over()); }
   /* D46 / D39: same win test as D30 in stageMiles */
   function homeState() { return Home.state(prof, UNITS, unitDone, unitStarted, nextPart, bestWinLevel() >= Profile.LEVELS.beginner.opp); }
-  /* D38: on Beginner Home the board column hides in one-column layouts (CSS, up to 860px). State is never touched. */
+  /* D38: on Beginner Home the board column hides in one-column layouts (CSS: the phone layout, G-D41). State is never touched. */
   function syncHomeMode() { var de = document.documentElement; if (plain() && st.tab === 'coach') de.dataset.bhome = '1'; else delete de.dataset.bhome; }
   /* The buttons reuse the app's actions: data-part (as Learn), recgame (a partner game for plain()), close (back to the game),
      data-train="rated" (as Train). Re-rendered only when something on it changes, so focus and Rani's canvas stay put. */

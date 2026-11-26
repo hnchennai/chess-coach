@@ -71,7 +71,9 @@ Builds on: `flow-rework.product.md` (F-D1 to F-D33), `beginner-flow.product.md` 
 | G-D42 | Wide layout: the Hint button is green only while the Play tab is open; on every other tab it looks like Take back. Phones do not change (the board screen shows only the board) | Suresh, 2026-11-26 |
 | G-D43 | On every touch screen (phones and tablets, upright or sideways) every button, chip, row, picker, switch and tab is at least 44px high, and icon-only buttons at least 44px wide. Screens used with a mouse keep today's sizes | Suresh, 2026-11-26 |
 | G-D44 | The move list and text links inside sentences (the licence and source lines, the Lichess credit) keep their size | Suresh, 2026-11-26 |
-| G-D45 | Reading and Tab order follow the screen: where the tab bar sits at the bottom (phone layout), screen readers and the keyboard reach the page first and the tab bar last; on the wide layout the tab bar comes first, as today. Crossing the breakpoint never drops focus | Delegated to Claude, 2026-11-26 |
+| G-D45 | Reading and Tab order follow the screen: where the tab bar is fixed at the bottom (screens 600px wide or less), screen readers and the keyboard reach the page first and the tab bar last; on the wide layout the tab bar comes first, as today. Crossing the breakpoint never drops focus | Delegated to Claude, 2026-11-26 |
+| G-D46 | On screens under 500px high, a Beginner's Home with an unfinished game shows Rani and Continue on the first screen; the "Resume game" card below may need a scroll (D51 only promises Continue). No change. The Play tab's live dot stays hidden there, as in the phone layout | Suresh, 2026-11-26 |
+| G-D47 | Move chips inside Rani's sentences count as "inside sentences" under G-D44 and keep their size on touch screens. This does not cover the standalone "Watch" pill after a line of moves: it is a control and gets 44px (G-D43) | Suresh, 2026-11-26 |
 
 ## New wording (all of it)
 - Button, top left of the activity screen: "Close" (spoken label; the button shows an X)
@@ -141,6 +143,7 @@ G3 (polish):
 
 ## Assumption register
 - Confirmed by Suresh: G-D1 to G-D7, G-D10 to G-D15.
+- Confirmed by Suresh, 2026-11-26: G-D46 (the Resume game card may need a scroll on screens under 500px high), G-D47 (move chips in Rani's sentences keep their size; the "Watch" pill gets 44px), and the G-D45 wording (the tab bar fixed at the bottom on screens 600px wide or less).
 - Delegated to Claude: G-D8, G-D9, G-D16, the name line wording.
 - Verified by tool: an unfinished game is already saved on every move; themed sets already carry an emblem name and a role per piece; the 3D pieces already carry a small symbol plaque on the base.
 - Verified by the design pass: a game survives an app restart; a lesson step, a set's place and a review do not (memory only). Every puzzle result and rating is saved when answered. G-D19 adds the saving.

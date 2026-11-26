@@ -158,6 +158,18 @@
       op: op,
       sync: sync,
       setTest: function (on) { store.test = !!on; save(); },
+      /* FC5 (tech spec section 4): the push token goes to the server with op hello, only when it is new or changed, and only
+         with an ID (never signs up). tok is kept once the server has it, so a failed send is tried again at the next start.
+         Resolves true when sent, false when there was nothing to send; rejects as op does (offline, error). */
+      sendTok: function (tok) {
+        if (!Friends.tokenOk(tok) || tok === store.tok || !store.uid || !store.rt) return Promise.resolve(false);
+        return op('hello', { tok: tok }, { signUp: false }).then(function (r) {
+          if (!r) return false;
+          store.tok = tok; save(); return true;
+        });
+      },
+      /* FC-D14: the notification permission is asked once, on the first Challenge or Accept */
+      setAsk: function () { store.ask = true; save(); },
       setCol: function (c) { if (c === 'w' || c === 'b' || c === 'r') { store.col = c; save(); } },
       name: function (opp, n, t) { var ok = Friends.name(store, opp, n, t); if (ok) save(); return ok; },
       setLaunch: function (url, t) { store.launch = { url: url, t: t }; save(); },

@@ -189,7 +189,9 @@ test('the pure module makes no plugin, DOM or network reference', () => {
 });
 
 // Criterion 14 and the constitution: the licence exception, word for word, and where it is named.
-const EXC = 'Additional permission under GNU GPL version 3 section 7: if you modify this program, or any covered work, by linking or combining it with the Google Mobile Ads SDK, the Google User Messaging Platform SDK, the Google Play Billing Library, the Google Play In-App Review Library and the Google Play Core Common library it uses, or the Google Play services libraries they use (or modified versions of those libraries), the copyright holder of Chess Coach grants you permission to convey the resulting work. This permission covers the Chess Coach code only. Stockfish is a separate program under plain GPL version 3.';
+// FC-D37 (Suresh, 2026-11-26): the tech spec section 13 draft, which adds the Firebase Cloud Messaging and App Check SDKs, Play
+// Integrity and the play-services-* libraries; DP-D14's In-App Review and Play Core Common libraries stay named (the draft predates D2).
+const EXC = 'Additional permission under GNU GPL version 3 section 7: if you modify this program, or any covered work, by linking or combining it with the Google Mobile Ads SDK, the Google User Messaging Platform SDK, the Google Play Billing Library, the Google Play In-App Review Library and the Google Play Core Common library it uses, the Firebase Android SDKs for Cloud Messaging and App Check (com.google.firebase:firebase-messaging, firebase-appcheck, firebase-appcheck-playintegrity and the Firebase libraries they depend on), the Google Play Integrity library, or the Google Play services libraries those depend on (com.google.android.gms:play-services-*) (or modified versions of those libraries), the copyright holder of Chess Coach grants you permission to convey the resulting work. This permission covers the Chess Coach code only. Stockfish is a separate program under plain GPL version 3.';
 const LIBS = ['Google Mobile Ads SDK', 'Google User Messaging Platform SDK', 'Google Play Billing Library'];
 const read = (f) => fs.readFileSync(path.join(__dirname, '..', f), 'utf8');
 const flat = (s) => s.replace(/\s+/g, ' ').trim();
@@ -207,13 +209,26 @@ test('criterion 14: the README names the exception and the three Google librarie
 
 // D2 (DP-D14, Suresh 2026-11-24): the exception also names the Play review library and the core library it uses.
 test('DP-D14: LICENSE-EXCEPTION, the README and the constitution name the Play In-App Review and Core Common libraries', () => {
-  const names = ['Google Play In-App Review Library', 'Google Play Core Common library', 'Google Play services libraries they use']; /* DP-D20 */
+  /* DP-D20; FC-D37 words the Play services part "the Google Play services libraries those depend on" */
+  const names = ['Google Play In-App Review Library', 'Google Play Core Common library', 'Google Play services libraries those depend on'];
   names.forEach((l) => assert.ok(flat(read('LICENSE-EXCEPTION')).includes(l), 'LICENSE-EXCEPTION: ' + l));
   const r = read('README.md'), sec = r.slice(r.indexOf('## Licence and source'), r.indexOf('## Credits'));
   names.forEach((l) => assert.ok(flat(sec).includes(l), 'README: ' + l));
   const c = read('CONSTITUTION.md').split('\n').filter((x) => x.includes('LICENSE-EXCEPTION'));
   assert.equal(c.length, 1); names.forEach((l) => assert.ok(c[0].includes(l), 'CONSTITUTION: ' + l));
   assert.ok(c[0].includes('2026-11-24'), 'DP-D20: the constitution line carries the new date');
+});
+
+// FC5 (FC-D37, Suresh 2026-11-26): the constitution's licence line names the same list as LICENSE-EXCEPTION, citing the decision.
+test('FC-D37: the constitution line and the README name the Firebase Cloud Messaging and App Check SDKs, Play Integrity and play-services-*', () => {
+  const names = ['Firebase Android SDKs for Cloud Messaging and App Check', 'com.google.firebase:firebase-messaging', 'firebase-appcheck', 'firebase-appcheck-playintegrity',
+    'the Firebase libraries they depend on', 'Google Play Integrity library', 'com.google.android.gms:play-services-*'];
+  names.forEach((l) => assert.ok(flat(read('LICENSE-EXCEPTION')).includes(l), 'LICENSE-EXCEPTION: ' + l));
+  const c = read('CONSTITUTION.md').split('\n').filter((x) => x.includes('LICENSE-EXCEPTION'));
+  assert.equal(c.length, 1); names.forEach((l) => assert.ok(c[0].includes(l), 'CONSTITUTION: ' + l));
+  assert.ok(c[0].includes('2026-11-26') && c[0].includes('FC-D37'), 'the line cites the decision');
+  const r = read('README.md'), sec = r.slice(r.indexOf('## Licence and source'), r.indexOf('## Credits'));
+  names.forEach((l) => assert.ok(flat(sec).includes(l), 'README: ' + l));
 });
 
 // DP-D16, DP-D20: the in-app credit names the same libraries as the licence file.

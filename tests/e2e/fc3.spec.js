@@ -43,9 +43,10 @@ const SHARE_RE = /^Play chess with me in Chess Coach: https:\/\/hnchennai\.githu
 
 // ---------- the fake Firebase: Auth REST and the callable, on the real ops ----------
 function fakeFirebase() {
-  const fb = { off: 0, store: new MemStore(), tokens: new Map(), refresh: new Map(), uids: [], calls: [], down: false, delay: {}, lose: null };
+  const fb = { off: 0, store: new MemStore(), tokens: new Map(), refresh: new Map(), uids: [], calls: [], down: false, delay: {}, lose: null, pushes: [] };
   const now = () => Date.now() + fb.off;
-  const ops = makeOps({ store: fb.store, now, rand: crypto.randomBytes, push: async () => {}, log: () => {}, deleteAuthUser: async () => {} });
+  // FC5: the server's push intents ({ to: uid, t, g }) are recorded; tests/e2e/fc5.spec.js hands them to the right phone
+  const ops = makeOps({ store: fb.store, now, rand: crypto.randomBytes, push: async (p) => { fb.pushes.push(p); }, log: () => {}, deleteAuthUser: async () => {} });
   fb.ops = ops;
   const json = (route, status, body) => route.fulfill({ status, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' }, body: JSON.stringify(body) });
   const STATUS = { 'failed-precondition': 400, 'invalid-argument': 400, 'not-found': 404, unauthenticated: 401, internal: 500 };
@@ -99,6 +100,29 @@ function fakeCap(cfg) {
   N.open = (url) => (N.ls.appUrlOpen || []).slice().forEach((f) => f({ url }));
   N.resume = () => (N.ls.resume || []).slice().forEach((f) => f({ isActive: true }));
   window.Capacitor = { isNativePlatform: () => true, getPlatform: () => 'android', Plugins: { App, Share } };
+  // FC5: @capacitor/push-notifications as the native plugin behaves (8.1.3, PushNotificationsPlugin.java). C.push: { perm:
+  // 'prompt' | 'granted' | 'denied' (what checkPermissions says), answer (what the prompt turns into), token }. Permission and
+  // token survive a reload (sessionStorage). Events sent with nobody listening are held until a listener comes (the plugin's
+  // retainUntilConsumed: a cold start from a tap). __push_tap in sessionStorage is a tap that started the app.
+  if (!C.push) return;
+  const ss = (k, v) => { try { if (v === undefined) return sessionStorage.getItem(k); sessionStorage.setItem(k, v); } catch (e) { return null; } return v; };
+  const P = N.push = { calls: [], ls: {}, held: {} };
+  if (!ss('__push_perm')) ss('__push_perm', C.push.perm || 'granted');
+  if (!ss('__fcm_tok')) ss('__fcm_tok', C.push.token || 'fake-fcm:APA91b_token_1');
+  const fire = (n, d, hold) => { const l = P.ls[n] || []; if (!l.length) { if (hold) (P.held[n] = P.held[n] || []).push(d); return; } l.slice().forEach((f) => f(d)); };
+  const rec = (m, a) => P.calls.push(a === undefined ? m : m + ' ' + JSON.stringify(a));
+  const tap = ss('__push_tap'); if (tap) { try { sessionStorage.removeItem('__push_tap'); } catch (e) {} P.held.pushNotificationActionPerformed = [{ actionId: 'tap', notification: { id: 'cold', data: JSON.parse(tap) } }]; }
+  window.Capacitor.Plugins.PushNotifications = {
+    addListener(n, f) { rec('addListener', n); (P.ls[n] = P.ls[n] || []).push(f); const h = P.held[n]; if (h) { delete P.held[n]; setTimeout(() => h.forEach((d) => f(d)), 0); } return Promise.resolve({ remove() {} }); },
+    checkPermissions() { rec('checkPermissions'); return Promise.resolve({ receive: ss('__push_perm') }); },
+    requestPermissions() { rec('requestPermissions', N.share.length); if (ss('__push_perm') === 'prompt') ss('__push_perm', C.push.answer || 'granted'); return Promise.resolve({ receive: ss('__push_perm') }); },
+    register() { rec('register'); setTimeout(() => fire('registration', { value: ss('__fcm_tok') }, true), 10); return Promise.resolve(); },
+    unregister() { rec('unregister'); return Promise.resolve(); },
+    createChannel(c) { rec('createChannel', c); return Promise.resolve(); },
+    removeAllListeners() { rec('removeAllListeners'); P.ls = {}; return Promise.resolve(); }
+  };
+  N.pushIn = (data) => fire('pushNotificationReceived', { id: 'm' + P.calls.length, title: 'Chess Coach', body: 'Your move in a friend game', data }, false);
+  N.pushTap = (data) => fire('pushNotificationActionPerformed', { actionId: 'tap', notification: { id: 'm' + P.calls.length, data } }, true);
 }
 function seed([pk, p, fk, f]) {
   if (sessionStorage.getItem('seeded')) return;
@@ -114,10 +138,14 @@ async function player(vp, fb, o) {
   o = o || {};
   const ctx = await browser.newContext({ viewport: vp, deviceScaleFactor: 1 });
   const who = o.who || 'p';
-  await ctx.route(/.*/, (route) => { const u = route.request().url(); if (FAKE.test(u)) return fb.handle(route, who); if (/fonts\.(googleapis|gstatic)\.com/.test(u)) return route.fulfill({ status: 200, contentType: 'text/css', body: '' }); return route.continue(); });
-  const store = o.test === false || o.native === false ? null : { v: 1, test: true, games: {} };
+  // FC5: the app now holds the real project's config (FC-D38); a request to a real Firebase host is never let out (FC-D24), and
+  // the request listener below still records it, so the case fails
+  await ctx.route(/.*/, (route) => { const u = route.request().url(); if (FAKE.test(u)) return fb.handle(route, who); if (/fonts\.(googleapis|gstatic)\.com/.test(u)) return route.fulfill({ status: 200, contentType: 'text/css', body: '' }); if (FIREBASE.test(u)) return route.abort('blockedbyclient'); return route.continue(); });
+  const store = o.store !== undefined ? o.store : o.test === false || o.native === false ? null : { v: 1, test: true, games: {} };
   await ctx.addInitScript(seed, [G.PKEY, o.prof || G.improver({ rating: 1100 }), FKEY, store]);
-  if (o.native !== false) await ctx.addInitScript(fakeCap, { launch: o.launch || null, shareCancel: !!o.shareCancel, noConfig: !!o.noConfig });
+  // o.push: the push plugin (FC5); FC_PUSH=1 gives every phone one that grants at once (FC3 and FC4 cases with push in the app)
+  const push = o.push !== undefined ? o.push : process.env.FC_PUSH === '1' ? { perm: 'granted' } : null;
+  if (o.native !== false) await ctx.addInitScript(fakeCap, { launch: o.launch || null, shareCancel: !!o.shareCancel, noConfig: !!o.noConfig, push });
   for (const x of o.extra || []) await ctx.addInitScript(x[0], x[1]); // FC4: more fakes (the ads plugin, a worker counter)
   const origin = o.release || o.native === false ? RORIGIN : ORIGIN;
   const page = await ctx.newPage();
@@ -480,23 +508,26 @@ const cases = [
     return [A, B];
   }],
   // ---------- fix round 1 ----------
-  ['Fix 1, fix 8: a release build never shows the test toggle or the card, even with a stored test flag, and ignores FC_CONFIG; nor a test build without a real config', async (vp, fb) => {
+  ['Fix 1, fix 8: a release build never shows the test toggle or the card, even with a stored test flag, and ignores FC_CONFIG; FC-D38: a test build without FC_CONFIG has the real project and sends nothing before a Challenge', async (vp, fb) => {
     const R = await player(vp, fb, { who: 'R', release: true });
     assert.equal(await R.evaluate(() => JSON.stringify(window.CC_BUILD)), '{"test":false}');
-    assert.match(await R.evaluate(() => window.FCONFIG.apiKey), /PLACEHOLDER/, 'FC_CONFIG ignored');
+    assert.equal(await R.evaluate(() => window.FCONFIG.apiKey), 'AIzaSyDw3xbGs4PFvkQDwL2FjFFMUMKGV2o0vp0', 'FC_CONFIG ignored: the real project (FC-D38)');
     assert.equal((await frStore(R)).test, true, 'the stored flag is there');
     await goPlay(R);
     assert.equal(await card(R), null, 'no card');
     await R.evaluate(() => window.__coach.openSettings());
     assert.equal(await R.evaluate(() => { const s = document.getElementById('friendSet'); return s.hidden && s.innerHTML === ''; }), true, 'no toggle');
     assert.deepEqual(await R.evaluate(() => Object.keys(window.__fc.ls)), ['backButton'], 'no link listener');
+    // FC-D38 ended the placeholders (FC-D24) for the app: a test build without FC_CONFIG points at chess-coach-100, so the toggle
+    // and the card show, and still nothing goes out before the player's first Challenge (this case never challenges)
     const N = await player(vp, fb, { who: 'N', noConfig: true });
     assert.equal(await N.evaluate(() => window.CC_BUILD.test), true);
+    assert.equal(await N.evaluate(() => window.FCONFIG.projectId + ' ' + window.FClient.configured(window.FCONFIG)), 'chess-coach-100 true');
     await goPlay(N);
-    assert.equal(await card(N), null, 'placeholder config: no card');
+    assert.ok(await card(N), 'the real config: the card shows with the test toggle on');
     await N.evaluate(() => window.__coach.openSettings());
-    assert.equal(await N.evaluate(() => document.getElementById('friendSet').hidden), true, 'placeholder config: no toggle');
-    assert.equal(R.fb.length + N.fb.length, 0);
+    assert.equal(await N.evaluate(() => document.getElementById('friendSet').hidden), false, 'the real config: the toggle shows');
+    assert.equal(R.fb.length + N.fb.length + R.outside.length + N.outside.length, 0, 'no request to the friend server or any Firebase host');
     return [R, N];
   }],
   ['Fix 2: a failed or offline tap is not remembered; after Not now a later tap shows the sheet again; a cold link shown in the last 2 minutes is not shown again', async (vp, fb) => {

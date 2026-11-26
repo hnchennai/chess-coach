@@ -65,8 +65,8 @@ jobs:
           echo "@capacitor/app $V"
           [ "$V" = "8.1.2" ] || { echo "::error::@capacitor/app must be exactly 8.1.2 (found '$V')"; exit 1; }
           # D2 (DP-D10): the reminder and rating plugins are pinned too. FC3 (friend-challenges.tech.md section 10): and the
-          # share sheet for challenge links. Fail on anything but exactly these versions.
-          for P in '@capacitor/local-notifications 8.3.1' '@capacitor-community/in-app-review 8.0.0' '@capacitor/share 8.0.3'; do
+          # share sheet for challenge links. FC5: and push for friend games. Fail on anything but exactly these versions.
+          for P in '@capacitor/local-notifications 8.3.1' '@capacitor-community/in-app-review 8.0.0' '@capacitor/share 8.0.3' '@capacitor/push-notifications 8.1.3'; do
             N=${P% *}; W=${P#* }
             V=$(node -p "require('./node_modules/$N/package.json').version" 2>/dev/null || true)
             echo "$N $V"
@@ -89,7 +89,9 @@ jobs:
           # reminder's small notification icon in res/drawable. The script fails the step if anything did not apply.
           sh scripts/android-d2.sh android
           # FC3 (friend-challenges.tech.md sections 8 and 10): the App Links filter for https://hnchennai.github.io/c/ on the main
-          # activity, so a challenge link opens the app. The script fails the step if it did not apply.
+          # activity, so a challenge link opens the app. FC5 (sections 4 and 10): config/google-services.json into android/app,
+          # firebaseMessagingVersion 25.0.1, FCM auto-init off, the push icon and channel in the manifest. The script fails the
+          # step if anything did not apply.
           sh scripts/android-friends.sh android
           cat android/app/src/main/AndroidManifest.xml android/variables.gradle
 
@@ -124,12 +126,14 @@ jobs:
           grep -qF '@capacitor/app@8.1.2' "$RUNNER_TEMP/sync.txt" || { echo "::error::cap sync did not list @capacitor/app@8.1.2"; exit 1; }
           grep -qF "include ':capacitor-app'" android/capacitor.settings.gradle || { echo "::error::android/capacitor.settings.gradle does not include @capacitor/app"; exit 1; }
           # D2: the reminder and rating plugins must be in the Android project, at the pinned versions. FC3: and the share plugin.
-          for P in '@capacitor/local-notifications@8.3.1' '@capacitor-community/in-app-review@8.0.0' '@capacitor/share@8.0.3'; do
+          # FC5: and the push plugin.
+          for P in '@capacitor/local-notifications@8.3.1' '@capacitor-community/in-app-review@8.0.0' '@capacitor/share@8.0.3' '@capacitor/push-notifications@8.1.3'; do
             grep -qF "$P" "$RUNNER_TEMP/sync.txt" || { echo "::error::cap sync did not list $P"; exit 1; }
           done
           grep -qF "include ':capacitor-local-notifications'" android/capacitor.settings.gradle || { echo "::error::android/capacitor.settings.gradle does not include @capacitor/local-notifications"; exit 1; }
           grep -qF "include ':capacitor-community-in-app-review'" android/capacitor.settings.gradle || { echo "::error::android/capacitor.settings.gradle does not include @capacitor-community/in-app-review"; exit 1; }
           grep -qF "include ':capacitor-share'" android/capacitor.settings.gradle || { echo "::error::android/capacitor.settings.gradle does not include @capacitor/share"; exit 1; }
+          grep -qF "include ':capacitor-push-notifications'" android/capacitor.settings.gradle || { echo "::error::android/capacitor.settings.gradle does not include @capacitor/push-notifications"; exit 1; }
 
       - name: Build the APK (and Play Store bundle when signed)
         env:
@@ -140,13 +144,17 @@ jobs:
           echo "apply from: '../../android-signing.gradle'" >> app/build.gradle
           # Ads (F3b): the build must link exactly the pinned libraries (scripts/android-ads.sh). Fail if Gradle resolved anything else.
           ./gradlew -q :app:dependencies --configuration releaseRuntimeClasspath --no-daemon > "$RUNNER_TEMP/deps.txt"
-          # D2 (DP-D14, DP-D15): and the Play review library, exactly 2.0.2 (scripts/android-d2.sh).
-          grep -E 'play-services-ads:|user-messaging-platform:|webview-native-ui:engine:|com\.google\.android\.play:' "$RUNNER_TEMP/deps.txt" | sort -u
-          for D in 'com.google.android.gms:play-services-ads:25.4.0' 'com.google.android.ump:user-messaging-platform:4.0.0' 'io.github.webview-native-ui:engine:1.0.11' 'com.google.android.play:review:2.0.2'; do
+          # D2 (DP-D14, DP-D15): and the Play review library, exactly 2.0.2 (scripts/android-d2.sh). FC5: and Firebase Cloud
+          # Messaging, exactly 25.0.1 (scripts/android-friends.sh).
+          grep -E 'play-services-ads:|user-messaging-platform:|webview-native-ui:engine:|com\.google\.android\.play:|com\.google\.firebase:' "$RUNNER_TEMP/deps.txt" | sort -u
+          for D in 'com.google.android.gms:play-services-ads:25.4.0' 'com.google.android.ump:user-messaging-platform:4.0.0' 'io.github.webview-native-ui:engine:1.0.11' 'com.google.android.play:review:2.0.2' 'com.google.firebase:firebase-messaging:25.0.1'; do
             grep -qE -- "--- $D( \(\*\)| \(c\))?\$" "$RUNNER_TEMP/deps.txt" || { echo "::error::Gradle did not resolve exactly $D"; exit 1; }
           done
           if grep -E -- '--- (com\.google\.android\.gms:play-services-ads|com\.google\.android\.ump:user-messaging-platform|io\.github\.webview-native-ui:engine):.* -> ' "$RUNNER_TEMP/deps.txt"; then echo "::error::An ads library version was changed during resolution"; exit 1; fi
           if grep -E -- '--- com\.google\.android\.play:review:.* -> ' "$RUNNER_TEMP/deps.txt"; then echo "::error::The Play review library version was changed during resolution"; exit 1; fi
+          if grep -E -- '--- com\.google\.firebase:firebase-messaging:.* -> ' "$RUNNER_TEMP/deps.txt"; then echo "::error::The Firebase Cloud Messaging version was changed during resolution"; exit 1; fi
+          # FC5 and the constitution (no analytics): Firebase Analytics must not be anywhere on the app's classpath
+          if grep -n 'firebase-analytics' "$RUNNER_TEMP/deps.txt"; then echo "::error::firebase-analytics is on the classpath (no analytics, constitution)"; exit 1; fi
           if [ -n "$KS_PASS" ]; then
             echo "$KS_B64" | base64 -d > "$KS_PATH"
             ./gradlew assembleRelease bundleRelease --no-daemon
@@ -162,8 +170,9 @@ jobs:
       - name: Check the merged manifest (no exact alarms)
         run: sh scripts/android-d2.sh --check-merged android
 
-      # FC3: the merged manifest still has the verified challenge link filter on the main activity.
-      - name: Check the merged manifest (challenge links)
+      # FC3: the merged manifest still has the verified challenge link filter on the main activity. FC5: POST_NOTIFICATIONS, FCM
+      # auto-init off, the push icon and channel, the push service, and the Google services plugin's chess-coach-100 values.
+      - name: Check the merged manifest (challenge links and push)
         run: sh scripts/android-friends.sh --check-merged android
 
       - uses: actions/upload-artifact@v4

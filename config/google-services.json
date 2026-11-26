@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "449104716017",
+    "project_id": "chess-coach-100",
+    "storage_bucket": "chess-coach-100.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:449104716017:android:06ef8beb5868fe5bde0950",
+        "android_client_info": {
+          "package_name": "com.suresh.chesscoach"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAzwNcOpAel3aZb31ldwBgcR_baFgMZ9Ww"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

@@ -95,7 +95,7 @@ test('available(): native Android, and the launch switch or the test toggle', ()
 
 test('Store: blank shape, device only', () => {
   assert.equal(F.KEY, 'suresh-chess-coach.friends.v1');
-  assert.deepEqual(F.blank(), { v: 1, uid: null, rt: null, tok: null, since: 0, skew: 0, test: false, col: 'r', launch: null, links: [], friends: {}, games: {} });
+  assert.deepEqual(F.blank(), { v: 1, uid: null, rt: null, tok: null, ask: false, since: 0, skew: 0, test: false, col: 'r', launch: null, links: [], friends: {}, games: {} }); /* FC5: ask */
 });
 
 test('Store migrate: missing, broken or foreign data reads as blank, field by field', () => {

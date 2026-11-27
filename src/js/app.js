@@ -2615,7 +2615,7 @@
     if (!plain() && prof.rating < S.target) return { info: { kind: 'puzzles', target: S.target }, label: 'Rated puzzles to reach ' + S.target, sub: 'Your rating is ' + Math.round(prof.rating) + '. Ten puzzles a day moves it fastest.', go: function () { trainStart('rated'); } };
     if (bestWinLevel() < beatLevel(S)) return { info: { kind: 'beat', name: OPP[S.beat].name }, label: plain() ? 'Beat Rani’s practice partner' : 'Beat the ' + OPP[S.beat].name + ' engine', sub: 'Play slowly, blunder-check every move, and review the game after.', go: function () { newGame(false, { level: beatLevel(S) }); } };
     if (nx) { var k2 = nextPart(nx); return { info: { kind: 'lesson', unit: nx, part: k2 }, label: PART_NAME[k2] + ': ' + nx.title, sub: partDesc(nx, k2), go: function () { st.unitOpen = nx.id; startPart(nx.id, k2); } }; }
-    return { info: { kind: 'sharp' }, label: 'Keep sharp: rated puzzles', sub: 'You’ve finished the roadmap. Keep playing stronger opponents.', go: function () { trainStart('rated'); } };
+    return { info: { kind: 'sharp' }, label: 'Keep sharp: puzzles at your level', sub: 'You’ve finished the roadmap. Keep playing stronger opponents.', go: function () { trainStart('rated'); } };
   }
   var _next = null;
   function goNext() { if (_next) _next.go(); }

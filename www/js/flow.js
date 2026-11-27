@@ -9,7 +9,7 @@
     home: 'Home', practice: 'Start practice', lessonGame: 'Play the lesson game', nextLesson: 'Start next lesson', more: '10 more puzzles', daily: 'Today’s puzzle', tryAgain: 'Try again', keep: 'Keep playing',
     review: 'Review this game', newGame: 'New game', again: 'Go again', cont: 'Continue', startLesson: 'Start lesson', play: 'Play now', puzzles: 'Start 10 puzzles', back: 'Resume game',
     toPractice: 'Next: practise it.', toGame: 'Next: play it in a real game.', toStep: 'Next: one more step.', nextIs: 'Next lesson: ', whole: 'That’s the whole game.',
-    kicker: 'Continue', lessonOf: 'Continue · Lesson ', reach: 'Puzzles to reach ', sharp: 'Keep sharp: rated puzzles',
+    kicker: 'Continue', lessonOf: 'Continue · Lesson ', reach: 'Puzzles to reach ', sharp: 'Keep sharp: puzzles at your level',
     /* G2a (board-screens.product.md, "New wording") */
     close: 'Close', resumeGame: 'Resume game', resumeLesson: 'Resume lesson', resumePuzzles: 'Resume puzzles', resumeDrill: 'Resume drill',
     move: 'Move ', yourTurn: ', your turn', engineTurn: ', engine to move', recent: 'Recent games',

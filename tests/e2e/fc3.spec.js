@@ -72,7 +72,7 @@ function fakeFirebase() {
       let data = null; try { data = JSON.parse(body).data; } catch (e) { data = null; }
       const op = data && data.op;
       if (fb.delay[op]) await new Promise((r) => setTimeout(r, fb.delay[op]));
-      if (fb.err[op]) return json(route, 500, { error: { status: 'INTERNAL', message: 'internal' } }); // FC5 fix round 1: a real server failure
+      if (fb.err[op]) { if (typeof fb.err[op] === 'number') fb.err[op]--; return json(route, 500, { error: { status: 'INTERNAL', message: 'internal' } }); } // FC5: a real server failure (true: every call; n: the next n calls)
       try {
         const result = await ops.handle(uid ? { uid } : null, data);
         if (fb.after[op]) await new Promise((r) => setTimeout(r, fb.after[op])); // FC5 fix round 1: answered late (the state read before the wait)
@@ -301,9 +301,12 @@ const cases = [
     assert.equal(await page.evaluate((u) => window.Friends.parseLink(u), linkOf(m[1])), m[1], 'the shared link parses');
     assert.ok(page.fb[0].startsWith('https://auth.fc.test/v1/accounts:signUp'), 'the first request ever is the anonymous sign-up');
     // FC5: with the push plugin (FC_PUSH=1) the first Challenge also sends the push token (op hello) once the share sheet closed
-    const ops = fb.calls.filter((c) => c.who === 'A').map((c) => (c.url === 'https://fn.fc.test/friend' ? JSON.parse(c.body).data.op : c.url.split('?')[0]));
+    const opsOf = () => fb.calls.filter((c) => c.who === 'A').map((c) => (c.url === 'https://fn.fc.test/friend' ? JSON.parse(c.body).data.op : c.url.split('?')[0]));
+    if (process.env.FC_PUSH === '1') for (let i = 0; i < 50 && !opsOf().includes('hello'); i++) await page.waitForTimeout(100); // the token follows the share sheet
+    await page.waitForTimeout(300);
+    const ops = opsOf();
     assert.deepEqual(ops.filter((x) => x !== 'hello'), ['https://auth.fc.test/v1/accounts:signUp', 'invite'], 'sign-up and invite, nothing else');
-    assert.equal(ops.filter((x) => x === 'hello').length, process.env.FC_PUSH === '1' ? ops.length - 2 : 0, 'and only the push token besides, when the app has push');
+    assert.equal(ops.filter((x) => x === 'hello').length, process.env.FC_PUSH === '1' ? 1 : 0, 'and exactly one push token besides, when the app has push');
     assert.equal(await sheet(page), null, 'the sheet closed');
     const inv = fb.store.get('invites', m[1]); assert.ok(inv, 'the server has the invite');
     const g = fb.store.get('games', inv.g);

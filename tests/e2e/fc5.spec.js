@@ -265,6 +265,19 @@ const cases = [
     await waitFor(async () => (await frStore(A)).tok === 'fake-fcm:APA91b_token_4', 'the next start sends it');
     return [A];
   }],
+  ['Fix round 2, fix 3: a server failure drops only the token that failed; a newer token that came meanwhile is still sent', async (vp, fb) => {
+    const A = await player(vp, fb, { who: 'A', push: { perm: 'granted', token: TOK1 } });
+    await challenge(A, 'w');
+    await waitFor(async () => (await frStore(A)).tok === TOK1, 'the first token');
+    fb.delay.hello = 1200; fb.err.hello = 1; // the next hello fails on the server, slowly
+    await A.evaluate((t) => window.__fc.pushToken(t), TOK2);
+    await A.waitForTimeout(300);
+    await A.evaluate((t) => window.__fc.pushToken(t), TOK3); // comes while TOK2's send runs
+    await waitFor(async () => (await frStore(A)).tok === TOK3, 'the newer token is sent after the failure', 10000);
+    const sent = hellos(fb, 'A').map((d) => d.tok);
+    assert.equal(sent.filter((t) => t === TOK2).length, 1, 'the failed token, once'); assert.equal(sent.filter((t) => t === TOK3).length, 1, 'the newer one, once');
+    return [A];
+  }],
   ['Fix 6, FC-D30: a restored backup (ask set, but this phone was never asked): ask and tok reset, the next Challenge asks', async (vp, fb) => {
     fb.refresh.set('rt-seed-6', 'uid-seed-6');
     const P = await player(vp, fb, { who: 'P', push: { perm: 'prompt', answer: 'granted', token: TOK2 }, store: { v: 1, test: true, uid: 'uid-seed-6', rt: 'rt-seed-6', ask: true, tok: TOK1, games: {} } });

@@ -3806,8 +3806,9 @@
       try { var r = frPush.addListener(x[0], function (d) { try { x[1](d); } catch (e) {} }); if (r && typeof r.catch === 'function') r.catch(rmNone); } catch (e) {}
     });
   }
-  /* FC-D14: the first Challenge or Accept on this phone asks; never again (ask is kept before the question, so a restart while
-     Android's dialog is up does not ask twice) */
+  /* FC-D14: the first Challenge or Accept on this phone asks. ask is kept before the question; FC-D41: frPushBoot clears it again
+     when the permission reads "prompt" (turned off after a grant, or the app killed while the dialog was open), so the next
+     Challenge or Accept asks once more. Never at start. */
   function frPushFirst() {
     if (!frPush || !frOn() || !FR.signedIn() || FR.store().ask) return;
     FR.setAsk(); frPushListen();
@@ -3819,8 +3820,10 @@
       .then(function () { return pcall(function () { return frPush.register(); }); }).catch(rmNone);
   }
   /* A later start, once asked: listeners for taps and pushes; register again only while allowed (no new question) */
-  /* Fix round 1, fix 6 (FC-D30): Android's backup may bring ask and tok from another phone. Permission never asked on this phone
-     ("prompt") means that: both go, so the next Challenge or Accept asks here and sends this phone's token. */
+  /* Fix round 1, fix 6 (FC-D30), FC-D41: "prompt" in Capacitor 8.6.2 means not granted and no denial cached on this phone: never
+     asked here (a restored backup's ask and tok from another phone), allowed and later turned off (by the player or by Android
+     for an unused app), or the app killed while the dialog was open. Then ask and tok go, so the next Challenge or Accept asks
+     once more (never at start) and sends this phone's token. "denied" (the player said Don't allow) is never asked again. */
   function frPushBoot() {
     if (!frPush || !frOn() || !FR.signedIn() || !FR.store().ask) return;
     frPushListen();
@@ -3830,7 +3833,8 @@
     }).catch(rmNone);
   }
   /* The token to the server (op hello), only when new or changed. One send at a time: a token that comes meanwhile waits and goes
-     when it answers. Offline: it waits for the next sync. A server failure: the next start tries again (fix round 1, fix 5). */
+     when it answers. Offline: it waits for the next sync. A server failure: that token waits for the next start (fix round 1,
+     fix 5); a newer token that came meanwhile still goes (fix round 2, fix 3). */
   function frTokSend(tok) {
     if (!frOn() || !Friends.tokenOk(tok)) return;
     frTokWait = tok;
@@ -3841,7 +3845,8 @@
       if (frTokWait === tok) frTokWait = null; else if (frTokWait) frTokSend(frTokWait);
     }, function (e) {
       frTokBusy = false;
-      if (!(e && e.code === 'offline')) frTokWait = null;
+      if (e && e.code === 'offline') return;
+      if (frTokWait === tok) frTokWait = null; else if (frTokWait) frTokSend(frTokWait);
     });
   }
   /* App open: the push's game changed on the server; a sync brings it (its row, or the board when it is open) */

@@ -128,3 +128,22 @@ test('FC5 pins: @capacitor/push-notifications 8.1.3 exactly; CI checks it, cap s
   assert.ok(/grep[^\n]*firebase-analytics[^\n]*deps\.txt/.test(y), 'no firebase-analytics anywhere on the classpath');
   assert.ok(/android-friends\.sh --check-merged android/.test(y));
 });
+
+// A push says the server changed. A sync already running may have been answered before that change, so a fresh sync runs once
+// more after it (two fresh asks during one running sync share that one follow-up); a plain sync still shares the running one.
+test('sync({ fresh: true }): while a sync runs, one more runs after it; without fresh the running one is shared', async () => {
+  let n = 0;
+  const net = fakeNet(async (url) => {
+    if (url.startsWith('https://token.fc.test')) return { status: 200, body: { id_token: 'id-u1', refresh_token: 'rt-u1', expires_in: '3600', user_id: 'u1' } };
+    n++; await new Promise((r) => setTimeout(r, 20)); return { status: 200, body: { result: { now: T, next: T, more: false, games: [] } } };
+  });
+  const c = client(net, signedIn());
+  const a = c.sync(), b = c.sync(), f1 = c.sync({ fresh: true }), f2 = c.sync({ fresh: true });
+  assert.equal(a, b, 'a plain sync shares the running one');
+  assert.notEqual(f1, a, 'a fresh one does not');
+  assert.equal(f1, f2, 'two fresh asks share one follow-up');
+  await Promise.all([a, f1]);
+  assert.equal(n, 2, 'the running sync, then one more');
+  await c.sync({ fresh: true });
+  assert.equal(n, 3, 'nothing running: a fresh sync is just a sync');
+});

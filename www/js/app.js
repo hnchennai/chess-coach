@@ -3436,15 +3436,16 @@
     if (b) try { b.focus({ preventScroll: true }); } catch (e) {} else { var t = $('friendTitle'); if (t) { t.tabIndex = -1; try { t.focus({ preventScroll: true }); } catch (e) {} } }
   }
   /* Play tab open (at most every 10 seconds) and App resume (always). Only with an ID: a sync never creates one.
-     FC5: then, when given, runs after a sync that was sent has answered (a tap on a notification opens the game it names). */
-  function frSync(force, then) {
+     FC5: then, when given, runs after a sync that was sent has answered (a tap on a notification opens the game it names);
+     fresh (a push): a sync already running may predate the change, so one more runs after it (FClient sync o.fresh). */
+  function frSync(force, then, fresh) {
     if (!frOn() || !FR.signedIn()) return;
     frFlushAll(); /* FC4: a move waiting to be sent goes first (Play open, App resume, back online) */
     if (frTokWait && !frOffline()) frTokSend(frTokWait); /* FC5: a push token the server does not have yet */
     if (!force && Date.now() - frLastSync < 10000) return;
     frLastSync = Date.now();
     if (frOffline()) { frLine = Friends.COPY.offline; frSettle(); return; }
-    var p = FR.sync(); if (!p) return;
+    var p = FR.sync(fresh ? { fresh: true } : undefined); if (!p) return;
     p.then(function () { frLine = null; frSettle(); }, function (e) { frLine = e && e.code === 'offline' ? Friends.COPY.offline : null; frSettle(); })
       .then(function () { if (then) then(); });
   }
@@ -3643,7 +3644,7 @@
     st.mode = 'friend'; st.fid = id; st.fg = null; frFgKey = ''; st.rv = null; st.af = false; st.sel = null; resetHints();
     frConfirm = null; frBarMsg = null; frSay = '';
     openAct(); switchTab('play'); render();
-    frSync(true); /* the friend's latest move, and a waiting move of mine goes first */
+    frSync(true, null, !!ended); /* the friend's latest move, and a waiting move of mine goes first; FC5: fresh when a notification opened it */
   }
   /* The friend board closes (Close, a tab, another activity): the game waits in its row on Play. No render here. */
   function frLeave() {
@@ -3830,7 +3831,7 @@
     FR.sendTok(tok).then(function () { if (frTokWait === tok) frTokWait = null; }, rmNone);
   }
   /* App open: the push's game changed on the server; a sync brings it (its row, or the board when it is open) */
-  function frPushIn(n) { if (Friends.pushGame(n) && frOn()) frSync(true); }
+  function frPushIn(n) { if (Friends.pushGame(n) && frOn()) frSync(true, null, true); }
   /* A tap: that game's board, after the level check if it is open. A game this phone does not have yet as started (an invite
      the friend just accepted) opens once the sync has it; Play shows meanwhile. */
   function frPushOpen(id) {
@@ -3840,12 +3841,12 @@
     function open() {
       var g = FR.store().games[id];
       if (!g || !(g.st === 'active' || Friends.outcome(g))) return false;
-      if (st.mode === 'friend' && st.fid === id) frSync(true); else frOpenBoard(id, true);
+      if (st.mode === 'friend' && st.fid === id) frSync(true, null, true); else frOpenBoard(id, true);
       return true;
     }
     if (open()) return;
     switchTab('play'); render();
-    frSync(true, function () { if (st.mode !== 'friend' && !Placement.isOpen()) open(); });
+    frSync(true, function () { if (st.mode !== 'friend' && !Placement.isOpen()) open(); }, true);
   }
   /* Settings: "Friend games (test)", only in a test build with a real config while the launch switch is off (fix 1) */
   function renderFriendSet() {

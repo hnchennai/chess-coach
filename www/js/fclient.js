@@ -133,8 +133,15 @@
     }
 
     /* Play tab open and App resume (tech spec section 9). Only with an ID; sends only the server's own next. */
-    function sync() {
+    /* o.fresh (FC5, a push said the server changed): a sync already running may have been answered before that change, so one
+       more runs after it; fresh asks during one running sync share that follow-up. Without it the running sync is shared. */
+    var syncNext = null;
+    function sync(o) {
       if (!store.uid || !store.rt) return null;
+      if (syncP && o && o.fresh) {
+        if (!syncNext) syncNext = syncP.then(null, function () {}).then(function () { syncNext = null; return sync(); });
+        return syncNext;
+      }
       if (syncP) return syncP;
       var pages = 0;
       function page() {

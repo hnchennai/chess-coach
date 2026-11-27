@@ -831,18 +831,19 @@
     wasPinned = pinned(); /* G2d fix round 1: what the resize handler compares with */
     /* Fix round 2: whatever opens on the board screen starts at the top of the page (an end card's scroll is not kept) */
     if (scrTop && !scrHold) { scrTop = false; if (on && on === scrOn && window.scrollY > 0) window.scrollTo(0, 0); }
-    var opened = scrFocus && !scrHold; if (!scrHold) scrFocus = false; /* G-D45 fix round 1: the player opened it (not a layout switch) */
+    var opened = scrFocus; if (!scrHold) scrFocus = false; /* G-D45 fix round 1: the player opened it (not a layout switch) */
     if (on === scrOn) return;
-    scrOn = on;
+    scrOn = on; scrFocus = false;
     if (st.tab === 'path') renderPath(); /* the lesson's step card belongs to the board screen; the course to the tab page */
     if (on) {
       window.scrollTo(0, 0);
       if (st.v3d && window.Board3D && Board3D.isOn()) Board3D.resize(); /* the first frame shown is already the right position */
       /* the player opened it: the bar's text is read. A layout switch (a resize to the phone layout) keeps the control that had
-         the focus when it is on screen again (the browser may have dropped it for a moment: lostFocus); else the bar's text. */
-      var fa = document.activeElement; if (!fa || fa === document.body) fa = lostFocus;
+         the focus when it is on screen again (the browser may have dropped it for a moment: lostFocus); else the bar's text.
+         Fix round 2: with nothing focused before the switch, it focuses nothing (it never grabs the focus). */
+      var fa = document.activeElement; if (!fa || fa === document.body) { fa = lostFocus; lostFocus = null; }
       var kept = !opened && !!fa && fa.isConnected && fa.getClientRects().length > 0;
-      if (booted) try { (kept ? fa : $('actText')).focus({ preventScroll: true }); } catch (e) {}
+      if (booted && (opened || fa)) try { (kept ? fa : $('actText')).focus({ preventScroll: true }); } catch (e) {}
     } else window.scrollTo(0, st.tab === scrTab ? scrY : 0);
   }
   /* The Close bar's two lines: the activity's name, and where the player is in it. Words the app already uses. */
@@ -1070,12 +1071,17 @@
   /* G-D45, fix round 1: switching between the wide and the phone layout (a turn, a window or split-screen resize, also across
      the 500px height line) never leaves the focus on the page body. The control that had it keeps it when it is still on
      screen after the switch; else the selected tab (on the board screen: the Close bar's text), as focusTab() does.
-     lostFocus: a control that lost the focus by being hidden (no other control took it), so it can be given back. */
-  var lostFocus = null;
+     lostFocus: a control that lost the focus by being hidden (no other control took it), so it can be given back. Fix round 2:
+     only a focus lost by a layout switch counts: one lost within a second of the player's own tap or key (a button that hides
+     itself) is not kept, the next tap or key clears it, and it is used once. */
+  var lostFocus = null, actedAt = 0;
+  function acted() { lostFocus = null; actedAt = Date.now(); }
+  document.addEventListener('pointerdown', acted, true);
+  document.addEventListener('keydown', acted, true);
   document.addEventListener('focusin', function () { lostFocus = null; });
-  document.addEventListener('focusout', function (e) { var t = e.target; lostFocus = !e.relatedTarget && t && t.getClientRects && !t.getClientRects().length ? t : null; });
+  document.addEventListener('focusout', function (e) { var t = e.target; lostFocus = !e.relatedTarget && Date.now() - actedAt > 1000 && t && t.getClientRects && !t.getClientRects().length ? t : null; });
   function holdFocus(fn) {
-    var a = document.activeElement; if (!a || a === document.body) a = lostFocus;
+    var a = document.activeElement; if (!a || a === document.body) { a = lostFocus; lostFocus = null; }
     fn();
     if (!a) return;
     if (a.isConnected && a.getClientRects().length) { if (document.activeElement !== a) try { a.focus({ preventScroll: true }); } catch (e) {} }

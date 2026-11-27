@@ -435,6 +435,38 @@ const cases = [
     await page.setViewportSize(vp); await settle(null);
     assert.deepEqual(await focus(), { id: 'tab-coach', shown: true }, '1280x800 Home again: the tab keeps it');
     return page;
+  }],
+  // fix round 2: "never drops focus" also means "never grabs it": with nothing focused, a layout switch focuses nothing
+  ['C17 switch A (fix round 2): the board screen with nothing focused, turned wide and back: still nothing focused', ['412x915'], async (vp) => {
+    const page = await newPage(vp, club(), { game: GAME, tab: 'play' });
+    const wide = { width: 1280, height: 800 };
+    const settle = async (scr) => { await page.waitForFunction((s) => (document.documentElement.dataset.scr || null) === s, scr); await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))); };
+    const active = () => page.evaluate(() => { const a = document.activeElement; return !a || a === document.body ? 'BODY' : a.id || a.tagName; });
+    await openGame(page); await settle('act');
+    assert.equal(await active(), 'actText', 'opened by the player: the Close bar\u2019s text is read (G2a)');
+    await page.evaluate(() => document.activeElement.blur());
+    assert.equal(await active(), 'BODY');
+    await page.setViewportSize(wide); await settle(null);
+    assert.equal(await active(), 'BODY', '1280x800: nothing focused');
+    await page.setViewportSize(vp); await settle('act');
+    assert.equal(await active(), 'BODY', '412x915 board screen again: nothing focused');
+    return page;
+  }],
+  ['C17 switch B (fix round 2): a mouse click that hides its button leaves nothing focused; a later layout switch does not focus anything', ['1280x800'], async (vp) => {
+    const page = await newPage(vp, beginner(), { game: GAME, tab: 'coach' });
+    const short = { width: 1280, height: 450 };
+    const settle = async () => page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+    const active = () => page.evaluate(() => { const a = document.activeElement; return !a || a === document.body ? 'BODY' : a.id || a.tagName; });
+    await goTab(page, 'coach'); await idle(page);
+    const btn = page.locator('#panel-coach button:visible', { hasText: 'Resume game' }).first();
+    await btn.click(); // a mouse click: the button is gone once the game is open
+    await settle();
+    assert.equal(await active(), 'BODY', 'after the click nothing is focused (the button is hidden)');
+    await page.setViewportSize(short); await settle(); await settle();
+    assert.equal(await active(), 'BODY', '1280x450: nothing focused');
+    await page.setViewportSize(vp); await settle(); await settle();
+    assert.equal(await active(), 'BODY', '1280x800 again: nothing focused');
+    return page;
   }]
 ];
 

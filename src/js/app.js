@@ -3375,13 +3375,14 @@
      No request is made before the player's first Challenge or opened challenge link (FC-D3). Nicknames and records are in the
      friend store on this phone, never in the profile or the cloud save (FC-D29). Every plugin call and every request is a
      promise whose failure is caught; nothing here throws into the UI. ---------- */
-  var FR = null, frNative = false, frShare = null, frApp = null, frTestBuild = !!(window.CC_BUILD && window.CC_BUILD.test === true);
+  var FR = null, frNative = false, frShare = null, frApp = null, frPush = null, frTestBuild = !!(window.CC_BUILD && window.CC_BUILD.test === true);
   (function () {
     try {
       var C = window.Capacitor;
       if (!C || typeof C.isNativePlatform !== 'function' || !C.isNativePlatform() || typeof C.getPlatform !== 'function' || C.getPlatform() !== 'android') return;
       if (!window.FClient || !window.FCONFIG || !window.Friends) return;
       frNative = true; frShare = (C.Plugins && C.Plugins.Share) || null; frApp = (C.Plugins && C.Plugins.App) || null;
+      frPush = (C.Plugins && C.Plugins.PushNotifications) || null; /* FC5: only a reference here; nothing is called before the first Challenge or Accept */
       FR = window.FClient.make({ config: window.FCONFIG, fetch: function (u, i) { return window.fetch(u, i); }, now: function () { return Date.now(); },
         storage: { get: function () { try { return localStorage.getItem(Friends.KEY); } catch (e) { return null; } }, set: function (v) { try { localStorage.setItem(Friends.KEY, v); } catch (e) {} } } });
     } catch (e) { FR = null; }
@@ -3403,6 +3404,7 @@
   function renderFriends() {
     var card = $('friendCard'); if (!card) return;
     if (frPending && frOn() && !Placement.isOpen()) { var u = frPending; frPending = null; setTimeout(function () { frLink(u.url, u.cold); }, 0); }
+    if (frPushPend && frOn() && !Placement.isOpen()) { var pg = frPushPend; frPushPend = null; setTimeout(function () { frPushOpen(pg); }, 0); } /* FC5: a tap that came during the level check */
     if (!frOn()) { if (!card.hidden) card.hidden = true; return; }
     var C = Friends.COPY;
     if (!card._built) {
@@ -3433,20 +3435,24 @@
     if (b && b.disabled) b = box.querySelector('[data-act="fchallenge"]:not([disabled])') || null;
     if (b) try { b.focus({ preventScroll: true }); } catch (e) {} else { var t = $('friendTitle'); if (t) { t.tabIndex = -1; try { t.focus({ preventScroll: true }); } catch (e) {} } }
   }
-  /* Play tab open (at most every 10 seconds) and App resume (always). Only with an ID: a sync never creates one. */
-  function frSync(force) {
+  /* Play tab open (at most every 10 seconds) and App resume (always). Only with an ID: a sync never creates one.
+     FC5: then, when given, runs after a sync that was sent has answered (a tap on a notification opens the game it names);
+     fresh (a push): a sync already running may predate the change, so one more runs after it (FClient sync o.fresh). */
+  function frSync(force, then, fresh) {
     if (!frOn() || !FR.signedIn()) return;
     frFlushAll(); /* FC4: a move waiting to be sent goes first (Play open, App resume, back online) */
+    if (frTokWait && !frTokBusy && !frOffline()) frTokSend(frTokWait); /* FC5: a push token that did not go out (offline) */
     if (!force && Date.now() - frLastSync < 10000) return;
     frLastSync = Date.now();
     if (frOffline()) { frLine = Friends.COPY.offline; frSettle(); return; }
-    var p = FR.sync(); if (!p) return;
-    p.then(function () { frLine = null; frSettle(); }, function (e) { frLine = e && e.code === 'offline' ? Friends.COPY.offline : null; frSettle(); });
+    var p = FR.sync(fresh ? { fresh: true } : undefined); if (!p) return;
+    p.then(function () { frLine = null; frSettle(); }, function (e) { frLine = e && e.code === 'offline' ? Friends.COPY.offline : null; frSettle(); })
+      .then(function () { if (then) then(); });
   }
   /* The share sheet with the approved text: "Play chess with me in Chess Coach: <link>". A cancelled share is not an error. */
   function frShareLink(code) {
-    if (!frShare || !code) return;
-    pcall(function () { return frShare.share({ text: Friends.shareText(code) }); }).catch(rmNone);
+    if (!frShare || !code) return Promise.resolve();
+    return pcall(function () { return frShare.share({ text: Friends.shareText(code) }); }).catch(rmNone);
   }
   /* ----- the friend sheet: "Challenge a friend" or "A friend challenges you" (one at a time). Its frame, with one persistent
      role="status" line, is built when it opens; a redraw changes the body and the status text only (fix 7). ----- */
@@ -3524,7 +3530,7 @@
       if (frSheet !== f) { renderFriends(); return; }
       frClose(true); frLine = null; renderFriends();
       var b = document.querySelector('#friendCard [data-act="fchallenge"]'); if (b && !b.disabled) try { b.focus({ preventScroll: true }); } catch (e) {}
-      frShareLink(r && r.code);
+      frShareLink(r && r.code).then(frPushFirst); /* FC5, FC-D14: the first challenge sent asks for notifications, once the share sheet has closed */
     }).catch(function (e) { if (frSheet === f) frMsg(Friends.errorText(e && e.code)); renderFriends(); });
   }
   /* A challenge link (cold start: App.getLaunchUrl; warm: appUrlOpen). Only a valid link to hnchennai.github.io/c/ is used.
@@ -3573,6 +3579,7 @@
       FR.remember(f.code);
       if (frSheet === f) frClose(true);
       frLine = null; switchTab('play'); render(); focusTab();
+      frPushFirst(); /* FC5, FC-D14: the first challenge accepted asks for notifications */
     }).catch(function (e) {
       if (frSheet !== f) return;
       var c = e && e.code;
@@ -3628,15 +3635,16 @@
     var last = c.history({ verbose: true }).slice(-1)[0];
     st.arrows = last && last.color !== g.me ? [{ from: last.from, to: last.to, color: 'var(--c-blund)' }] : [];
   }
-  /* A row on Play opens its game. What is on the board waits, as for a review (stow: a lesson or set keeps its Resume card). */
-  function frOpenBoard(id) {
+  /* A row on Play opens its game. What is on the board waits, as for a review (stow: a lesson or set keeps its Resume card).
+     FC5: ended, a tap on its notification: a finished game with a result opens too, on its end card. */
+  function frOpenBoard(id, ended) {
     if (!frOn()) return;
-    var g = FR.store().games[id]; if (!g || g.st !== 'active') return;
+    var g = FR.store().games[id]; if (!g || !(g.st === 'active' || (ended && Friends.outcome(g)))) return;
     rateReset(); stow('play'); clearSession(); hideTip(); if (st.pv) endPreview();
     st.mode = 'friend'; st.fid = id; st.fg = null; frFgKey = ''; st.rv = null; st.af = false; st.sel = null; resetHints();
     frConfirm = null; frBarMsg = null; frSay = '';
     openAct(); switchTab('play'); render();
-    frSync(true); /* the friend's latest move, and a waiting move of mine goes first */
+    frSync(true, null, !!ended); /* the friend's latest move, and a waiting move of mine goes first; FC5: fresh when a notification opened it */
   }
   /* The friend board closes (Close, a tab, another activity): the game waits in its row on Play. No render here. */
   function frLeave() {
@@ -3778,6 +3786,87 @@
     if (keep != null && !bar.contains(document.activeElement)) { var b = bar.querySelector('[data-act="' + keep + '"]:not([disabled])') || bar.querySelector('button:not([disabled])'); if (b) try { b.focus({ preventScroll: true }); } catch (e) {} }
     bar.hidden = !h && !msg;
   }
+  /* ---------- FC5: push (tech spec section 4; product spec FC-D14, scenario 4, criterion 4). @capacitor/push-notifications on
+     Firebase Cloud Messaging. Nothing here runs before the player's first Challenge or Accept: until then the plugin gets no
+     call at all (FCM auto-init is off in the manifest, scripts/android-friends.sh, so no token and no Firebase request either).
+     The first Challenge (once its share sheet has closed) or Accept asks for notifications, once per phone (ask, in the friend
+     store). Allowed: the "friend" channel ("Friend games", high importance), register(), and the token goes to the server with
+     op hello, kept as tok; every later start registers again without asking (register() also keeps FCM's auto-init on, tech spec
+     open question 3) and sends the token only when it changed. Denied: no token; the feature works without push (sync on Play,
+     on resume and every 60 s). A push while the app is open syncs, so its game (row or board) shows the change at once; a tap
+     on a notification (also one that started the app: the plugin holds it until the listener comes) opens that game. The
+     server's message carries only { t, g }: no text from it is shown. Every plugin call is a caught promise. ---------- */
+  var frPushOn = false, frTokWait = null, frTokBusy = false, frPushPend = null;
+  function frPushListen() {
+    if (!frPush || frPushOn) return;
+    frPushOn = true;
+    [['registration', function (t) { frTokSend(t && t.value); }],
+      ['pushNotificationReceived', function (n) { frPushIn(n); }],
+      ['pushNotificationActionPerformed', function (a) { var g = Friends.pushGame(a && a.notification); if (g) frPushOpen(g); }]].forEach(function (x) {
+      try { var r = frPush.addListener(x[0], function (d) { try { x[1](d); } catch (e) {} }); if (r && typeof r.catch === 'function') r.catch(rmNone); } catch (e) {}
+    });
+  }
+  /* FC-D14: the first Challenge or Accept on this phone asks. ask is kept before the question; FC-D41: frPushBoot clears it again
+     when the permission reads "prompt" (turned off after a grant, or the app killed while the dialog was open), so the next
+     Challenge or Accept asks once more. Never at start. */
+  function frPushFirst() {
+    if (!frPush || !frOn() || !FR.signedIn() || FR.store().ask) return;
+    FR.setAsk(); frPushListen();
+    pcall(function () { return frPush.requestPermissions(); }).then(function (r) { if (r && r.receive === 'granted') frPushReg(); }).catch(rmNone);
+  }
+  /* The channel the server's messages name, then register(): its "registration" event brings the token */
+  function frPushReg() {
+    pcall(function () { return frPush.createChannel(Friends.CHANNEL); }).catch(rmNone)
+      .then(function () { return pcall(function () { return frPush.register(); }); }).catch(rmNone);
+  }
+  /* A later start, once asked: listeners for taps and pushes; register again only while allowed (no new question) */
+  /* Fix round 1, fix 6 (FC-D30), FC-D41: "prompt" in Capacitor 8.6.2 means not granted and no denial cached on this phone: never
+     asked here (a restored backup's ask and tok from another phone), allowed and later turned off (by the player or by Android
+     for an unused app), or the app killed while the dialog was open. Then ask and tok go, so the next Challenge or Accept asks
+     once more (never at start) and sends this phone's token. "denied" (the player said Don't allow) is never asked again. */
+  function frPushBoot() {
+    if (!frPush || !frOn() || !FR.signedIn() || !FR.store().ask) return;
+    frPushListen();
+    pcall(function () { return frPush.checkPermissions(); }).then(function (r) {
+      var p = r && r.receive;
+      if (p === 'granted') frPushReg(); else if (p === 'prompt') FR.resetPush();
+    }).catch(rmNone);
+  }
+  /* The token to the server (op hello), only when new or changed. One send at a time: a token that comes meanwhile waits and goes
+     when it answers. Offline: it waits for the next sync. A server failure: that token waits for the next start (fix round 1,
+     fix 5); a newer token that came meanwhile still goes (fix round 2, fix 3). */
+  function frTokSend(tok) {
+    if (!frOn() || !Friends.tokenOk(tok)) return;
+    frTokWait = tok;
+    if (frTokBusy) return;
+    frTokBusy = true;
+    FR.sendTok(tok).then(function () {
+      frTokBusy = false;
+      if (frTokWait === tok) frTokWait = null; else if (frTokWait) frTokSend(frTokWait);
+    }, function (e) {
+      frTokBusy = false;
+      if (e && e.code === 'offline') return;
+      if (frTokWait === tok) frTokWait = null; else if (frTokWait) frTokSend(frTokWait);
+    });
+  }
+  /* App open: the push's game changed on the server; a sync brings it (its row, or the board when it is open) */
+  function frPushIn(n) { if (Friends.pushGame(n) && frOn()) frSync(true, null, true); }
+  /* A tap: that game's board, after the level check if it is open. A game this phone does not have yet as started (an invite
+     the friend just accepted) opens once the sync has it; Play shows meanwhile. */
+  function frPushOpen(id) {
+    if (!frOn() || !FR.signedIn()) return;
+    if (Placement.isOpen()) { frPushPend = id; return; }
+    closeSettings(true); if (frSheetOpen()) frClose(true);
+    function open() {
+      var g = FR.store().games[id];
+      if (!g || !(g.st === 'active' || Friends.outcome(g))) return false;
+      if (st.mode === 'friend' && st.fid === id) frSync(true, null, true); else frOpenBoard(id, true);
+      return true;
+    }
+    if (open()) return;
+    switchTab('play'); render();
+    frSync(true, function () { if (st.mode !== 'friend' && !Placement.isOpen()) open(); }, true);
+  }
   /* Settings: "Friend games (test)", only in a test build with a real config while the launch switch is off (fix 1) */
   function renderFriendSet() {
     var box = $('friendSet'); if (!box) return;
@@ -3810,6 +3899,7 @@
     window.addEventListener('online', function () { frFlushAll(); if (frLine === Friends.COPY.offline || st.mode === 'friend') frSync(true); }); /* back online: a waiting move goes (FC4); the no-internet line goes once a sync works */
     frTimer = setInterval(frTick, FR_TICK); /* FC4: every 60 s */
     frSettle(); /* FC4: a game that ended before the app closed is recorded now */
+    frPushBoot(); /* FC5: a phone that already said yes or no to notifications */
     if (!later && typeof frApp.getLaunchUrl === 'function') pcall(function () { return frApp.getLaunchUrl(); }).then(function (r) { if (r && r.url) frLink(r.url, true); }).catch(rmNone);
   }
   if (window.claude && window.claude.hot && window.claude.hot.snapshot) { try { window.claude.hot.snapshot(snapshot); } catch (e) {} }

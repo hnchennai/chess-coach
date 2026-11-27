@@ -31,8 +31,8 @@ test('fix 8: fconfig.js takes window.FC_CONFIG only in a test build', () => {
   const src = fs.readFileSync(path.join(ROOT, 'src/js/fconfig.js'), 'utf8');
   const run = (test) => { const w = { FC_CONFIG: { apiKey: 'fake-key', fnBase: 'https://fn.fc.test' }, CC_BUILD: { test } }; vm.runInNewContext(src, { window: w }); return w.FCONFIG; };
   assert.equal(run(true).apiKey, 'fake-key');
-  assert.match(run(false).apiKey, /PLACEHOLDER/);
+  assert.equal(run(false).apiKey, 'AIzaSyDw3xbGs4PFvkQDwL2FjFFMUMKGV2o0vp0', 'FC-D38: the real Web API key, FC_CONFIG ignored');
   assert.match(run(false).fnBase, /cloudfunctions\.net$/);
   const w = { FC_CONFIG: { apiKey: 'x' } }; vm.runInNewContext(src, { window: w });
-  assert.match(w.FCONFIG.apiKey, /PLACEHOLDER/, 'no flag at all: a release build');
+  assert.equal(w.FCONFIG.apiKey, 'AIzaSyDw3xbGs4PFvkQDwL2FjFFMUMKGV2o0vp0', 'no flag at all: a release build');
 });

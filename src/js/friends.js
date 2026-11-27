@@ -72,8 +72,9 @@
   function num(x) { return typeof x === 'number' && isFinite(x); }
 
   /* col: the colour picked last in the Challenge sheet (FC-D27); launch: the last launch link shown and when (fix 2);
-     friends: { <opp>: { n: nickname, t: ms, res: { <gameId>: 'w'|'l'|'d' } } } (FC-D29; FC4 fills res) */
-  function blank() { return { v: 1, uid: null, rt: null, tok: null, since: 0, skew: 0, test: false, col: 'r', launch: null, links: [], friends: {}, games: {} }; }
+     friends: { <opp>: { n: nickname, t: ms, res: { <gameId>: 'w'|'l'|'d' } } } (FC-D29; FC4 fills res);
+     FC5: tok, the push token the server has (sent with op hello); ask, this phone was asked for notifications (FC-D14: once) */
+  function blank() { return { v: 1, uid: null, rt: null, tok: null, ask: false, since: 0, skew: 0, test: false, col: 'r', launch: null, links: [], friends: {}, games: {} }; }
 
   function normFriend(x) {
     var res = {}, r = isObj(x.res) ? x.res : {};
@@ -114,7 +115,8 @@
     if (!isObj(o)) return s;
     if (typeof o.uid === 'string' && o.uid) s.uid = o.uid;
     if (typeof o.rt === 'string' && o.rt) s.rt = o.rt;
-    if (typeof o.tok === 'string' && o.tok) s.tok = o.tok;
+    if (tokenOk(o.tok)) s.tok = o.tok;
+    s.ask = o.ask === true;
     if (num(o.since) && o.since >= 0) s.since = o.since;
     if (num(o.skew)) s.skew = o.skew;
     s.test = o.test === true;
@@ -333,7 +335,15 @@
   function endedAt(g, skew) { return g.t - (num(skew) ? skew : 0); }
   function needsName(s, g) { return !!g && g.st !== 'invited' && !!g.opp && OPP_RE.test(g.opp) && !nickOf(s, g.opp); }
 
-  return { CONFIG: CONFIG, name: name,
+  /* ---------- FC5: push (tech spec section 4, FC-D14). The server sends { t, g } as data; the app only reads g. ---------- */
+  /* The notification channel the server's messages name (android.notification.channelId); its name is the card's title */
+  var CHANNEL = Object.freeze({ id: 'friend', name: COPY.card, importance: 4 });
+  var TOKEN_RE = /^[A-Za-z0-9_:-]{1,4096}$/; /* FCM token characters only, as functions/src/validate.js checks */
+  function tokenOk(t) { return typeof t === 'string' && TOKEN_RE.test(t); }
+  /* The game a push is about: a notification (pushNotificationReceived) or a tap's notification (pushNotificationActionPerformed) */
+  function pushGame(n) { var d = isObj(n) && isObj(n.data) ? n.data : null; return d && typeof d.g === 'string' && GAME_RE.test(d.g) ? d.g : null; }
+
+  return { CONFIG: CONFIG, name: name, CHANNEL: CHANNEL, tokenOk: tokenOk, pushGame: pushGame,
     queue: queue, sendable: sendable, toSend: toSend, moveReq: moveReq, settleSend: settleSend, outcome: outcome, endCopy: endCopy, recorded: recorded, record: record,
     toRecord: toRecord, entry: entry, histName: histName, oppName: oppName, boardTitle: boardTitle, boardLine: boardLine, canOffer: canOffer, offered: offered,
     offerFrom: offerFrom, drawLine: drawLine, refusalLine: refusalLine, needsName: needsName, endedAt: endedAt, turnOf: turnOf, replayed: replayed, safeCopy: safeCopy, REPLAY_MS: REPLAY_MS, KEY: KEY, MAX_OPEN: MAX_OPEN, NICK_MAX: NICK_MAX, COPY: COPY, CODE_RE: CODE_RE,

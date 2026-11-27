@@ -43,9 +43,10 @@ const SHARE_RE = /^Play chess with me in Chess Coach: https:\/\/hnchennai\.githu
 
 // ---------- the fake Firebase: Auth REST and the callable, on the real ops ----------
 function fakeFirebase() {
-  const fb = { off: 0, store: new MemStore(), tokens: new Map(), refresh: new Map(), uids: [], calls: [], down: false, delay: {}, lose: null };
+  const fb = { off: 0, store: new MemStore(), tokens: new Map(), refresh: new Map(), uids: [], calls: [], down: false, delay: {}, lose: null, pushes: [], err: {}, after: {} };
   const now = () => Date.now() + fb.off;
-  const ops = makeOps({ store: fb.store, now, rand: crypto.randomBytes, push: async () => {}, log: () => {}, deleteAuthUser: async () => {} });
+  // FC5: the server's push intents ({ to: uid, t, g }) are recorded; tests/e2e/fc5.spec.js hands them to the right phone
+  const ops = makeOps({ store: fb.store, now, rand: crypto.randomBytes, push: async (p) => { fb.pushes.push(p); }, log: () => {}, deleteAuthUser: async () => {} });
   fb.ops = ops;
   const json = (route, status, body) => route.fulfill({ status, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' }, body: JSON.stringify(body) });
   const STATUS = { 'failed-precondition': 400, 'invalid-argument': 400, 'not-found': 404, unauthenticated: 401, internal: 500 };
@@ -71,8 +72,10 @@ function fakeFirebase() {
       let data = null; try { data = JSON.parse(body).data; } catch (e) { data = null; }
       const op = data && data.op;
       if (fb.delay[op]) await new Promise((r) => setTimeout(r, fb.delay[op]));
+      if (fb.err[op]) { if (typeof fb.err[op] === 'number') fb.err[op]--; return json(route, 500, { error: { status: 'INTERNAL', message: 'internal' } }); } // FC5: a real server failure (true: every call; n: the next n calls)
       try {
         const result = await ops.handle(uid ? { uid } : null, data);
+        if (fb.after[op]) await new Promise((r) => setTimeout(r, fb.after[op])); // FC5 fix round 1: answered late (the state read before the wait)
         if (fb.lose === op) { fb.lose = null; return route.abort('connectionreset'); } // fix 6: the op ran, its answer is lost
         return json(route, 200, { result });
       } catch (e) {
@@ -89,7 +92,7 @@ function fakeFirebase() {
 function fakeCap(cfg) {
   const C = cfg || {};
   const N = window.__fc = { share: [], ls: {}, launch: C.launch || null };
-  if (!C.noConfig) window.FC_CONFIG = { projectId: 'demo-fc3', apiKey: 'fake-key', authBase: 'https://auth.fc.test', tokenBase: 'https://token.fc.test', fnBase: 'https://fn.fc.test' };
+  if (!C.noConfig) window.FC_CONFIG = C.fcConfig || { projectId: 'demo-fc3', apiKey: 'fake-key', authBase: 'https://auth.fc.test', tokenBase: 'https://token.fc.test', fnBase: 'https://fn.fc.test' };
   const App = {
     addListener(name, f) { (N.ls[name] = N.ls[name] || []).push(f); return Promise.resolve({ remove() {} }); },
     getLaunchUrl() { return Promise.resolve(N.launch ? { url: N.launch } : undefined); },
@@ -99,6 +102,30 @@ function fakeCap(cfg) {
   N.open = (url) => (N.ls.appUrlOpen || []).slice().forEach((f) => f({ url }));
   N.resume = () => (N.ls.resume || []).slice().forEach((f) => f({ isActive: true }));
   window.Capacitor = { isNativePlatform: () => true, getPlatform: () => 'android', Plugins: { App, Share } };
+  // FC5: @capacitor/push-notifications as the native plugin behaves (8.1.3, PushNotificationsPlugin.java). C.push: { perm:
+  // 'prompt' | 'granted' | 'denied' (what checkPermissions says), answer (what the prompt turns into), token }. Permission and
+  // token survive a reload (sessionStorage). Events sent with nobody listening are held until a listener comes (the plugin's
+  // retainUntilConsumed: a cold start from a tap). __push_tap in sessionStorage is a tap that started the app.
+  if (!C.push) return;
+  const ss = (k, v) => { try { if (v === undefined) return sessionStorage.getItem(k); sessionStorage.setItem(k, v); } catch (e) { return null; } return v; };
+  const P = N.push = { calls: [], ls: {}, held: {} };
+  if (!ss('__push_perm')) ss('__push_perm', C.push.perm || 'granted');
+  if (!ss('__fcm_tok')) ss('__fcm_tok', C.push.token || 'fake-fcm:APA91b_token_1');
+  const fire = (n, d, hold) => { const l = P.ls[n] || []; if (!l.length) { if (hold) (P.held[n] = P.held[n] || []).push(d); return; } l.slice().forEach((f) => f(d)); };
+  const rec = (m, a) => P.calls.push(a === undefined ? m : m + ' ' + JSON.stringify(a));
+  const tap = ss('__push_tap'); if (tap) { try { sessionStorage.removeItem('__push_tap'); } catch (e) {} P.held.pushNotificationActionPerformed = [{ actionId: 'tap', notification: { id: 'cold', data: JSON.parse(tap) } }]; }
+  window.Capacitor.Plugins.PushNotifications = {
+    addListener(n, f) { rec('addListener', n); (P.ls[n] = P.ls[n] || []).push(f); const h = P.held[n]; if (h) { delete P.held[n]; setTimeout(() => h.forEach((d) => f(d)), 0); } return Promise.resolve({ remove() {} }); },
+    checkPermissions() { rec('checkPermissions'); return Promise.resolve({ receive: ss('__push_perm') }); },
+    requestPermissions() { rec('requestPermissions', N.share.length); if (ss('__push_perm') === 'prompt') ss('__push_perm', C.push.answer || 'granted'); return Promise.resolve({ receive: ss('__push_perm') }); },
+    register() { rec('register'); setTimeout(() => fire('registration', { value: ss('__fcm_tok') }, true), 10); return Promise.resolve(); },
+    unregister() { rec('unregister'); return Promise.resolve(); },
+    createChannel(c) { rec('createChannel', c); return Promise.resolve(); },
+    removeAllListeners() { rec('removeAllListeners'); P.ls = {}; return Promise.resolve(); }
+  };
+  N.pushIn = (data) => fire('pushNotificationReceived', { id: 'm' + P.calls.length, title: 'Chess Coach', body: 'Your move in a friend game', data }, false);
+  N.pushTap = (data) => fire('pushNotificationActionPerformed', { actionId: 'tap', notification: { id: 'm' + P.calls.length, data } }, true);
+  N.pushToken = (value) => fire('registration', { value }, true); // FCM handed the app a new token (onNewToken)
 }
 function seed([pk, p, fk, f]) {
   if (sessionStorage.getItem('seeded')) return;
@@ -114,10 +141,14 @@ async function player(vp, fb, o) {
   o = o || {};
   const ctx = await browser.newContext({ viewport: vp, deviceScaleFactor: 1 });
   const who = o.who || 'p';
-  await ctx.route(/.*/, (route) => { const u = route.request().url(); if (FAKE.test(u)) return fb.handle(route, who); if (/fonts\.(googleapis|gstatic)\.com/.test(u)) return route.fulfill({ status: 200, contentType: 'text/css', body: '' }); return route.continue(); });
-  const store = o.test === false || o.native === false ? null : { v: 1, test: true, games: {} };
+  // FC5: the app now holds the real project's config (FC-D38); a request to a real Firebase host is never let out (FC-D24), and
+  // the request listener below still records it, so the case fails
+  await ctx.route(/.*/, (route) => { const u = route.request().url(); if (FAKE.test(u)) return fb.handle(route, who); if (/fonts\.(googleapis|gstatic)\.com/.test(u)) return route.fulfill({ status: 200, contentType: 'text/css', body: '' }); if (FIREBASE.test(u)) return route.abort('blockedbyclient'); return route.continue(); });
+  const store = o.store !== undefined ? o.store : o.test === false || o.native === false ? null : { v: 1, test: true, games: {} };
   await ctx.addInitScript(seed, [G.PKEY, o.prof || G.improver({ rating: 1100 }), FKEY, store]);
-  if (o.native !== false) await ctx.addInitScript(fakeCap, { launch: o.launch || null, shareCancel: !!o.shareCancel, noConfig: !!o.noConfig });
+  // o.push: the push plugin (FC5); FC_PUSH=1 gives every phone one that grants at once (FC3 and FC4 cases with push in the app)
+  const push = o.push !== undefined ? o.push : process.env.FC_PUSH === '1' ? { perm: 'granted' } : null;
+  if (o.native !== false) await ctx.addInitScript(fakeCap, { launch: o.launch || null, shareCancel: !!o.shareCancel, noConfig: !!o.noConfig, push, fcConfig: o.fcConfig || null });
   for (const x of o.extra || []) await ctx.addInitScript(x[0], x[1]); // FC4: more fakes (the ads plugin, a worker counter)
   const origin = o.release || o.native === false ? RORIGIN : ORIGIN;
   const page = await ctx.newPage();
@@ -269,7 +300,13 @@ const cases = [
     const m = SHARE_RE.exec(sh.text); assert.ok(m, sh.text);
     assert.equal(await page.evaluate((u) => window.Friends.parseLink(u), linkOf(m[1])), m[1], 'the shared link parses');
     assert.ok(page.fb[0].startsWith('https://auth.fc.test/v1/accounts:signUp'), 'the first request ever is the anonymous sign-up');
-    assert.equal(page.fb.length, 2, 'sign-up and invite, nothing else');
+    // FC5: with the push plugin (FC_PUSH=1) the first Challenge also sends the push token (op hello) once the share sheet closed
+    const opsOf = () => fb.calls.filter((c) => c.who === 'A').map((c) => (c.url === 'https://fn.fc.test/friend' ? JSON.parse(c.body).data.op : c.url.split('?')[0]));
+    if (process.env.FC_PUSH === '1') for (let i = 0; i < 50 && !opsOf().includes('hello'); i++) await page.waitForTimeout(100); // the token follows the share sheet
+    await page.waitForTimeout(300);
+    const ops = opsOf();
+    assert.deepEqual(ops.filter((x) => x !== 'hello'), ['https://auth.fc.test/v1/accounts:signUp', 'invite'], 'sign-up and invite, nothing else');
+    assert.equal(ops.filter((x) => x === 'hello').length, process.env.FC_PUSH === '1' ? 1 : 0, 'and exactly one push token besides, when the app has push');
     assert.equal(await sheet(page), null, 'the sheet closed');
     const inv = fb.store.get('invites', m[1]); assert.ok(inv, 'the server has the invite');
     const g = fb.store.get('games', inv.g);
@@ -290,7 +327,8 @@ const cases = [
     await page.locator('#friendCard [data-act="fshare"]').click();
     await page.waitForFunction(() => window.__fc.share.length === 2);
     assert.equal((await shares(page))[1].text, sh.text);
-    assert.equal(page.fb.length, 2, 'sharing again needs no request');
+    const ops2 = fb.calls.filter((c) => c.who === 'A' && !(c.url === 'https://fn.fc.test/friend' && JSON.parse(c.body).data.op === 'hello'));
+    assert.equal(ops2.length, 2, 'sharing again needs no request (the push token, with FC_PUSH=1, is not part of sharing)');
     // and the profile never holds the ID or a token (FC-D3: device only)
     const raw = await page.evaluate((k) => localStorage.getItem(k), G.PKEY);
     assert.ok(!raw.includes(st.uid) && !raw.includes(dev.rt), 'nothing of the friend store in the profile');
@@ -480,24 +518,35 @@ const cases = [
     return [A, B];
   }],
   // ---------- fix round 1 ----------
-  ['Fix 1, fix 8: a release build never shows the test toggle or the card, even with a stored test flag, and ignores FC_CONFIG; nor a test build without a real config', async (vp, fb) => {
+  ['Fix 1, fix 8: a release build never shows the test toggle or the card, even with a stored test flag, and ignores FC_CONFIG; FC-D38: a test build without FC_CONFIG has the real project and sends nothing before a Challenge', async (vp, fb) => {
     const R = await player(vp, fb, { who: 'R', release: true });
     assert.equal(await R.evaluate(() => JSON.stringify(window.CC_BUILD)), '{"test":false}');
-    assert.match(await R.evaluate(() => window.FCONFIG.apiKey), /PLACEHOLDER/, 'FC_CONFIG ignored');
+    assert.equal(await R.evaluate(() => window.FCONFIG.apiKey), 'AIzaSyDw3xbGs4PFvkQDwL2FjFFMUMKGV2o0vp0', 'FC_CONFIG ignored: the real project (FC-D38)');
     assert.equal((await frStore(R)).test, true, 'the stored flag is there');
     await goPlay(R);
     assert.equal(await card(R), null, 'no card');
     await R.evaluate(() => window.__coach.openSettings());
     assert.equal(await R.evaluate(() => { const s = document.getElementById('friendSet'); return s.hidden && s.innerHTML === ''; }), true, 'no toggle');
     assert.deepEqual(await R.evaluate(() => Object.keys(window.__fc.ls)), ['backButton'], 'no link listener');
+    // FC-D38 ended the placeholders (FC-D24) for the app: a test build without FC_CONFIG points at chess-coach-100, so the toggle
+    // and the card show, and still nothing goes out before the player's first Challenge (this case never challenges)
     const N = await player(vp, fb, { who: 'N', noConfig: true });
     assert.equal(await N.evaluate(() => window.CC_BUILD.test), true);
+    assert.equal(await N.evaluate(() => window.FCONFIG.projectId + ' ' + window.FClient.configured(window.FCONFIG)), 'chess-coach-100 true');
     await goPlay(N);
-    assert.equal(await card(N), null, 'placeholder config: no card');
+    assert.ok(await card(N), 'the real config: the card shows with the test toggle on');
     await N.evaluate(() => window.__coach.openSettings());
-    assert.equal(await N.evaluate(() => document.getElementById('friendSet').hidden), true, 'placeholder config: no toggle');
-    assert.equal(R.fb.length + N.fb.length, 0);
-    return [R, N];
+    assert.equal(await N.evaluate(() => document.getElementById('friendSet').hidden), false, 'the real config: the toggle shows');
+    assert.equal(R.fb.length + N.fb.length + R.outside.length + N.outside.length, 0, 'no request to the friend server or any Firebase host');
+    // FC5 fix round 1: the placeholder gate (FC-D24) still holds end to end: a test build whose config holds a placeholder shows nothing
+    const Q = await player(vp, fb, { who: 'Q', fcConfig: { projectId: 'PLACEHOLDER-firebase-project-id', apiKey: 'PLACEHOLDER_FIREBASE_WEB_API_KEY', fnBase: 'https://asia-south1-PLACEHOLDER-firebase-project-id.cloudfunctions.net' } });
+    assert.equal(await Q.evaluate(() => window.FClient.configured(window.FCONFIG)), false);
+    await goPlay(Q);
+    assert.equal(await card(Q), null, 'placeholder config: no card');
+    await Q.evaluate(() => window.__coach.openSettings());
+    assert.equal(await Q.evaluate(() => document.getElementById('friendSet').hidden), true, 'placeholder config: no toggle');
+    assert.equal(Q.fb.length + Q.outside.length, 0);
+    return [R, N, Q];
   }],
   ['Fix 2: a failed or offline tap is not remembered; after Not now a later tap shows the sheet again; a cold link shown in the last 2 minutes is not shown again', async (vp, fb) => {
     const A = await player(vp, fb, { who: 'A' });

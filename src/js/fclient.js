@@ -133,8 +133,15 @@
     }
 
     /* Play tab open and App resume (tech spec section 9). Only with an ID; sends only the server's own next. */
-    function sync() {
+    /* o.fresh (FC5, a push said the server changed): a sync already running may have been answered before that change, so one
+       more runs after it; fresh asks during one running sync share that follow-up. Without it the running sync is shared. */
+    var syncNext = null;
+    function sync(o) {
       if (!store.uid || !store.rt) return null;
+      if (syncP && o && o.fresh) {
+        if (!syncNext) syncNext = syncP.then(null, function () {}).then(function () { syncNext = null; return sync(); });
+        return syncNext;
+      }
       if (syncP) return syncP;
       var pages = 0;
       function page() {
@@ -158,6 +165,20 @@
       op: op,
       sync: sync,
       setTest: function (on) { store.test = !!on; save(); },
+      /* FC5 (tech spec section 4): the push token goes to the server with op hello, only when it is new or changed, and only
+         with an ID (never signs up). tok is kept once the server has it, so a failed send is tried again at the next start.
+         Resolves true when sent, false when there was nothing to send; rejects as op does (offline, error). */
+      sendTok: function (tok) {
+        if (!Friends.tokenOk(tok) || tok === store.tok || !store.uid || !store.rt) return Promise.resolve(false);
+        return op('hello', { tok: tok }, { signUp: false }).then(function (r) {
+          if (!r) return false;
+          store.tok = tok; save(); return true;
+        });
+      },
+      /* FC-D14: the notification permission is asked once, on the first Challenge or Accept */
+      setAsk: function () { store.ask = true; save(); },
+      /* FC5 fix round 1, fix 6: a restored backup's ask and tok (FC-D30) are another phone's: ask again here */
+      resetPush: function () { store.ask = false; store.tok = null; save(); },
       setCol: function (c) { if (c === 'w' || c === 'b' || c === 'r') { store.col = c; save(); } },
       name: function (opp, n, t) { var ok = Friends.name(store, opp, n, t); if (ok) save(); return ok; },
       setLaunch: function (url, t) { store.launch = { url: url, t: t }; save(); },

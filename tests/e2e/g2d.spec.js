@@ -4,7 +4,7 @@
 //   G-D33  a player who never chose pieces or a view starts with the classic pieces on the flat board.
 //   G-D34  the name on screen is "Chess Coach".
 // Run: G2D_VP=844 node tests/e2e/g2d.spec.js   (serves www/ itself; needs Playwright with Chromium). One viewport per process.
-// G2D_VP (the width): 568 | 780 | 844 | 860 (sideways phones), 915 | 1280 (wide: unchanged), 360 | 412 (upright: unchanged).
+// G2D_VP (the width): 568 | 780 | 844 | 860 | 915 (sideways phones; 915x412 since G-D41), 1280 (wide: unchanged), 360 | 412 (upright: unchanged).
 // G2D_SHOTS=<dir> saves screenshots. G2D_ONLY=<regex> runs matching cases.
 const { chromium } = require('playwright');
 const http = require('http');
@@ -22,14 +22,13 @@ const ALL = [{ width: 568, height: 320 }, { width: 780, height: 360 }, { width: 
 const VIEWPORTS = ALL.filter((v) => !process.env.G2D_VP || String(v.width) === process.env.G2D_VP);
 const ONLY = process.env.G2D_ONLY ? new RegExp(process.env.G2D_ONLY) : null;
 const NOW = Date.now(), DAY = 86400000;
-const PH = (vp) => vp.width <= 860;                      // the one-column layout: the board screen exists
-const SIDE = (vp) => vp.width <= 860 && vp.height < 500; // G-D32: a phone held sideways
+const PH = (vp) => vp.width <= 860 || vp.height < 500;  // the one-column layout: the board screen exists (G-D41)
+const SIDE = (vp) => vp.height < 500;                   // G-D32, widened by G-D41: a phone held sideways, whatever its width
 // The board, the buttons and the eval strip as they were before G2d (measured on main 415dd04, a Club player's game, flat
 // board, [left, top, width, height]). "Upright phones and anything wider than 860px must not change at all."
 const BEFORE = {
   '360x800': { board: [0, 108, 360, 360], evalbar: [0, 103, 360, 5], ctl: [16, 516, 328, 86], bar: [0, 0, 360, 57] },
   '412x915': { board: [0, 108, 412, 412], evalbar: [0, 103, 412, 5], ctl: [16, 568, 380, 39], bar: [0, 0, 412, 57] },
-  '915x412': { board: [46, 195.5, 578, 578], evalbar: [24, 195.5, 14, 578], ctl: [24, 825.5, 600, 39], bar: null },
   '1280x900': { board: [148, 195.5, 578, 578], evalbar: [126, 195.5, 14, 578], ctl: [126, 825.5, 600, 39], bar: null }
 };
 

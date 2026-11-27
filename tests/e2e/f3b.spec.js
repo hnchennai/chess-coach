@@ -129,7 +129,7 @@ async function newPage(vp, p, o) {
 }
 // G2a: up to 860px wide (one column) the tabs are pages with no board, and the app always opens on Home. A game is opened
 // as a player does: the Play tab, then "Resume game" (when a game is unfinished).
-const col1 = (vp) => vp.width <= 860;
+const col1 = (vp) => vp.width <= 860 || vp.height < 500; // G-D41: the phone layout (915x412 too)
 const openGame = (page) => page.evaluate(() => {
   document.getElementById('tab-play').click();
   const r = document.querySelector('#resumePlay .rs-go');

@@ -22,6 +22,7 @@ Builds on: `flow-rework.product.md` (F-D1 to F-D33), `beginner-flow.product.md` 
 | G2b | One thing waits per tab; lessons, sets and drills saved on the device so Resume survives a restart | M |
 | G2c | The phone's back button acts as Close (`@capacitor/app`) | S, phone test |
 | G2d | Sideways phone: board left, controls right. Classic flat board as the first-time default. The app is named "Chess Coach" | S, phone test |
+| G3 | Polish: 44px tap size on touch screens, reading order with the tab bar at the bottom, the sideways layout on every short screen, one green button on wide screens (G-D41 to G-D45) | M |
 
 ## Decisions
 | # | Decision | Source |
@@ -66,6 +67,13 @@ Builds on: `flow-rework.product.md` (F-D1 to F-D33), `beginner-flow.product.md` 
 | G-D38 | Back button on a tab page: from Learn, Train, Play's start page or Progress it opens Home; on Home it leaves the app (the app stays in memory, as today). No "press again to leave" | Suresh, 2026-11-23 |
 | G-D39 | Back button on wide screens (over 860px): closes a sheet or a note if one is open, else the G-D38 tab rule. It never ends or parks a lesson, set, review or game on the board | Suresh, 2026-11-23 |
 | G-D40 | Back button order, every width: Settings open, close it; level check open, do what its Esc does (and nothing more when Esc does nothing); a note from Rani open, close it as Esc does; phone board screen open (end card or not), Close; then G-D38. Not in a browser (no web history handling) | Delegated to Claude, 2026-11-23 |
+| G-D41 | The phone layout (tab pages without the board, the board screen with the Close bar) and the sideways layout of G-D32 apply to every screen under 500px high, whatever its width (e.g. a big phone held sideways, 915x412). The wide layout is for screens over 860px wide and at least 500px high. Widens G-D32 | Suresh, 2026-11-26 |
+| G-D42 | Wide layout: the Hint button is green only while the Play tab is open; on every other tab it looks like Take back. Phones do not change (the board screen shows only the board) | Suresh, 2026-11-26 |
+| G-D43 | On every touch screen (phones and tablets, upright or sideways) every button, chip, row, picker, switch and tab is at least 44px high, and icon-only buttons at least 44px wide. Screens used with a mouse keep today's sizes | Suresh, 2026-11-26 |
+| G-D44 | The move list and text links inside sentences (the licence and source lines, the Lichess credit) keep their size | Suresh, 2026-11-26 |
+| G-D45 | Reading and Tab order follow the screen: where the tab bar is fixed at the bottom (screens 600px wide or less), screen readers and the keyboard reach the page first and the tab bar last; on the wide layout the tab bar comes first, as today. Crossing the breakpoint never drops focus | Delegated to Claude, 2026-11-26 |
+| G-D46 | On screens under 500px high, a Beginner's Home with an unfinished game shows Rani and Continue on the first screen; the "Resume game" card below may need a scroll (D51 only promises Continue). No change. The Play tab's live dot stays hidden there, as in the phone layout | Suresh, 2026-11-26 |
+| G-D47 | Move chips inside Rani's sentences count as "inside sentences" under G-D44 and keep their size on touch screens. This does not cover the standalone "Watch" pill after a line of moves: it is a control and gets 44px (G-D43) | Suresh, 2026-11-26 |
 
 ## New wording (all of it)
 - Button, top left of the activity screen: "Close" (spoken label; the button shows an X)
@@ -113,6 +121,13 @@ Builds on: `flow-rework.product.md` (F-D1 to F-D33), `beginner-flow.product.md` 
 12. 3D frame time with tags on is within 10 percent of tags off on the test phone size. No console errors.
 13. No em dashes in new copy. Every new button is at least 44px high.
 
+G3 (polish):
+14. At 915x412, 932x430 and 844x390, a game opened from Play shows the whole board under the Close bar with no scrolling, board on the left and the rest in a column on its right (G-D32 rules), and the tab pages have no board. 1280x800 and 1280x900 keep the wide layout unchanged.
+15. Wide layout: Hint is green with the Play tab open and looks like Take back on Home, Learn, Train and Progress. At most one green main button is visible at a time on Home at 1280x800.
+16. With a touch screen (coarse pointer) at 360x800, 412x915, 768x1024 and 915x412, every visible button, chip, row, picker, switch and tab on the five tabs, the board screen, Settings and the end cards is at least 44px high (icon buttons 44px wide too); the move list and inline text links are the only exceptions. With a mouse at 1280x900 the sizes are as before.
+17. At 360x800 the first Tab stops are the page (after the header's Settings button) and the five tabs come last; at 1280x900 the order is as before. A screen reader's reading order matches.
+18. Every existing e2e suite passes at every width it runs (apart from tests updated for G-D41 to G-D45, each named in the PR).
+
 ## Out of scope
 - Tablet and desktop layout. The level check. Course text and puzzle content.
 - New themes or new emblem art. Clocks, online play, move sounds.
@@ -128,6 +143,7 @@ Builds on: `flow-rework.product.md` (F-D1 to F-D33), `beginner-flow.product.md` 
 
 ## Assumption register
 - Confirmed by Suresh: G-D1 to G-D7, G-D10 to G-D15.
+- Confirmed by Suresh, 2026-11-26: G-D46 (the Resume game card may need a scroll on screens under 500px high), G-D47 (move chips in Rani's sentences keep their size; the "Watch" pill gets 44px), and the G-D45 wording (the tab bar fixed at the bottom on screens 600px wide or less).
 - Delegated to Claude: G-D8, G-D9, G-D16, the name line wording.
 - Verified by tool: an unfinished game is already saved on every move; themed sets already carry an emblem name and a role per piece; the 3D pieces already carry a small symbol plaque on the base.
 - Verified by the design pass: a game survives an app restart; a lesson step, a set's place and a review do not (memory only). Every puzzle result and rating is saved when answered. G-D19 adds the saving.

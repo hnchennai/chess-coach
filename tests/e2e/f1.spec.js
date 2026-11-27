@@ -372,7 +372,7 @@ const cases = [
     const allIds = ['rules', 'special', 'board', 'values', 'mate', 'opening', 'blunder', 'fork', 'pin', 'disc', 'patterns', 'check2', 'kq', 'kr', 'kp', 'calc', 'check3', 'rep', 'activity', 'pawns', 'attack', 'check4', 'calc2', 'rook', 'defense', 'structures', 'planning', 'endtheory', 'analysis', 'tourney', 'final'];
     page = await seeded(vp, club({ course: done(...allIds), rating: 2100, rn: 300, reviewed: ['a', 'b', 'c'], games: [PAST({ level: 6 })] }), { tab: 'coach' });
     c = await cont(page);
-    assert.equal(c.kicker, 'Continue'); assert.equal(c.title, 'Keep sharp: rated puzzles'); assert.equal(c.button, 'Start 10 puzzles'); assert.equal(c.next, 'Keep sharp: rated puzzles');
+    assert.equal(c.kicker, 'Continue'); assert.equal(c.title, 'Keep sharp: puzzles at your level'); assert.equal(c.button, 'Start 10 puzzles'); assert.equal(c.next, 'Keep sharp: puzzles at your level');
     await homeRules(page, 'roadmap finished');
     return page;
   }],

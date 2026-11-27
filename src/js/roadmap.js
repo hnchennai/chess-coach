@@ -36,7 +36,7 @@
     lesson: [
       { fen: 'r1bq1rk1/pp2bppp/2n1pn2/8/3P4/2NB1N2/PP3PPP/R1BQ1RK1 w - - 0 9', hl: ['d4'], text: '<b>The pawns tell you the plan.</b> White has an <b>isolated queen’s pawn</b> (IQP) on d4. Plans for White: active pieces, a kingside attack, the d4-d5 break, a knight on e5. Plans for Black: blockade d5, trade pieces, win the pawn in the endgame.' },
       { fen: 'r1bq1rk1/pp1nbppp/2p2n2/3p2B1/3P4/2NBPN2/PPQ2PPP/R3K2R w KQ - 0 9', hl: ['b2', 'a2', 'c6', 'd5'], text: '<b>Carlsbad structure:</b> White’s classic plan is the <b>minority attack</b>: push b4 and b5 to create a weak c6 pawn. Black looks for play on the kingside or with ...Ne4.' },
-      { fen: START_FEN(), text: 'Strong players ask “what structure is this?” before “what move?”. Learn 5 or 6 structures from your own openings and their typical plans. That knowledge is most of what separates 1800 from 2000.' }
+      { fen: START_FEN(), text: 'Strong players ask “what structure is this?” before “what move?”. Learn 5 or 6 structures from your own openings and their typical plans. That knowledge is most of what separates a strong club player from an expert.' }
     ],
     practice: { type: 'puzzles', themes: ['advantage', 'sacrifice', 'discovered', 'pin', 'skewer'], min: 1550, max: 2600, count: 8, pass: 5 } });
 
@@ -55,7 +55,7 @@
       { fen: '8/5k2/8/3b4/8/2B5/4PK2/8 w - - 0 1', text: '<b>Opposite-colored bishops</b> are very drawish in the endgame, even a pawn or two down: the defender blockades on squares the other bishop can’t touch.' },
       { fen: '8/8/8/P7/8/k7/8/R5K1 w - - 0 1', arrows: [['a1', 'a4']], text: '<b>Rooks belong behind passed pawns.</b> Behind your own pawn the rook gains power as the pawn advances. Behind theirs, it holds the pawn back from a distance.' }
     ],
-    apply: { type: 'drill', fen: '4k3/7r/8/4PK2/8/8/8/R7 b - - 0 1', goal: 'hold', limit: 25, text: 'You are Black. Hold the draw for 25 moves with the Philidor defense. Stockfish tries to win.' } });
+    apply: { type: 'drill', fen: '4k3/7r/8/4PK2/8/8/8/R7 b - - 0 1', goal: 'hold', limit: 25, text: 'You are Black. Hold the draw for 25 moves with the Philidor defense. Rani’s partner tries to win.' } });
 
   U.push({ id: 'analysis', level: 6, title: 'Analysing your own games', goal: 'Turn every game into a lesson.',
     lesson: [
@@ -109,11 +109,11 @@
   ];
 
   C.METHODS = [
-    { name: 'Learn by doing, in small steps', how: 'One idea, then a handful of exercises right away. Used by the Dutch Steps Method that takes learners from rules to about 2100.', here: 'Every unit is Learn, Practice, Apply.' },
-    { name: 'Puzzles by theme, then mixed', how: 'Seeing the same pattern many times builds recognition. Mixing them teaches you to find the pattern yourself.', here: 'Train tab: one theme, or rated mixed puzzles.' },
+    { name: 'Learn by doing, in small steps', how: 'One idea, then a handful of exercises right away. The Dutch Steps Method teaches this way, from the first rules all the way to expert level.', here: 'Every unit is Learn, Practice, Apply.' },
+    { name: 'Puzzles by theme, then mixed', how: 'Seeing the same pattern many times builds recognition. Mixing them teaches you to find the pattern yourself.', here: 'Train tab: one theme at a time, or a mix at your level.' },
     { name: 'Spaced repetition', how: 'Puzzles you miss come back after 1, 2, 4, 7 days until they stick. Later, the Woodpecker method repeats whole sets faster each time.', here: 'Review missed puzzles, on your daily plan.' },
     { name: 'Play slow, review every game', how: 'Slow games give you time to think. Reviewing them shows your real weaknesses.', here: 'Play tab with move grades and full review.' },
-    { name: 'Endgames early', how: 'With few pieces you learn what each piece can do. Basic endings also win you half-points every month.', here: 'Endgame drills against Stockfish.' },
+    { name: 'Endgames early', how: 'With few pieces you learn what each piece can do. Basic endings also win you half-points every month.', here: 'Endgame drills against Rani’s partner.' },
     { name: 'A coach who explains why', how: 'Feedback right after the move is how skills form fastest.', here: 'Every move graded and explained, with moves you can tap to see on the board.' }
   ];
   function START_FEN() { return C.START; }

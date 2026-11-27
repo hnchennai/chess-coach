@@ -96,11 +96,11 @@ var COURSE = (function () {
     ],
     practice: { type: 'puzzles', themes: ['mateIn1', 'mateIn2'], min: 700, max: 1500, count: 8, pass: 6, extra: ['mate3'] } });
 
-  unit({ id: 'check2', level: 2, title: 'Checkpoint: tactics in a real game', goal: 'Win against the Improver engine.',
+  unit({ id: 'check2', level: 2, title: 'Checkpoint: tactics in a real game', goal: 'Win against Rani’s partner at Improver level.',
     lesson: [
-      { fen: START, text: 'Time to use it. Against the <b>Improver</b> engine, look for forks, pins and loose pieces on every move. The <b>Think it through</b> panel counts your checks and captures for you.' }
+      { fen: START, text: 'Time to use it. Against Rani’s partner at <b>Improver</b> level, look for forks, pins and loose pieces on every move. The <b>Think it through</b> panel counts your checks and captures for you.' }
     ],
-    apply: { type: 'game', level: 3, goal: 'win', text: 'Beat the Improver engine (about 1000). Any color.' } });
+    apply: { type: 'game', level: 3, goal: 'win', text: 'Beat Rani’s partner at Improver level. Any color.' } });
 
   /* ===== Level 3 ===== */
   unit({ id: 'kq', level: 3, title: 'Mate with king and queen', goal: 'Checkmate a lone king in under 20 moves.',
@@ -110,7 +110,7 @@ var COURSE = (function () {
       { fen: 'k7/2Q5/1K6/8/8/8/8/8 b - - 0 1', hl: ['a8'], text: 'Careful near the edge: here Black has no moves and isn’t in check. <b>Stalemate, draw!</b> When the king is boxed on the edge, bring your king closer first.' },
       { fen: 'k7/8/1K6/8/8/8/8/7Q w - - 0 1', arrows: [['h1', 'h8']], text: 'Final step: with your king one knight’s jump away (like b6 vs a8), the queen mates on the edge.' }
     ],
-    apply: { type: 'drill', fen: '8/8/8/4k3/8/8/8/KQ6 w - - 0 1', goal: 'mate', limit: 20, text: 'Checkmate the lone king within 20 moves. Stockfish defends.' } });
+    apply: { type: 'drill', fen: '8/8/8/4k3/8/8/8/KQ6 w - - 0 1', goal: 'mate', limit: 20, text: 'Checkmate the lone king within 20 moves. Rani’s partner defends as well as it can.' } });
 
   unit({ id: 'kr', level: 3, title: 'Mate with king and rook', goal: 'Checkmate with a rook in under 30 moves.',
     lesson: [
@@ -119,7 +119,7 @@ var COURSE = (function () {
       { fen: '4k3/8/4K3/8/8/8/8/R7 w - - 0 1', arrows: [['a1', 'a8']], text: 'Kings facing, enemy king on the edge: Ra8 is checkmate.' },
       { fen: '8/8/8/4k3/8/8/8/R3K3 w - - 0 1', text: 'If you need to “waste a move” to get the opposition, slide the rook along the line it is guarding.' }
     ],
-    apply: { type: 'drill', fen: '8/8/8/4k3/8/8/8/R3K3 w - - 0 1', goal: 'mate', limit: 30, text: 'Checkmate with king and rook within 30 moves. Stockfish defends.' } });
+    apply: { type: 'drill', fen: '8/8/8/4k3/8/8/8/R3K3 w - - 0 1', goal: 'mate', limit: 30, text: 'Checkmate with king and rook within 30 moves. Rani’s partner defends as well as it can.' } });
 
   unit({ id: 'kp', level: 3, title: 'King and pawn endings', goal: 'Know when a pawn queens.',
     lesson: [
@@ -128,7 +128,7 @@ var COURSE = (function () {
       { fen: '8/8/4k3/8/4K3/4P3/8/8 w - - 0 1', text: '<b>Opposition:</b> kings facing with one square between them. The side NOT to move has the opposition and wins the standoff.' },
       { fen: '8/8/8/8/k7/8/5P2/7K w - - 0 1', hl: ['f2'], text: '<b>Square rule:</b> draw a square from the pawn to its queening rank. If the enemy king can step into it, it catches the pawn. Here it can’t.' }
     ],
-    apply: { type: 'drill', fen: '4k3/8/4K3/8/4P3/8/8/8 w - - 0 1', goal: 'mate', limit: 40, text: 'Win this: queen the pawn, then checkmate. Stockfish defends.' } });
+    apply: { type: 'drill', fen: '4k3/8/4K3/8/4P3/8/8/8 w - - 0 1', goal: 'mate', limit: 40, text: 'Win this: queen the pawn, then checkmate. Rani’s partner defends as well as it can.' } });
 
   unit({ id: 'calc', level: 3, title: 'Mate in two and calculation', goal: 'See two moves ahead.',
     lesson: [
@@ -137,9 +137,9 @@ var COURSE = (function () {
     ],
     practice: { type: 'puzzles', themes: ['mateIn2', 'advantage', 'fork', 'skewer', 'discovered'], min: 1100, max: 1600, count: 8, pass: 5 } });
 
-  unit({ id: 'check3', level: 3, title: 'Checkpoint: beat a club player', goal: 'Win against the Club engine.',
-    lesson: [{ fen: START, text: 'Combine it all: develop, castle, blunder-check every move, hunt for tactics, and convert in the endgame. The Club engine plays about 1320.' }],
-    apply: { type: 'game', level: 4, goal: 'win', text: 'Beat the Club engine (about 1320).' } });
+  unit({ id: 'check3', level: 3, title: 'Checkpoint: beat a club player', goal: 'Win against Rani’s partner at Club level.',
+    lesson: [{ fen: START, text: 'Combine it all: develop, castle, blunder-check every move, hunt for tactics, and convert in the endgame. At Club level, Rani’s partner plays like a good club player.' }],
+    apply: { type: 'game', level: 4, goal: 'win', text: 'Beat Rani’s partner at Club level.' } });
 
   /* ===== Level 4 ===== */
   unit({ id: 'rep', level: 4, title: 'Your opening repertoire', goal: 'Play your openings from memory.',
@@ -177,9 +177,9 @@ var COURSE = (function () {
     ],
     practice: { type: 'puzzles', themes: ['sacrifice', 'mateIn2', 'mateIn3'], min: 1100, max: 1900, count: 6, pass: 4 } });
 
-  unit({ id: 'check4', level: 4, title: 'Checkpoint: strong club', goal: 'Beat a 1600 engine.',
+  unit({ id: 'check4', level: 4, title: 'Checkpoint: strong club', goal: 'Win against Rani’s partner at Strong club level.',
     lesson: [{ fen: START, text: 'Play your repertoire, keep your pieces active, and attack where you’re stronger. Review the game afterwards with the coach.' }],
-    apply: { type: 'game', level: 5, goal: 'win', text: 'Beat the Strong club engine (about 1600).' } });
+    apply: { type: 'game', level: 5, goal: 'win', text: 'Beat Rani’s partner at Strong club level.' } });
 
   /* ===== Level 5 ===== */
   unit({ id: 'calc2', level: 5, title: 'Deep calculation', goal: 'Solve 3-move combinations.',
@@ -195,7 +195,7 @@ var COURSE = (function () {
       { fen: '1K1k4/1P6/8/8/8/8/r7/3R4 b - - 1 1', arrows: [['d1', 'd4']], text: 'After Rd1+ Ke7, play Rd4! Then the king walks out and, when the checks come, the rook steps in front as a shield: the bridge.' },
       { fen: '4k3/7r/8/4PK2/8/8/8/R7 b - - 0 1', arrows: [['h7', 'h6']], text: '<b>Philidor defense:</b> put your rook on the 6th rank (...Rh6) so their king can’t advance. When the pawn moves to the 6th, swing the rook to the back and check from behind.' }
     ],
-    apply: { type: 'drill', fen: '1K1k4/1P6/8/8/8/8/r7/2R5 w - - 0 1', goal: 'mate', limit: 40, text: 'Win the Lucena position: promote and checkmate. Stockfish defends.' } });
+    apply: { type: 'drill', fen: '1K1k4/1P6/8/8/8/8/r7/2R5 w - - 0 1', goal: 'mate', limit: 40, text: 'Win the Lucena position: promote and checkmate. Rani’s partner defends as well as it can.' } });
 
   unit({ id: 'defense', level: 5, title: 'Defense and prophylaxis', goal: 'See their idea before they play it.',
     lesson: [
@@ -205,14 +205,14 @@ var COURSE = (function () {
     ],
     practice: { type: 'safety', count: 12, pass: 10, hard: true } });
 
-  unit({ id: 'final', level: 5, title: 'Final checkpoint', goal: 'Beat a 2000 engine.',
-    lesson: [{ fen: START, text: 'Everything together. Openings from memory, blunder checks, tactics, plans and endgame technique. Beat the Expert engine to finish the course.' }],
-    apply: { type: 'game', level: 6, goal: 'win', text: 'Beat the Expert engine (about 2000).' } });
+  unit({ id: 'final', level: 5, title: 'Final checkpoint', goal: 'Win against Rani’s partner at Expert level.',
+    lesson: [{ fen: START, text: 'Everything together. Openings from memory, blunder checks, tactics, plans and endgame technique. Beat Rani’s partner at Expert level to finish the course.' }],
+    apply: { type: 'game', level: 6, goal: 'win', text: 'Beat Rani’s partner at Expert level.' } });
 
   var BOOK = [
     { id: 'it1', side: 'w', name: 'Italian: Giuoco Piano', moves: ['e4', 'e5', 'Nf3', 'Nc6', 'Bc4', 'Bc5', 'c3', 'Nf6', 'd3', 'd6', 'O-O', 'O-O', 'Re1'] },
     { id: 'it2', side: 'w', name: 'Italian: Two Knights', moves: ['e4', 'e5', 'Nf3', 'Nc6', 'Bc4', 'Nf6', 'd3', 'Be7', 'O-O', 'O-O', 'Re1', 'd6', 'c3'] },
-    { id: 'it3', side: 'w', name: 'Italian vs ...Be7', moves: ['e4', 'e5', 'Nf3', 'Nc6', 'Bc4', 'Be7', 'd4', 'd6', 'd5', 'Nb8', 'Nc3', 'Nf6', 'O-O'] },
+    { id: 'it3', side: 'w', name: 'Italian vs Hungarian Defense', moves: ['e4', 'e5', 'Nf3', 'Nc6', 'Bc4', 'Be7', 'd4', 'd6', 'd5', 'Nb8', 'Nc3', 'Nf6', 'O-O'] },
     { id: 'b1', side: 'b', name: 'Black vs Italian', moves: ['e4', 'e5', 'Nf3', 'Nc6', 'Bc4', 'Bc5', 'c3', 'Nf6', 'd3', 'd6', 'O-O', 'O-O'] },
     { id: 'b2', side: 'b', name: 'Black vs Ruy Lopez', moves: ['e4', 'e5', 'Nf3', 'Nc6', 'Bb5', 'a6', 'Ba4', 'Nf6', 'O-O', 'Be7', 'Re1', 'b5', 'Bb3', 'd6'] },
     { id: 'b3', side: 'b', name: 'Black: Queen’s Gambit Declined', moves: ['d4', 'd5', 'c4', 'e6', 'Nc3', 'Nf6', 'Bg5', 'Be7', 'e3', 'O-O', 'Nf3', 'h6'] },

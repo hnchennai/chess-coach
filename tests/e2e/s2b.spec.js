@@ -18,7 +18,7 @@ const NOW = Date.now(), DAY = 86400000;
 const PARTNER = 'Rani’s practice partner';
 const ASK = 'You have a game going. Finish it first?';
 const OFFER_B = 'Ready for Improver? You finished every Foundations lesson. Next come forks, pins and other tactics.';
-const BEFORE = require('./s2b-home-before.json'); // Improver and Club Home text from the build before S2b (AC11, AC12)
+const BEFORE = require('./s2b-home-before.json'); // Improver and Club Home text from the build before S2b (AC11, AC12); D53 changed three methods card lines in it
 // F1 (F-D8, F-D10): the Continue card now comes first and the stage card lost its "Next step" button and sub line.
 // F2 (F-D3): the tip slot is new at the bottom. Everything else on Improver and Club Home is still the text from before S2b:
 // compare without those parts. D1 (DP-D9): the Daily puzzle card is new under the Continue card; it is left out too.

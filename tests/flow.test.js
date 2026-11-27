@@ -143,9 +143,9 @@ test('Continue card: beat the stage opponent: Play now, or Resume game with an u
   c = F.cont({ kind: 'beat', name: 'Improver' }, true);
   assert.equal(c.button, 'Resume game'); assert.equal(c.go, 'back');
 });
-test('Continue card: roadmap finished: Keep sharp: rated puzzles, Start 10 puzzles', () => {
+test('Continue card: roadmap finished: Keep sharp: puzzles at your level, Start 10 puzzles', () => {
   const c = F.cont({ kind: 'sharp' }, false);
-  assert.equal(c.kicker, 'Continue'); assert.equal(c.title, 'Keep sharp: rated puzzles'); assert.equal(c.button, 'Start 10 puzzles'); assert.equal(c.go, 'next'); assert.equal(c.bar, null);
+  assert.equal(c.kicker, 'Continue'); assert.equal(c.title, 'Keep sharp: puzzles at your level'); assert.equal(c.button, 'Start 10 puzzles'); assert.equal(c.go, 'next'); assert.equal(c.bar, null);
 });
 test('D49: a main button that starts a lesson game asks first while a game is unfinished', () => {
   assert.equal(F.asks('apply', 'game', true), true);

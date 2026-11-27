@@ -3441,7 +3441,7 @@
   function frSync(force, then, fresh) {
     if (!frOn() || !FR.signedIn()) return;
     frFlushAll(); /* FC4: a move waiting to be sent goes first (Play open, App resume, back online) */
-    if (frTokWait && !frOffline()) frTokSend(frTokWait); /* FC5: a push token the server does not have yet */
+    if (frTokWait && !frTokBusy && !frOffline()) frTokSend(frTokWait); /* FC5: a push token that did not go out (offline) */
     if (!force && Date.now() - frLastSync < 10000) return;
     frLastSync = Date.now();
     if (frOffline()) { frLine = Friends.COPY.offline; frSettle(); return; }
@@ -3796,7 +3796,7 @@
      on resume and every 60 s). A push while the app is open syncs, so its game (row or board) shows the change at once; a tap
      on a notification (also one that started the app: the plugin holds it until the listener comes) opens that game. The
      server's message carries only { t, g }: no text from it is shown. Every plugin call is a caught promise. ---------- */
-  var frPushOn = false, frTokWait = null, frPushPend = null;
+  var frPushOn = false, frTokWait = null, frTokBusy = false, frPushPend = null;
   function frPushListen() {
     if (!frPush || frPushOn) return;
     frPushOn = true;
@@ -3819,16 +3819,30 @@
       .then(function () { return pcall(function () { return frPush.register(); }); }).catch(rmNone);
   }
   /* A later start, once asked: listeners for taps and pushes; register again only while allowed (no new question) */
+  /* Fix round 1, fix 6 (FC-D30): Android's backup may bring ask and tok from another phone. Permission never asked on this phone
+     ("prompt") means that: both go, so the next Challenge or Accept asks here and sends this phone's token. */
   function frPushBoot() {
     if (!frPush || !frOn() || !FR.signedIn() || !FR.store().ask) return;
     frPushListen();
-    pcall(function () { return frPush.checkPermissions(); }).then(function (r) { if (r && r.receive === 'granted') frPushReg(); }).catch(rmNone);
+    pcall(function () { return frPush.checkPermissions(); }).then(function (r) {
+      var p = r && r.receive;
+      if (p === 'granted') frPushReg(); else if (p === 'prompt') FR.resetPush();
+    }).catch(rmNone);
   }
-  /* The token to the server (op hello), only when new or changed; one that did not go out is tried again on the next sync */
+  /* The token to the server (op hello), only when new or changed. One send at a time: a token that comes meanwhile waits and goes
+     when it answers. Offline: it waits for the next sync. A server failure: the next start tries again (fix round 1, fix 5). */
   function frTokSend(tok) {
     if (!frOn() || !Friends.tokenOk(tok)) return;
     frTokWait = tok;
-    FR.sendTok(tok).then(function () { if (frTokWait === tok) frTokWait = null; }, rmNone);
+    if (frTokBusy) return;
+    frTokBusy = true;
+    FR.sendTok(tok).then(function () {
+      frTokBusy = false;
+      if (frTokWait === tok) frTokWait = null; else if (frTokWait) frTokSend(frTokWait);
+    }, function (e) {
+      frTokBusy = false;
+      if (!(e && e.code === 'offline')) frTokWait = null;
+    });
   }
   /* App open: the push's game changed on the server; a sync brings it (its row, or the board when it is open) */
   function frPushIn(n) { if (Friends.pushGame(n) && frOn()) frSync(true, null, true); }

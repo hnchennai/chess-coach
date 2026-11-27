@@ -177,6 +177,106 @@ const cases = [
     assert.deepEqual((await boardOf(B)).hist, ['c4']);
     return [A, B];
   }],
+  // ---------- fix round 1 ----------
+  ['Fix 2a: the challenger’s tap on the accept push: the game is still an invite on this phone, so the app syncs first, then opens it', async (vp, fb) => {
+    const A = await player(vp, fb, { who: 'A', push: { perm: 'granted', token: TOK1 } });
+    const B = await player(vp, fb, { who: 'B', push: { perm: 'granted', token: TOK2 } });
+    const code = await challenge(A, 'w');
+    const a = (await frStore(A)).uid;
+    await B.evaluate((u) => window.__fc.open(u), linkOf(code));
+    await acceptSheet(B); await doAccept(B, null);
+    const p = lastPush(fb, a); assert.equal(p.t, 'move', 'White, the challenger, is told it is their move');
+    assert.equal((await frStore(A)).games[p.g].st, 'invited', 'this phone has not seen the accept yet');
+    await A.locator('#tab-coach').click();
+    await A.evaluate((d) => window.__fc.pushTap(d), p);
+    await A.waitForFunction((g) => window.__coach.st.mode === 'friend' && window.__coach.st.fid === g, p.g, { timeout: 8000 });
+    return [A, B];
+  }],
+  ['Fix 2b: a tap that comes during the level check waits for it, then opens the game', async (vp, fb) => {
+    const A = await player(vp, fb, { who: 'A', push: { perm: 'granted', token: TOK1 } });
+    const B = await player(vp, fb, { who: 'B', push: { perm: 'granted', token: TOK2 } });
+    const { gid, a, b } = await startGame(A, B);
+    await serverMoves(fb, gid, [a, b], ['e4']);
+    await B.evaluate(() => window.__coach.openPlacement(true));
+    await B.waitForFunction(() => window.Placement.isOpen());
+    await B.evaluate((d) => window.__fc.pushTap(d), lastPush(fb, b));
+    await B.waitForTimeout(800);
+    assert.notEqual(await B.evaluate(() => window.__coach.st.mode), 'friend', 'not over the level check');
+    await B.keyboard.press('Escape');
+    await B.waitForFunction(() => !window.Placement.isOpen());
+    await goPlay(B);
+    await B.waitForFunction((g) => window.__coach.st.mode === 'friend' && window.__coach.st.fid === g, gid, { timeout: 8000 });
+    return [A, B];
+  }],
+  ['Fix 2c: a push while an older sync is still out brings the change anyway (a fresh sync after it)', async (vp, fb) => {
+    const A = await player(vp, fb, { who: 'A', push: { perm: 'granted', token: TOK1 } });
+    const B = await player(vp, fb, { who: 'B', push: { perm: 'granted', token: TOK2 } });
+    const { gid, a, b } = await startGame(A, B);
+    await goPlay(B);
+    fb.after.sync = 1500; // B's next sync reads the game now and answers late
+    await B.evaluate(() => window.__fc.resume());
+    await B.waitForTimeout(300);
+    await serverMoves(fb, gid, [a, b], ['e4']);
+    await B.evaluate((d) => window.__fc.pushIn(d), lastPush(fb, b));
+    await B.waitForFunction((g) => { const r = document.querySelector('#friendCard .fg-row[data-g="' + g + '"] .fg-state'); return r && r.textContent.startsWith('Your move'); }, gid, { timeout: 8000 });
+    return [A, B];
+  }],
+  ['Fix 2d: a phone with an ID that was never asked (ask false): a start syncs but makes no push call', async (vp, fb) => {
+    fb.refresh.set('rt-seed-d', 'uid-seed-d');
+    const P = await player(vp, fb, { who: 'P', push: { perm: 'granted' }, store: { v: 1, test: true, uid: 'uid-seed-d', rt: 'rt-seed-d', ask: false, games: {} } });
+    await goPlay(P);
+    await waitFor(async () => fb.calls.some((c) => c.who === 'P' && c.url === 'https://fn.fc.test/friend'), 'a sync with the ID');
+    await P.waitForTimeout(500);
+    assert.deepEqual(await calls(P), [], 'no push call');
+    return [P];
+  }],
+  ['Fix 2e, fix 5: an unsent token goes on the next sync; one send at a time; a server failure waits for the next start', async (vp, fb) => {
+    const A = await player(vp, fb, { who: 'A', push: { perm: 'granted', token: TOK1 } });
+    await challenge(A, 'w');
+    await waitFor(async () => (await frStore(A)).tok === TOK1, 'the first token');
+    fb.down = true;
+    await A.evaluate((t) => window.__fc.pushToken(t), TOK2);
+    await waitFor(async () => hellos(fb, 'A').length === 2, 'a try while offline');
+    await A.waitForTimeout(200);
+    assert.equal((await frStore(A)).tok, TOK1, 'not sent');
+    fb.down = false;
+    await A.evaluate(() => window.__fc.resume());
+    await waitFor(async () => (await frStore(A)).tok === TOK2, 'sent on the next sync, no restart');
+    fb.delay.hello = 1200;
+    const n3 = hellos(fb, 'A').length;
+    await A.evaluate((t) => { window.__fc.pushToken(t); window.__fc.pushToken(t); }, TOK3);
+    await A.waitForTimeout(200);
+    await A.evaluate(() => window.__fc.resume());
+    await waitFor(async () => (await frStore(A)).tok === TOK3, 'the new token');
+    await A.waitForTimeout(400);
+    assert.equal(hellos(fb, 'A').length - n3, 1, 'one send, while it runs nothing else sends it');
+    fb.delay.hello = 0;
+    fb.err.hello = true;
+    const n4 = hellos(fb, 'A').length;
+    await A.evaluate((t) => window.__fc.pushToken(t), 'fake-fcm:APA91b_token_4');
+    await waitFor(async () => hellos(fb, 'A').length === n4 + 1, 'one try');
+    await A.waitForTimeout(300);
+    await A.evaluate(() => window.__fc.resume());
+    await A.waitForTimeout(800);
+    assert.equal(hellos(fb, 'A').length, n4 + 1, 'a server failure is not tried on every sync');
+    fb.err.hello = false;
+    await A.evaluate(() => sessionStorage.setItem('__fcm_tok', 'fake-fcm:APA91b_token_4'));
+    await reload(A);
+    await waitFor(async () => (await frStore(A)).tok === 'fake-fcm:APA91b_token_4', 'the next start sends it');
+    return [A];
+  }],
+  ['Fix 6, FC-D30: a restored backup (ask set, but this phone was never asked): ask and tok reset, the next Challenge asks', async (vp, fb) => {
+    fb.refresh.set('rt-seed-6', 'uid-seed-6');
+    const P = await player(vp, fb, { who: 'P', push: { perm: 'prompt', answer: 'granted', token: TOK2 }, store: { v: 1, test: true, uid: 'uid-seed-6', rt: 'rt-seed-6', ask: true, tok: TOK1, games: {} } });
+    await waitFor(async () => (await calls(P)).includes('checkPermissions'), 'the start checks');
+    await P.waitForTimeout(400);
+    assert.deepEqual(work(await calls(P)), ['checkPermissions'], 'no register, no question at start');
+    const s = await frStore(P); assert.equal(s.ask, false); assert.equal(s.tok, null);
+    await challenge(P, 'w');
+    await waitFor(async () => hellos(fb, 'P').some((d) => d.tok === TOK2), 'this phone’s token');
+    assert.deepEqual(work(await calls(P)).slice(1), ['requestPermissions 1', CHAN, 'register']);
+    return [P];
+  }],
   ['No push work where the feature is off: a release build and a phone with the toggle off make no push call, even with an ID and the ask stored', async (vp, fb) => {
     const stored = { v: 1, test: true, uid: 'u-old', rt: 'rt-old', ask: true, tok: TOK1, games: {} };
     const R = await player(vp, fb, { who: 'R', release: true, push: { perm: 'granted' }, store: stored });

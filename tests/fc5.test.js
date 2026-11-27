@@ -125,8 +125,31 @@ test('FC5 pins: @capacitor/push-notifications 8.1.3 exactly; CI checks it, cap s
   assert.ok(y.includes("include ':capacitor-push-notifications'"), 'in the Android project');
   assert.ok(y.includes("'com.google.firebase:firebase-messaging:25.0.1'"), 'Gradle resolves exactly 25.0.1');
   assert.ok(/firebase-messaging:\.\* -> /.test(y), 'and fails if resolution changed it');
-  assert.ok(/grep[^\n]*firebase-analytics[^\n]*deps\.txt/.test(y), 'no firebase-analytics anywhere on the classpath');
+  assert.ok(/ANALYTICS='[^'\n]*firebase-analytics/.test(y), 'no firebase-analytics anywhere on the classpath (fix 4 widens the check)');
   assert.ok(/android-friends\.sh --check-merged android/.test(y));
+});
+
+// Fix round 1, fix 4: no analytics library on the classpath of either variant the workflow builds. The ads SDK itself pulls in
+// play-services-measurement-sdk-api and -measurement-base (checked on Google's Maven, 2026-11-27), so those two stay allowed.
+test('Fix 4: CI fails on firebase-analytics and the analytics measurement libraries, on the release and debug classpaths', () => {
+  const y = read('.github/workflows/build-apk.yml');
+  assert.ok(/:app:dependencies --configuration releaseRuntimeClasspath/.test(y));
+  assert.ok(/:app:dependencies --configuration debugRuntimeClasspath/.test(y), 'the debug build (no signing secrets) is checked too');
+  const m = /ANALYTICS='([^']+)'/.exec(y); assert.ok(m, 'one pattern for the analytics check');
+  const re = new RegExp(m[1]);
+  ['+--- com.google.firebase:firebase-analytics:22.1.0', '|    +--- com.google.android.gms:play-services-measurement:22.1.0', '+--- com.google.android.gms:play-services-measurement-api:22.1.0',
+    '+--- com.google.android.gms:play-services-measurement-impl:22.1.0', '+--- com.google.android.gms:play-services-measurement-sdk:22.1.0'].forEach((l) => assert.ok(re.test(l), 'fails on ' + l));
+  ['|    +--- com.google.android.gms:play-services-measurement-sdk-api:20.1.2', '|    |    \\--- com.google.android.gms:play-services-measurement-base:[20.1.2] -> 20.1.2',
+    '+--- com.google.firebase:firebase-measurement-connector:19.0.0', '+--- com.google.firebase:firebase-messaging:25.0.1'].forEach((l) => assert.ok(!re.test(l), 'allows ' + l));
+  assert.ok(/for C in release debug/.test(y) && /grep -E -- "\$ANALYTICS"/.test(y), 'run on both classpaths');
+});
+
+// Fix round 1, fix 6: a restored backup (FC-D30) can carry ask and tok from another phone; the app resets them
+test('resetPush: ask and tok go, so the next Challenge or Accept asks on this phone', () => {
+  const st = memStorage(JSON.stringify(Object.assign(F.blank(), { uid: 'u1', rt: 'rt-u1', ask: true, tok: TOK }))), c = client(okNet(), st);
+  c.resetPush();
+  const s = F.read(st.m.raw);
+  assert.equal(s.ask, false); assert.equal(s.tok, null); assert.equal(s.uid, 'u1', 'the ID stays');
 });
 
 // A push says the server changed. A sync already running may have been answered before that change, so a fresh sync runs once

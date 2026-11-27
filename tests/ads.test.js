@@ -238,6 +238,16 @@ test('DP-D16, DP-D20: the in-app credit also names Play In-App Review, Play Core
   assert.ok(!/[–—]/.test(credits), 'no dashes');
 });
 
+// FC-D40 (Suresh, 2026-11-27): the credit names every library family LICENSE-EXCEPTION names, in the approved words.
+test('FC-D40: the in-app credit names every library family in LICENSE-EXCEPTION, Firebase Cloud Messaging, App Check and Play Integrity included', () => {
+  const credits = (read('src/body.html').match(/<p class="credit">[\s\S]*?<\/p>/g) || []).join('\n'), exc = flat(read('LICENSE-EXCEPTION'));
+  const families = [['Google Mobile Ads', 'Google Mobile Ads'], ['Google User Messaging Platform', 'Google User Messaging Platform'], ['Google Play Billing', 'Google Play Billing'],
+    ['Google Play In-App Review', 'Google Play In-App Review'], ['Google Play Core Common', 'Google Play Core Common'], ['Cloud Messaging', 'Firebase Cloud Messaging'],
+    ['App Check', 'App Check'], ['Google Play Integrity', 'Google Play Integrity'], ['Google Play services libraries', 'Google Play services libraries they use']];
+  families.forEach(([inExc, inCredit]) => { assert.ok(exc.includes(inExc), 'LICENSE-EXCEPTION: ' + inExc); assert.ok(credits.includes(inCredit), 'credit: ' + inCredit); });
+  assert.ok(credits.includes('Google Play In-App Review and Google Play Core Common, Firebase Cloud Messaging and App Check, Google Play Integrity, and the Google Play services libraries they use.'), 'the approved ending, word for word');
+});
+
 test('criterion 14: the in-app credit names the exception and the libraries, and keeps the Stockfish credit', () => {
   const b = read('src/body.html'), credits = (b.match(/<p class="credit">[\s\S]*?<\/p>/g) || []).join('\n');
   assert.ok(credits.includes('LICENSE-EXCEPTION'));

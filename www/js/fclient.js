@@ -177,6 +177,8 @@
       },
       /* FC-D14: the notification permission is asked once, on the first Challenge or Accept */
       setAsk: function () { store.ask = true; save(); },
+      /* FC5 fix round 1, fix 6: a restored backup's ask and tok (FC-D30) are another phone's: ask again here */
+      resetPush: function () { store.ask = false; store.tok = null; save(); },
       setCol: function (c) { if (c === 'w' || c === 'b' || c === 'r') { store.col = c; save(); } },
       name: function (opp, n, t) { var ok = Friends.name(store, opp, n, t); if (ok) save(); return ok; },
       setLaunch: function (url, t) { store.launch = { url: url, t: t }; save(); },

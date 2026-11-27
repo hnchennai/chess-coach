@@ -153,8 +153,16 @@ jobs:
           if grep -E -- '--- (com\.google\.android\.gms:play-services-ads|com\.google\.android\.ump:user-messaging-platform|io\.github\.webview-native-ui:engine):.* -> ' "$RUNNER_TEMP/deps.txt"; then echo "::error::An ads library version was changed during resolution"; exit 1; fi
           if grep -E -- '--- com\.google\.android\.play:review:.* -> ' "$RUNNER_TEMP/deps.txt"; then echo "::error::The Play review library version was changed during resolution"; exit 1; fi
           if grep -E -- '--- com\.google\.firebase:firebase-messaging:.* -> ' "$RUNNER_TEMP/deps.txt"; then echo "::error::The Firebase Cloud Messaging version was changed during resolution"; exit 1; fi
-          # FC5 and the constitution (no analytics): Firebase Analytics must not be anywhere on the app's classpath
-          if grep -n 'firebase-analytics' "$RUNNER_TEMP/deps.txt"; then echo "::error::firebase-analytics is on the classpath (no analytics, constitution)"; exit 1; fi
+          # FC5 and the constitution (no analytics): no Firebase Analytics and no Google Analytics measurement library on the
+          # classpath of either variant this workflow builds (release when signed, debug when not). FC5 fix round 1: the ads SDK
+          # itself pulls in play-services-measurement-sdk-api and -measurement-base (play-services-ads-api 25.4.0), so those two
+          # are allowed; play-services-measurement, -measurement-api, -measurement-impl and -measurement-sdk are not.
+          ./gradlew -q :app:dependencies --configuration debugRuntimeClasspath --no-daemon > "$RUNNER_TEMP/deps-debug.txt"
+          ANALYTICS='--- (com\.google\.firebase:firebase-analytics|com\.google\.android\.gms:play-services-measurement(-api|-impl|-sdk)?):'
+          for C in release debug; do
+            F="$RUNNER_TEMP/deps.txt"; [ "$C" = debug ] && F="$RUNNER_TEMP/deps-debug.txt"
+            if grep -E -- "$ANALYTICS" "$F"; then echo "::error::An analytics library is on the $C classpath (no analytics, constitution)"; exit 1; fi
+          done
           if [ -n "$KS_PASS" ]; then
             echo "$KS_B64" | base64 -d > "$KS_PATH"
             ./gradlew assembleRelease bundleRelease --no-daemon

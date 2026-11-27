@@ -43,7 +43,7 @@ const SHARE_RE = /^Play chess with me in Chess Coach: https:\/\/hnchennai\.githu
 
 // ---------- the fake Firebase: Auth REST and the callable, on the real ops ----------
 function fakeFirebase() {
-  const fb = { off: 0, store: new MemStore(), tokens: new Map(), refresh: new Map(), uids: [], calls: [], down: false, delay: {}, lose: null, pushes: [] };
+  const fb = { off: 0, store: new MemStore(), tokens: new Map(), refresh: new Map(), uids: [], calls: [], down: false, delay: {}, lose: null, pushes: [], err: {}, after: {} };
   const now = () => Date.now() + fb.off;
   // FC5: the server's push intents ({ to: uid, t, g }) are recorded; tests/e2e/fc5.spec.js hands them to the right phone
   const ops = makeOps({ store: fb.store, now, rand: crypto.randomBytes, push: async (p) => { fb.pushes.push(p); }, log: () => {}, deleteAuthUser: async () => {} });
@@ -72,8 +72,10 @@ function fakeFirebase() {
       let data = null; try { data = JSON.parse(body).data; } catch (e) { data = null; }
       const op = data && data.op;
       if (fb.delay[op]) await new Promise((r) => setTimeout(r, fb.delay[op]));
+      if (fb.err[op]) return json(route, 500, { error: { status: 'INTERNAL', message: 'internal' } }); // FC5 fix round 1: a real server failure
       try {
         const result = await ops.handle(uid ? { uid } : null, data);
+        if (fb.after[op]) await new Promise((r) => setTimeout(r, fb.after[op])); // FC5 fix round 1: answered late (the state read before the wait)
         if (fb.lose === op) { fb.lose = null; return route.abort('connectionreset'); } // fix 6: the op ran, its answer is lost
         return json(route, 200, { result });
       } catch (e) {
@@ -90,7 +92,7 @@ function fakeFirebase() {
 function fakeCap(cfg) {
   const C = cfg || {};
   const N = window.__fc = { share: [], ls: {}, launch: C.launch || null };
-  if (!C.noConfig) window.FC_CONFIG = { projectId: 'demo-fc3', apiKey: 'fake-key', authBase: 'https://auth.fc.test', tokenBase: 'https://token.fc.test', fnBase: 'https://fn.fc.test' };
+  if (!C.noConfig) window.FC_CONFIG = C.fcConfig || { projectId: 'demo-fc3', apiKey: 'fake-key', authBase: 'https://auth.fc.test', tokenBase: 'https://token.fc.test', fnBase: 'https://fn.fc.test' };
   const App = {
     addListener(name, f) { (N.ls[name] = N.ls[name] || []).push(f); return Promise.resolve({ remove() {} }); },
     getLaunchUrl() { return Promise.resolve(N.launch ? { url: N.launch } : undefined); },
@@ -123,6 +125,7 @@ function fakeCap(cfg) {
   };
   N.pushIn = (data) => fire('pushNotificationReceived', { id: 'm' + P.calls.length, title: 'Chess Coach', body: 'Your move in a friend game', data }, false);
   N.pushTap = (data) => fire('pushNotificationActionPerformed', { actionId: 'tap', notification: { id: 'm' + P.calls.length, data } }, true);
+  N.pushToken = (value) => fire('registration', { value }, true); // FCM handed the app a new token (onNewToken)
 }
 function seed([pk, p, fk, f]) {
   if (sessionStorage.getItem('seeded')) return;
@@ -145,7 +148,7 @@ async function player(vp, fb, o) {
   await ctx.addInitScript(seed, [G.PKEY, o.prof || G.improver({ rating: 1100 }), FKEY, store]);
   // o.push: the push plugin (FC5); FC_PUSH=1 gives every phone one that grants at once (FC3 and FC4 cases with push in the app)
   const push = o.push !== undefined ? o.push : process.env.FC_PUSH === '1' ? { perm: 'granted' } : null;
-  if (o.native !== false) await ctx.addInitScript(fakeCap, { launch: o.launch || null, shareCancel: !!o.shareCancel, noConfig: !!o.noConfig, push });
+  if (o.native !== false) await ctx.addInitScript(fakeCap, { launch: o.launch || null, shareCancel: !!o.shareCancel, noConfig: !!o.noConfig, push, fcConfig: o.fcConfig || null });
   for (const x of o.extra || []) await ctx.addInitScript(x[0], x[1]); // FC4: more fakes (the ads plugin, a worker counter)
   const origin = o.release || o.native === false ? RORIGIN : ORIGIN;
   const page = await ctx.newPage();
@@ -297,7 +300,10 @@ const cases = [
     const m = SHARE_RE.exec(sh.text); assert.ok(m, sh.text);
     assert.equal(await page.evaluate((u) => window.Friends.parseLink(u), linkOf(m[1])), m[1], 'the shared link parses');
     assert.ok(page.fb[0].startsWith('https://auth.fc.test/v1/accounts:signUp'), 'the first request ever is the anonymous sign-up');
-    assert.equal(page.fb.length, 2, 'sign-up and invite, nothing else');
+    // FC5: with the push plugin (FC_PUSH=1) the first Challenge also sends the push token (op hello) once the share sheet closed
+    const ops = fb.calls.filter((c) => c.who === 'A').map((c) => (c.url === 'https://fn.fc.test/friend' ? JSON.parse(c.body).data.op : c.url.split('?')[0]));
+    assert.deepEqual(ops.filter((x) => x !== 'hello'), ['https://auth.fc.test/v1/accounts:signUp', 'invite'], 'sign-up and invite, nothing else');
+    assert.equal(ops.filter((x) => x === 'hello').length, process.env.FC_PUSH === '1' ? ops.length - 2 : 0, 'and only the push token besides, when the app has push');
     assert.equal(await sheet(page), null, 'the sheet closed');
     const inv = fb.store.get('invites', m[1]); assert.ok(inv, 'the server has the invite');
     const g = fb.store.get('games', inv.g);
@@ -318,7 +324,8 @@ const cases = [
     await page.locator('#friendCard [data-act="fshare"]').click();
     await page.waitForFunction(() => window.__fc.share.length === 2);
     assert.equal((await shares(page))[1].text, sh.text);
-    assert.equal(page.fb.length, 2, 'sharing again needs no request');
+    const ops2 = fb.calls.filter((c) => c.who === 'A' && !(c.url === 'https://fn.fc.test/friend' && JSON.parse(c.body).data.op === 'hello'));
+    assert.equal(ops2.length, 2, 'sharing again needs no request (the push token, with FC_PUSH=1, is not part of sharing)');
     // and the profile never holds the ID or a token (FC-D3: device only)
     const raw = await page.evaluate((k) => localStorage.getItem(k), G.PKEY);
     assert.ok(!raw.includes(st.uid) && !raw.includes(dev.rt), 'nothing of the friend store in the profile');
@@ -528,7 +535,15 @@ const cases = [
     await N.evaluate(() => window.__coach.openSettings());
     assert.equal(await N.evaluate(() => document.getElementById('friendSet').hidden), false, 'the real config: the toggle shows');
     assert.equal(R.fb.length + N.fb.length + R.outside.length + N.outside.length, 0, 'no request to the friend server or any Firebase host');
-    return [R, N];
+    // FC5 fix round 1: the placeholder gate (FC-D24) still holds end to end: a test build whose config holds a placeholder shows nothing
+    const Q = await player(vp, fb, { who: 'Q', fcConfig: { projectId: 'PLACEHOLDER-firebase-project-id', apiKey: 'PLACEHOLDER_FIREBASE_WEB_API_KEY', fnBase: 'https://asia-south1-PLACEHOLDER-firebase-project-id.cloudfunctions.net' } });
+    assert.equal(await Q.evaluate(() => window.FClient.configured(window.FCONFIG)), false);
+    await goPlay(Q);
+    assert.equal(await card(Q), null, 'placeholder config: no card');
+    await Q.evaluate(() => window.__coach.openSettings());
+    assert.equal(await Q.evaluate(() => document.getElementById('friendSet').hidden), true, 'placeholder config: no toggle');
+    assert.equal(Q.fb.length + Q.outside.length, 0);
+    return [R, N, Q];
   }],
   ['Fix 2: a failed or offline tap is not remembered; after Not now a later tap shows the sheet again; a cold link shown in the last 2 minutes is not shown again', async (vp, fb) => {
     const A = await player(vp, fb, { who: 'A' });
